@@ -10,7 +10,7 @@ CassettePlayerCLI::CassettePlayerCLI(CommandLineParser& parser_)
 	: parser(parser_)
 {
 	parser.registerOption("-cassetteplayer", *this);
-	parser.registerFileType({"cas", "wav"}, *this);
+	parser.registerFileType({"cas", "wav", "tsx"}, *this);
 }
 
 void CassettePlayerCLI::parseOption(const std::string& option,
@@ -37,7 +37,7 @@ void CassettePlayerCLI::parseFileType(const std::string& filename,
 
 std::string_view CassettePlayerCLI::fileTypeHelp() const
 {
-	return "Cassette image, raw recording or fMSX CAS image";
+	return "Cassette image, raw recording, fMSX CAS image or TSX file";
 }
 
 std::string_view CassettePlayerCLI::fileTypeCategoryName() const
