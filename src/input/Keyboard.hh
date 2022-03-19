@@ -2,7 +2,7 @@
 #define KEYBOARD_HH
 
 #include "KeyboardSettings.hh"
-#include "UnicodeKeymap.hh"
+#include "KeyboardInfo.hh"
 #include "MSXEventListener.hh"
 #include "StateChangeListener.hh"
 #include "Schedulable.hh"
@@ -132,6 +132,13 @@ private:
 		[[nodiscard]] std::string help(std::span<const TclObject> tokens) const override;
 	} keyMatrixDownCmd;
 
+	struct KeyPositionCmd final : Command {
+		KeyPositionCmd(CommandController& commandController);
+		void execute(std::span<const TclObject> tokens, TclObject& result) override;
+		[[nodiscard]] std::string help(std::span<const TclObject> tokens) const override;
+		void tabCompletion(std::vector<std::string>& tokens) const override;
+	} keyPositionCmd;
+
 	class KeyInserter final : public RecordedCommand, public Schedulable {
 	public:
 		KeyInserter(CommandController& commandController,
@@ -224,7 +231,7 @@ private:
 		void write(unsigned address, uint8_t value) override;
 	} keybDebuggable;
 
-	UnicodeKeymap unicodeKeymap;
+	KeyboardInfo keyboardInfo;
 	std::array<unsigned, MAX_KEYSYM> dynKeymap;
 
 	/** Keyboard matrix state for 'keymatrix' command. */
