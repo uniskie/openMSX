@@ -1162,6 +1162,9 @@ const std::string& ImGuiMachine::getTestResult(MachineInfo& info)
 				if (!currentInfo) return;
 
 				MSXMotherBoard mb(reactor);
+#if defined(FOR_MAMI)
+				mb.setTestMode(true);
+#endif
 				mb.getMSXCliComm().setSuppressMessages(true);
 				mb.loadMachine(configName);
 				//assert(currentInfo->testResult->empty());

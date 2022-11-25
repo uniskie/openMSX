@@ -146,6 +146,11 @@ public:
 	[[nodiscard]] bool isTurboR() const;
 	[[nodiscard]] bool hasToshibaEngine() const;
 
+#if defined(FOR_MAMI)
+	void setTestMode(bool testMode);
+	bool isTest() const { return testMode; }
+#endif
+
 	std::string loadMachine(const std::string& machine);
 
 	void storeAsSetup(const std::string& filename, SetupDepth depth);
@@ -350,6 +355,8 @@ private:
 	bool powered = false;
 	bool active = false;
 	bool fastForwarding = false;
+
+	bool testMode = false;
 };
 SERIALIZE_CLASS_VERSION(MSXMotherBoard, 5);
 

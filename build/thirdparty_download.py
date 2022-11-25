@@ -24,7 +24,10 @@ def downloadPackage(package, tarballsDir):
 			package.niceName, package.version
 			))
 	else:
-		downloadURL(package.getURL(), tarballsDir)
+		# --> FOR_MAMI
+		#downloadURL(package.getURL(), tarballsDir)
+		downloadURL(package.getURL(), tarballsDir, package.getTarballName())
+		# <-- FOR_MAMI
 
 def verifyPackage(package, tarballsDir):
 	filePath = joinpath(tarballsDir, package.getTarballName())
