@@ -32,11 +32,18 @@ def createStatusLine(out):
 	else:
 		return NoninteractiveStatusLine(out)
 
-def downloadURL(url, localDir):
+# --> FOR_MAMI
+#def downloadURL(url, localDir):
+def downloadURL(url, localDir, fileName='*'):
+# <-- FOR_MAMI
 	if not isdir(localDir):
 		raise OSError('Local directory "%s" does not exist' % localDir)
 
-	fileName = basename(urlparse(url).path)
+# --> FOR_MAMI
+#	fileName = basename(urlparse(url).path)
+	if fileName == '*':
+		fileName = basename(urlparse(url).path)
+# <-- FOR_MAMI
 	localPath = joinpath(localDir, fileName)
 	prefix = 'Downloading %s: ' % fileName
 

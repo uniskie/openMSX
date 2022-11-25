@@ -207,6 +207,9 @@ bool Display::signalEvent(const Event& event)
 string Display::getWindowTitle()
 {
 	string title = Version::full();
+#if defined(FOR_MAMI)
+	title.append(" for MAmidiMEmo");
+#endif
 	if (!Version::RELEASE) {
 		strAppend(title, " [", BUILD_FLAVOUR, ']');
 	}
