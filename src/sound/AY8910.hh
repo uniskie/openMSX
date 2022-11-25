@@ -5,8 +5,8 @@
 #include "FloatSetting.hh"
 #include "SimpleDebuggable.hh"
 #include "TclCallback.hh"
-#include "openmsx.hh"
 #include <array>
+#include <cstdint>
 
 //HACK: MAmi
 #include "rpc/server.h"
@@ -29,9 +29,9 @@ public:
 	       const DeviceConfig& config, EmuTime::param time);
 	~AY8910();
 
-	[[nodiscard]] byte readRegister(unsigned reg, EmuTime::param time);
-	[[nodiscard]] byte peekRegister(unsigned reg, EmuTime::param time) const;
-	void writeRegister(unsigned reg, byte value, EmuTime::param time);
+	[[nodiscard]] uint8_t readRegister(unsigned reg, EmuTime::param time);
+	[[nodiscard]] uint8_t peekRegister(unsigned reg, EmuTime::param time) const;
+	void writeRegister(unsigned reg, uint8_t value, EmuTime::param time);
 	void reset(EmuTime::param time);
 
 	template<typename Archive>
@@ -73,7 +73,7 @@ private:
 		/** Advance tone generator several steps in time.
 		  * @param duration Length of interval to simulate.
 		  */
-		inline void advance(int duration);
+		inline void advance(unsigned duration);
 
 		inline void doNextEvent(AY8910& ay8910);
 
@@ -106,7 +106,7 @@ private:
 		/** Advance noise generator several steps in time.
 		  * @param duration Length of interval to simulate.
 		  */
-		inline void advance(int duration);
+		inline void advance(unsigned duration);
 
 		inline void doNextEvent();
 
@@ -143,7 +143,7 @@ private:
 		inline void setPeriod(int value);
 		inline void setShape(unsigned shape);
 		[[nodiscard]] inline bool isChanging() const;
-		inline void advance(int duration);
+		inline void advance(unsigned duration);
 		[[nodiscard]] inline float getVolume() const;
 
 		[[nodiscard]] inline unsigned getNextEventTime() const;
@@ -158,11 +158,11 @@ private:
 
 	private:
 		std::span<const float, 32> envVolTable;
-		int period;
-		int count;
-		int step;
-		int attack;
-		bool hold, alternate, holding;
+		int period = 1;
+		int count = 0;
+		int step = 0;
+		int attack = 0;
+		bool hold = false, alternate = false, holding = false;
 	};
 
 	// SoundDevice
@@ -172,7 +172,7 @@ private:
 	// Observer<Setting>
 	void update(const Setting& setting) noexcept override;
 
-	void wrtReg(unsigned reg, byte value, EmuTime::param time);
+	void wrtReg(unsigned reg, uint8_t value, EmuTime::param time);
 
 private:
 	rpc::client* m_rpcClient;	//HACK: MAmi
@@ -180,8 +180,8 @@ private:
 
 	struct Debuggable final : SimpleDebuggable {
 		Debuggable(MSXMotherBoard& motherBoard, const std::string& name);
-		[[nodiscard]] byte read(unsigned address, EmuTime::param time) override;
-		void write(unsigned address, byte value, EmuTime::param time) override;
+		[[nodiscard]] uint8_t read(unsigned address, EmuTime::param time) override;
+		void write(unsigned address, uint8_t value, EmuTime::param time) override;
 	} debuggable;
 
 	FloatSetting vibratoPercent;
@@ -193,11 +193,11 @@ private:
 	NoiseGenerator noise;
 	Amplitude amplitude;
 	Envelope envelope;
-	std::array<byte, 16> regs;
+	std::array<uint8_t, 16> regs;
 	const bool isAY8910;
 	const bool ignorePortDirections;
 	bool doDetune;
-	bool detuneInitialized;
+	bool detuneInitialized = false; // (lazily) initialize detune stuff
 };
 
 SERIALIZE_CLASS_VERSION(AY8910::Generator, 2);

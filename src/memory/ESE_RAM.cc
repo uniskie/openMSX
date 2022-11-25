@@ -21,6 +21,7 @@
 
 #include "ESE_RAM.hh"
 #include "MSXException.hh"
+#include "narrow.hh"
 #include "one_of.hh"
 #include "serialize.hh"
 #include "xrange.hh"
@@ -28,9 +29,9 @@
 
 namespace openmsx {
 
-unsigned ESE_RAM::getSramSize() const
+size_t ESE_RAM::getSramSize() const
 {
-	unsigned sramSize = getDeviceConfig().getChildDataAsInt("sramsize", 256); // size in kb
+	size_t sramSize = getDeviceConfig().getChildDataAsInt("sramsize", 256); // size in kb
 	if (sramSize != one_of(1024u, 512u, 256u, 128u)) {
 		throw MSXException(
 			"SRAM size for ", getName(),
@@ -44,7 +45,7 @@ ESE_RAM::ESE_RAM(const DeviceConfig& config)
 	: MSXDevice(config)
 	, sram(getName() + " SRAM", getSramSize(), config)
 	, romBlockDebug(*this, mapped, 0x4000, 0x8000, 13)
-	, blockMask((sram.size() / 0x2000) - 1)
+	, blockMask(narrow<byte>((sram.size() / 0x2000) - 1))
 {
 	reset(EmuTime::dummy());
 }

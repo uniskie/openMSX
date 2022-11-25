@@ -32,15 +32,15 @@ private:
 	ZMBVEncoder codec;
 	std::vector<Endian::L32> index;
 
-	float fps;
-	const unsigned width;
-	const unsigned height;
-	const unsigned channels;
-	const unsigned audiorate;
+	float fps = 0.0f; // will be filled in later
+	const uint32_t width;
+	const uint32_t height;
+	const uint32_t channels;
+	const uint32_t audioRate;
 
-	unsigned frames;
-	unsigned audiowritten;
-	unsigned written;
+	uint32_t frames = 0;
+	uint32_t audioWritten = 0;
+	uint32_t written = 0;
 };
 
 } // namespace openmsx

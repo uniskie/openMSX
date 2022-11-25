@@ -37,11 +37,6 @@ static constexpr byte R1_PARAMETER_ERROR = 0x80;
 
 SdCard::SdCard(const DeviceConfig& config)
 	: hd(config.getXML() ? std::make_unique<HD>(config) : nullptr)
-	, cmdIdx(0)
-	, transferDelayCounter(0)
-	, mode(COMMAND)
-	, currentSector(0)
-	, currentByteInSector(0)
 {
 }
 
@@ -279,7 +274,7 @@ void SdCard::executeCommand()
 		responseQueue.push_back(R1_IDLE); // R1 (OK)
 		mode = COMMAND;
 		break;
-	case 16: // SET_BLOCKLEN
+	case 16: // SET_BLOCK_LEN
 		responseQueue.push_back(R1_IDLE); // OK, we don't really care
 		break;
 	case 17: // READ_SINGLE_BLOCK

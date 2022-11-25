@@ -11,12 +11,12 @@
 
 namespace openmsx::DiskImageUtils {
 
-static constexpr std::array<char, 11> PARTAB_HEADER = {
+static constexpr std::array<char, 11> PARTITION_TABLE_HEADER = {
 	'\353', '\376', '\220', 'M', 'S', 'X', '_', 'I', 'D', 'E', ' '
 };
 [[nodiscard]] static bool isPartitionTableSector(const PartitionTable& pt)
 {
-	return pt.header == PARTAB_HEADER;
+	return pt.header == PARTITION_TABLE_HEADER;
 }
 
 bool hasPartitionTable(SectorAccessibleDisk& disk)
@@ -84,13 +84,13 @@ static SetBootSectorResult setBootSector(
 	uint8_t nbReservedSectors = 1;
 	uint8_t nbHiddenSectors = 1;
 
-	// all these are initialized below (in this order)
-	uint16_t nbSides;
-	uint8_t nbFats;
-	uint8_t nbSectorsPerFat;
-	uint8_t nbSectorsPerCluster;
-	uint16_t nbDirEntry;
-	uint8_t descriptor;
+	// all these are set below (but initialize here to avoid warning)
+	uint16_t nbSides = 2;
+	uint8_t nbFats = 2;
+	uint8_t nbSectorsPerFat = 3;
+	uint8_t nbSectorsPerCluster = 2;
+	uint16_t nbDirEntry = 112;
+	uint8_t descriptor = 0xF9;
 
 	// now set correct info according to size of image (in sectors!)
 	// and using the same layout as used by Jon in IDEFDISK v 3.1
@@ -221,7 +221,7 @@ struct CHS {
 };
 [[nodiscard]] static constexpr CHS logicalToCHS(unsigned logical)
 {
-	// This is made to fit the openMSX harddisk configuration:
+	// This is made to fit the openMSX hard disk configuration:
 	//  32 sectors/track   16 heads
 	unsigned tmp = logical + 1;
 	unsigned sector = tmp % 32;
@@ -238,7 +238,7 @@ void partition(SectorAccessibleDisk& disk, std::span<const unsigned> sizes)
 
 	SectorBuffer buf;
 	ranges::fill(buf.raw, 0);
-	buf.pt.header = PARTAB_HEADER;
+	buf.pt.header = PARTITION_TABLE_HEADER;
 	buf.pt.end = 0xAA55;
 
 	unsigned partitionOffset = 1;

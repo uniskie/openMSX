@@ -7,8 +7,6 @@ namespace openmsx {
 
 SectorBasedDisk::SectorBasedDisk(DiskName name_)
 	: Disk(std::move(name_))
-	, nbSectors(size_t(-1)) // to detect misuse
-	, cachedTrackNum(-1)
 {
 }
 
@@ -16,7 +14,7 @@ void SectorBasedDisk::writeTrackImpl(uint8_t track, uint8_t side, const RawTrack
 {
 	for (auto& s : input.decodeAll()) {
 		// Ignore 'track' and 'head' information
-		// Always assume sectorsize = 512 (so also ignore sizeCode).
+		// Always assume sector-size = 512 (so also ignore sizeCode).
 		// Ignore CRC value/errors of both address and data.
 		// Ignore sector type (deleted or not)
 		// Ignore sectors that are outside the range 1..sectorsPerTrack
@@ -37,7 +35,7 @@ void SectorBasedDisk::readTrack(uint8_t track, uint8_t side, RawTrack& output)
 	// will typically already have a very high hit-rate. For example during
 	// emulation of a WD2793 read sector, we also emulate the search for
 	// the correct sector. So the disk rotates from sector to sector, and
-	// each time we re-read the track data (because emutime has passed).
+	// each time we re-read the track data (because EmuTime has passed).
 	// Typically the software will also read several sectors from the same
 	// track before moving to the next.
 	checkCaches();

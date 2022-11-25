@@ -24,14 +24,14 @@ void PrinterPortSimpl::setStrobe(bool /*strobe*/, EmuTime::param /*time*/)
 	// ignore strobe // TODO check
 }
 
-void PrinterPortSimpl::writeData(byte data, EmuTime::param time)
+void PrinterPortSimpl::writeData(uint8_t data, EmuTime::param time)
 {
 	dac->writeDAC(data, time);
 }
 
 void PrinterPortSimpl::createDAC()
 {
-	static XMLElement* xml = [] {
+	static const XMLElement* xml = [] {
 		auto& doc = XMLDocument::getStaticDocument();
 		auto* result = doc.allocateElement("simpl");
 		result->setFirstChild(doc.allocateElement("sound"))

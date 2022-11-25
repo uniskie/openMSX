@@ -17,6 +17,7 @@
 #include "CommandException.hh"
 #include "MemBuffer.hh"
 #include "aligned.hh"
+#include "narrow.hh"
 #include "vla.hh"
 #include "xrange.hh"
 #include "build-info.hh"
@@ -34,12 +35,6 @@ PostProcessor::PostProcessor(MSXMotherBoard& motherBoard_,
 	, Schedulable(motherBoard_.getScheduler())
 	, renderSettings(display_.getRenderSettings())
 	, screen(screen_)
-	, paintFrame(nullptr)
-	, recorder(nullptr)
-	, superImposeVideoFrame(nullptr)
-	, superImposeVdpFrame(nullptr)
-	, interleaveCount(0)
-	, lastFramesCount(0)
 	, maxWidth(maxWidth_)
 	, height(height_)
 	, display(display_)
@@ -69,7 +64,7 @@ PostProcessor::~PostProcessor()
 {
 	if (recorder) {
 		getCliComm().printWarning(
-			"Videorecording stopped, because you "
+			"Video recording stopped, because you "
 			"changed machine or changed a video setting "
 			"during recording.");
 		recorder->stop();
@@ -213,7 +208,7 @@ static void getScaledFrame(FrameSource& paintFrame, unsigned bpp,
                            std::span<const void*> lines,
                            WorkBuffer& workBuffer)
 {
-	auto height = lines.size();
+	auto height = narrow<unsigned>(lines.size());
 	unsigned width = (height == 240) ? 320 : 640;
 	unsigned pitch = width * ((bpp == 32) ? 4 : 2);
 	const void* linePtr = nullptr;

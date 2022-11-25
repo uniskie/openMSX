@@ -21,6 +21,7 @@
 #include "ReadOnlySetting.hh"
 #include "serialize.hh"
 #include "checked_cast.hh"
+#include "narrow.hh"
 #include "outer.hh"
 #include "ranges.hh"
 #include "stl.hh"
@@ -84,7 +85,6 @@ MSXCPUInterface::MSXCPUInterface(MSXMotherBoard& motherBoard_)
 	, msxcpu(motherBoard_.getCPU())
 	, cliComm(motherBoard_.getMSXCliComm())
 	, motherBoard(motherBoard_)
-	, fastForward(false)
 {
 	ranges::fill(primarySlotState, 0);
 	ranges::fill(secondarySlotState, 0);
@@ -215,7 +215,7 @@ void MSXCPUInterface::writeMemSlow(word address, byte value, EmuTime::param time
 		setSubSlot(primarySlotState[3], value);
 		// Confirmed on turboR GT machine: write does _not_ also go to
 		// the underlying (hidden) device. But it's theoretically
-		// possible other slotexpanders behave different.
+		// possible other slot-expanders behave different.
 	} else {
 		visibleDevices[address>>14]->writeMem(address, value, time);
 	}
@@ -438,9 +438,9 @@ static void reportMemOverlap(int ps, int ss, MSXDevice& dev1, MSXDevice& dev2)
 }
 
 void MSXCPUInterface::testRegisterSlot(
-	MSXDevice& device, int ps, int ss, int base, int size)
+	MSXDevice& device, int ps, int ss, unsigned base, unsigned size)
 {
-	int page = base >> 14;
+	auto page = base >> 14;
 	MSXDevice*& slot = slotLayout[ps][ss][page];
 	if (size == 0x4000) {
 		// full 16kb, directly register device (no multiplexer)
@@ -464,9 +464,9 @@ void MSXCPUInterface::testRegisterSlot(
 }
 
 void MSXCPUInterface::registerSlot(
-	MSXDevice& device, int ps, int ss, int base, int size)
+	MSXDevice& device, int ps, int ss, unsigned base, unsigned size)
 {
-	int page = base >> 14;
+	auto page = base >> 14;
 	MSXDevice*& slot = slotLayout[ps][ss][page];
 	if (size == 0x4000) {
 		// full 16kb, directly register device (no multiplexer)
@@ -493,9 +493,9 @@ void MSXCPUInterface::registerSlot(
 }
 
 void MSXCPUInterface::unregisterSlot(
-	MSXDevice& device, int ps, int ss, int base, int size)
+	MSXDevice& device, int ps, int ss, unsigned base, unsigned size)
 {
-	int page = base >> 14;
+	auto page = base >> 14;
 	MSXDevice*& slot = slotLayout[ps][ss][page];
 	if (auto* multi = dynamic_cast<MSXMultiMemDevice*>(slot)) {
 		// partial range
@@ -514,7 +514,7 @@ void MSXCPUInterface::unregisterSlot(
 }
 
 void MSXCPUInterface::registerMemDevice(
-	MSXDevice& device, int ps, int ss, int base_, int size_)
+	MSXDevice& device, int ps, int ss, unsigned base_, unsigned size_)
 {
 	if (!isExpanded(ps) && (ss != 0)) {
 		throw MSXException(
@@ -524,10 +524,10 @@ void MSXCPUInterface::registerMemDevice(
 
 	// split range on 16kb borders
 	// first check if registration is possible
-	int base = base_;
-	int size = size_;
-	while (size > 0) {
-		int partialSize = std::min(size, ((base + 0x4000) & ~0x3FFF) - base);
+	auto base = base_;
+	auto size = size_;
+	while (size != 0) {
+		auto partialSize = std::min(size, ((base + 0x4000) & ~0x3FFF) - base);
 		testRegisterSlot(device, ps, ss, base, partialSize);
 		base += partialSize;
 		size -= partialSize;
@@ -535,8 +535,8 @@ void MSXCPUInterface::registerMemDevice(
 	// if all checks are successful, only then actually register
 	base = base_;
 	size = size_;
-	while (size > 0) {
-		int partialSize = std::min(size, ((base + 0x4000) & ~0x3FFF) - base);
+	while (size != 0) {
+		auto partialSize = std::min(size, ((base + 0x4000) & ~0x3FFF) - base);
 		registerSlot(device, ps, ss, base, partialSize);
 		base += partialSize;
 		size -= partialSize;
@@ -544,11 +544,11 @@ void MSXCPUInterface::registerMemDevice(
 }
 
 void MSXCPUInterface::unregisterMemDevice(
-	MSXDevice& device, int ps, int ss, int base, int size)
+	MSXDevice& device, int ps, int ss, unsigned base, unsigned size)
 {
 	// split range on 16kb borders
-	while (size > 0) {
-		int partialSize = std::min(size, ((base + 0x4000) & ~0x3FFF) - base);
+	while (size != 0) {
+		auto partialSize = std::min(size, ((base + 0x4000) & ~0x3FFF) - base);
 		unregisterSlot(device, ps, ss, base, partialSize);
 		base += partialSize;
 		size -= partialSize;
@@ -603,7 +603,7 @@ void MSXCPUInterface::unregisterGlobalRead(MSXDevice& device, word address)
 	msxcpu.invalidateAllSlotsRWCache(address & CacheLine::HIGH, 0x100);
 }
 
-ALWAYS_INLINE void MSXCPUInterface::updateVisible(int page, int ps, int ss)
+ALWAYS_INLINE void MSXCPUInterface::updateVisible(unsigned page, int ps, int ss)
 {
 	MSXDevice* newDevice = slotLayout[ps][ss][page];
 	if (visibleDevices[page] != newDevice) {
@@ -611,7 +611,7 @@ ALWAYS_INLINE void MSXCPUInterface::updateVisible(int page, int ps, int ss)
 		msxcpu.updateVisiblePage(page, ps, ss);
 	}
 }
-void MSXCPUInterface::updateVisible(int page)
+void MSXCPUInterface::updateVisible(unsigned page)
 {
 	updateVisible(page, primarySlotState[page], secondarySlotState[page]);
 }
@@ -713,7 +713,7 @@ void MSXCPUInterface::setPrimarySlots(byte value)
 void MSXCPUInterface::setSubSlot(byte primSlot, byte value)
 {
 	subSlotRegister[primSlot] = value;
-	for (int page = 0; page < 4; ++page, value >>= 2) {
+	for (unsigned page = 0; page < 4; ++page, value >>= 2) {
 		if (primSlot == primarySlotState[page]) {
 			secondarySlotState[page] = value & 3;
 			// Change the visible devices
@@ -834,8 +834,7 @@ void MSXCPUInterface::checkBreakPoints(
 
 static void registerIOWatch(WatchPoint& watchPoint, std::span<MSXDevice*, 256> devices)
 {
-	assert(dynamic_cast<WatchIO*>(&watchPoint));
-	auto& ioWatch = static_cast<WatchIO&>(watchPoint);
+	auto& ioWatch = checked_cast<WatchIO&>(watchPoint);
 	unsigned beginPort = ioWatch.getBeginAddress();
 	unsigned endPort   = ioWatch.getEndAddress();
 	assert(beginPort <= endPort);
@@ -869,8 +868,7 @@ void MSXCPUInterface::setWatchPoint(const std::shared_ptr<WatchPoint>& watchPoin
 
 static void unregisterIOWatch(WatchPoint& watchPoint, std::span<MSXDevice*, 256> devices)
 {
-	assert(dynamic_cast<WatchIO*>(&watchPoint));
-	auto& ioWatch = static_cast<WatchIO&>(watchPoint);
+	auto& ioWatch = checked_cast<WatchIO&>(watchPoint);
 	unsigned beginPort = ioWatch.getBeginAddress();
 	unsigned endPort   = ioWatch.getEndAddress();
 	assert(beginPort <= endPort);
@@ -1132,7 +1130,7 @@ void MSXCPUInterface::SlotInfo::execute(std::span<const TclObject> tokens,
 	unsigned ss   = getSlot(interp, tokens[3], "Secondary slot");
 	unsigned page = getSlot(interp, tokens[4], "Page");
 	auto& interface = OUTER(MSXCPUInterface, slotInfo);
-	if (!interface.isExpanded(ps)) {
+	if (!interface.isExpanded(narrow<int>(ps))) {
 		ss = 0;
 	}
 	interface.slotLayout[ps][ss][page]->getNameList(result);
@@ -1158,8 +1156,8 @@ void MSXCPUInterface::SubSlottedInfo::execute(std::span<const TclObject> tokens,
 {
 	checkNumArgs(tokens, 3, "primary");
 	auto& interface = OUTER(MSXCPUInterface, subSlottedInfo);
-	result = interface.isExpanded(
-		getSlot(getInterpreter(), tokens[2], "Slot"));
+	result = interface.isExpanded(narrow<int>(
+		getSlot(getInterpreter(), tokens[2], "Slot")));
 }
 
 std::string MSXCPUInterface::SubSlottedInfo::help(
@@ -1186,10 +1184,10 @@ void MSXCPUInterface::ExternalSlotInfo::execute(
 	auto& interp = getInterpreter();
 	switch (tokens.size()) {
 	case 4:
-		ss = getSlot(interp, tokens[3], "Secondary slot");
+		ss = narrow<int>(getSlot(interp, tokens[3], "Secondary slot"));
 		// Fall-through
 	case 3:
-		ps = getSlot(interp, tokens[2], "Primary slot");
+		ps = narrow<int>(getSlot(interp, tokens[2], "Primary slot"));
 		break;
 	}
 	auto& interface = OUTER(MSXCPUInterface, externalSlotInfo);

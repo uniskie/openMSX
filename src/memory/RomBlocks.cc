@@ -33,7 +33,7 @@ RomBlocks<BANK_SIZE>::RomBlocks(
 		alreadyWarnedForSha1Sum = rom.getOriginalSHA1();
 	}
 	rom.addPadding(extendedSize);
-	nrBlocks = rom.size() / BANK_SIZE;
+	nrBlocks = narrow<decltype(nrBlocks)>(rom.size() / BANK_SIZE);
 	assert((nrBlocks * BANK_SIZE) == rom.size());
 
 	// by default no extra mappable memory block
@@ -74,7 +74,7 @@ const byte* RomBlocks<BANK_SIZE>::getReadCacheLine(word address) const
 }
 
 template<unsigned BANK_SIZE>
-void RomBlocks<BANK_SIZE>::setBank(byte region, const byte* adr, int block)
+void RomBlocks<BANK_SIZE>::setBank(byte region, const byte* adr, byte block)
 {
 	assert("address passed to setBank() is not serializable" &&
 	       ((adr == unmappedRead.data()) ||

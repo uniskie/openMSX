@@ -4,6 +4,7 @@
 #include "EventDistributor.hh"
 #include "Scheduler.hh"
 #include "FileOperations.hh"
+#include "checked_cast.hh"
 #include "narrow.hh"
 #include "serialize.hh"
 #include <array>
@@ -36,7 +37,7 @@ void RS232Tester::plugHelper(Connector& connector_, EmuTime::param /*time*/)
 {
 	// output
 	auto outName = rs232OutputFilenameSetting.getString();
-	FileOperations::openofstream(outFile, outName);
+	FileOperations::openOfStream(outFile, outName);
 	if (outFile.fail()) {
 		outFile.clear();
 		throw PlugException("Error opening output file: ", outName);
@@ -50,7 +51,7 @@ void RS232Tester::plugHelper(Connector& connector_, EmuTime::param /*time*/)
 		throw PlugException("Error opening input file: ", inName);
 	}
 
-	auto& rs232Connector = static_cast<RS232Connector&>(connector_);
+	auto& rs232Connector = checked_cast<RS232Connector&>(connector_);
 	rs232Connector.setDataBits(SerialDataInterface::DATA_8);	// 8 data bits
 	rs232Connector.setStopBits(SerialDataInterface::STOP_1);	// 1 stop bit
 	rs232Connector.setParityBit(false, SerialDataInterface::EVEN); // no parity
@@ -112,7 +113,7 @@ void RS232Tester::run()
 // input
 void RS232Tester::signal(EmuTime::param time)
 {
-	auto* conn = static_cast<RS232Connector*>(getConnector());
+	auto* conn = checked_cast<RS232Connector*>(getConnector());
 	if (!conn->acceptsData()) {
 		std::lock_guard<std::mutex> lock(mutex);
 		queue.clear();
@@ -126,7 +127,7 @@ void RS232Tester::signal(EmuTime::param time)
 }
 
 // EventListener
-int RS232Tester::signalEvent(const Event& /*event*/) noexcept
+int RS232Tester::signalEvent(const Event& /*event*/)
 {
 	if (isPluggedIn()) {
 		signal(scheduler.getCurrentTime());

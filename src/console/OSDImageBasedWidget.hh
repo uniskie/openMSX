@@ -5,6 +5,7 @@
 #include "stl.hh"
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 
 namespace openmsx {
@@ -23,10 +24,15 @@ protected:
 				"-rgba"sv, "-rgb"sv, "-alpha"sv,
 				"-fadePeriod"sv, "-fadeTarget"sv,
 				"-fadeCurrent"sv,
+				"-scrollSpeed"sv,
+				"-scrollPauseLeft"sv,
+				"-scrollPauseRight"sv,
+				"-query-size"sv,
 			});
 	}();
 
 public:
+	[[nodiscard]] gl::vec2 getPos() const override;
 	[[nodiscard]] uint32_t getRGBA(uint32_t corner) const { return rgba[corner]; }
 	[[nodiscard]] std::span<const uint32_t, 4> getRGBA4() const { return rgba; }
 
@@ -52,6 +58,7 @@ protected:
 	void paintGL (OutputSurface& output) override;
 	[[nodiscard]] virtual std::unique_ptr<BaseImage> createSDL(OutputSurface& output) = 0;
 	[[nodiscard]] virtual std::unique_ptr<BaseImage> createGL (OutputSurface& output) = 0;
+	[[nodiscard]] gl::vec2 getRenderedSize() const;
 
 	void setError(std::string message);
 	[[nodiscard]] bool hasError() const { return error; }
@@ -63,18 +70,24 @@ private:
 	[[nodiscard]] bool isFading() const;
 	[[nodiscard]] float getCurrentFadeValue() const;
 	[[nodiscard]] float getCurrentFadeValue(uint64_t now) const;
+	[[nodiscard]] bool isAnimating() const;
+	[[nodiscard]] std::optional<float> getScrollWidth() const;
 	void updateCurrentFadeValue();
 
 	void paint(OutputSurface& output, bool openGL);
 	[[nodiscard]] gl::vec2 getTransformedPos(const OutputSurface& output) const;
 
 private:
-	uint64_t startFadeTime;
-	float fadePeriod;
-	float fadeTarget;
-	mutable float startFadeValue;
+	uint64_t startFadeTime = 0;
+	float fadePeriod = 0.0f;
+	float fadeTarget = 1.0f;
+	mutable float startFadeValue = 1.0f;
+	float scrollSpeed = 0.0f; // 0 means disabled
+	float scrollPauseLeft = 0.0f;
+	float scrollPauseRight = 0.0f;
+	uint64_t startScrollTime = 0;
 	std::array<uint32_t, 4> rgba;
-	bool error;
+	bool error = false;
 };
 
 } // namespace openmsx

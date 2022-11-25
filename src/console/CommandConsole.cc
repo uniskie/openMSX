@@ -89,7 +89,6 @@ CommandConsole::CommandConsole(
 		true)
 	, prompt(PROMPT_NEW)
 	, history(std::max(1, historySizeSetting.getInt()))
-	, executingCommand(false)
 {
 	resetScrollBack();
 	newLineConsole(prompt);
@@ -129,7 +128,7 @@ void CommandConsole::saveHistory()
 {
 	try {
 		std::ofstream outputFile;
-		FileOperations::openofstream(outputFile,
+		FileOperations::openOfStream(outputFile,
 		        userFileContext("console").resolveCreate("history.txt"));
 		if (!outputFile) {
 			throw FileException(
@@ -167,7 +166,7 @@ gl::ivec2 CommandConsole::getCursorPosition() const
 	return {xPosition, yPosition};
 }
 
-int CommandConsole::signalEvent(const Event& event) noexcept
+int CommandConsole::signalEvent(const Event& event)
 {
 	if (!consoleSetting.getBoolean()) return 0;
 

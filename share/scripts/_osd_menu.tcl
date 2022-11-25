@@ -7,6 +7,8 @@ set_help_text main_menu_toggle "Toggle the OSD menu."
 variable is_dingux [string match dingux "[openmsx_info platform]"]
 variable scaling_available [expr {[lindex [lindex [openmsx_info setting scale_factor] 2] 1] > 1}]
 
+variable menu_z 3
+
 proc get_optional {dict_name key default} {
 	upvar $dict_name d
 	expr {[dict exists $d $key] ? [dict get $d $key] : $default}
@@ -39,7 +41,7 @@ proc push_menu_info {} {
 		name $name lst $lst menu_len $menu_len presentation $presentation \
 		menutextexpressions $menutextexpressions menutexts $menutexts \
 		selectinfo $selectinfo selectidx $selectidx scrollidx \
-		$scrollidx on_close $on_close}]
+		$scrollidx on_close $on_close osditems $osditems}]
 }
 
 proc peek_menu_info {} {
@@ -68,6 +70,7 @@ proc menu_create {menudef} {
 	variable default_text_color
 	variable default_select_color
 	variable default_header_text_color
+	variable menu_z
 
 	set name "menu[expr {$menulevels + 1}]"
 
@@ -77,20 +80,32 @@ proc menu_create {menudef} {
 	set selectcolor  [get_optional menudef "select-color" $default_select_color]
 	set deffontsize  [get_optional menudef "font-size" 12]
 	set deffont      [get_optional menudef "font" "skins/Vera.ttf.gz"]
-	set bordersize   [get_optional menudef "border-size" 0]
+	# set default border to 0.5 to avoid content ending up in the outer
+	# (black) edge
+	set bordersize   [get_optional menudef "border-size" 0.5]
 	set on_open      [get_optional menudef "on-open" ""]
 	set on_close     [get_optional menudef "on-close" ""]
 
 	osd create rectangle $name -scaled true -rgba $bgcolor -clip true \
-		-borderrgba 0x000000ff -bordersize 0.5
+		-borderrgba 0x000000ff -bordersize 0.5 -z $menu_z
 
+	set bordersizereduction [expr {-$bordersize*2}]
+
+	# we manage x border for texts by clip rect, y border by position of
+	# items
+	osd create rectangle $name.clip -x $bordersize -w $bordersizereduction \
+		-relw 1 -relh 1 -scaled true -alpha 0 -clip true
+
+	# note that y can non-integer, so we can't use incr on it
 	set y $bordersize
 	set selectinfo [list]
 	set menutextexpressions [list]
 	set menutexts [list]
+	set osditems [list]
+	set itemidx 0
 	foreach itemdef [dict get $menudef items] {
 		set selectable  [get_optional itemdef "selectable" true]
-		incr y          [get_optional itemdef "pre-spacing" 0]
+		set y         [expr {$y + [get_optional itemdef "pre-spacing" 0]}]
 		set fontsize    [get_optional itemdef "font-size" $deffontsize]
 		set font        [get_optional itemdef "font"      $deffont]
 		set textcolor [expr {$selectable
@@ -99,7 +114,7 @@ proc menu_create {menudef} {
 		set actions     [get_optional itemdef "actions"     ""]
 		set on_select   [get_optional itemdef "on-select"   ""]
 		set on_deselect [get_optional itemdef "on-deselect" ""]
-		set textid "${name}.item${y}"
+		set textid "${name}.clip.item${itemidx}"
 		if {[dict exists $itemdef textexpr]} {
 			set textexpr [dict get $itemdef textexpr]
 			lappend menutextexpressions $textid $textexpr
@@ -108,17 +123,22 @@ proc menu_create {menudef} {
 			lappend menutexts $textid $text
 		}
 		osd create text $textid -font $font -size $fontsize \
-					-rgba $textcolor -x $bordersize -y $y
+					-rgba $textcolor -x 0 -y $y
+
+		lappend osditems $textid
+
 		if {$selectable} {
 			set allactions [concat $defactions $actions]
 			# NOTE: the 1.5 below is necessary to place the select
 			# bar properly vertically... It's unclear why this is
 			# necessary and why this emperically determined value
 			# is working.
-			lappend selectinfo [list [expr $y+1.5] $fontsize $allactions $on_select $on_deselect]
+			lappend selectinfo [list [expr {$y+1.5}] $fontsize $allactions $on_select $on_deselect $textid]
 		}
-		incr y $fontsize
-		incr y [get_optional itemdef "post-spacing" 0]
+		set y [expr {$y + $fontsize}]
+		set y [expr {$y + [get_optional itemdef "post-spacing" 0]}]
+
+		incr itemidx
 	}
 
 	set width [dict get $menudef width]
@@ -127,9 +147,8 @@ proc menu_create {menudef} {
 	set ypos [get_optional menudef "ypos" [expr {(240 - $height) / 2}]]
 	osd configure $name -x $xpos -y $ypos -w $width -h $height
 
-	set selw [expr {$width - 2 * $bordersize}]
 	osd create rectangle "${name}.selection" -z -1 -rgba $selectcolor \
-		-x $bordersize -w $selw
+		-x 0 -w $width
 
 	set lst [get_optional menudef "lst" ""]
 	set menu_len [get_optional menudef "menu_len" 0]
@@ -141,10 +160,21 @@ proc menu_create {menudef} {
 			# (skipping headers and stuff)
 			set startheight [lindex $selectinfo 0 0]
 		}
-		osd create rectangle "${name}.scrollbar" -z -1 -rgba 0x00000010 \
-		   -relx 1.0 -x -6 -w 6 -relh 1.0 -h -$startheight -y $startheight -borderrgba 0x00000070 -bordersize 0.5
-		osd create rectangle "${name}.scrollbar.thumb" -z -1 -rgba $default_select_color \
+		set scrollbarwidth 6
+		osd create rectangle "${name}.scrollbar" -rgba 0x00000010 \
+		   -relx 1.0 -x -$scrollbarwidth -w $scrollbarwidth -relh 1.0 -h -$startheight -y $startheight -borderrgba 0x00000070 -bordersize 0.5
+		osd create rectangle "${name}.scrollbar.thumb" -rgba $default_select_color \
 		   -relw 1.0 -w -2 -x 1
+		# Now also reduce the width of the clip area to avoid having
+		# text on the scrollbar...
+		# For now let's just keep only a fixed 0.5 margin between text
+		# and scrollbar at the right size:
+		osd configure $name.clip -w [expr {-$bordersize - $scrollbarwidth - 0.5}]
+		# Alternatively, keep the bordersize intact at the right side
+		# next to the scrollbar:
+		# osd configure $name.clip -w [expr {$bordersizereduction - $scrollbarwidth}]
+		# Also the select bar shouldn't be on the scrollbar:
+		osd configure "${name}.selection" -w [expr {$width - $scrollbarwidth}]
 	}
 	set presentation [get_optional menudef "presentation" ""]
 	set selectidx 0
@@ -231,6 +261,7 @@ proc menu_updown {delta} {
 	set old_idx [dict get $menuinfo selectidx]
 	menu_reselect [expr {($old_idx + $delta) % $num}]
 }
+
 proc menu_reselect {new_idx} {
 	peek_menu_info
 	set selectinfo [dict get $menuinfo selectinfo]
@@ -242,11 +273,19 @@ proc menu_reselect {new_idx} {
 }
 
 proc menu_on_select {selectinfo selectidx} {
+	set osd_elem [lindex $selectinfo $selectidx 5]
+	if {$osd_elem ne ""} {
+		osd configure $osd_elem -scrollSpeed 20 -scrollPauseLeft 1.0 -scrollPauseRight 0.4
+	}
 	set on_select [lindex $selectinfo $selectidx 3]
 	uplevel #0 $on_select
 }
 
 proc menu_on_deselect {selectinfo selectidx} {
+	set osd_elem [lindex $selectinfo $selectidx 5]
+	if {$osd_elem ne ""} {
+		osd configure $osd_elem -scrollSpeed 0
+	}
 	set on_deselect [lindex $selectinfo $selectidx 4]
 	uplevel #0 $on_deselect
 }
@@ -644,6 +683,32 @@ proc select_next_menu_item_starting_with {text} {
 	select_menu_idx $index
 }
 
+proc get_parent_item {osd_element} {
+	return [join [lrange [split $osd_element .] 0 end-1] .]
+}
+
+proc strip_string_ending_with_path_until_it_fits {osd_text_element prefix path} {
+	set current "$prefix $path"
+	set newpath $path
+	set parent [get_parent_item $osd_text_element]
+	set max_width [lindex [osd info $parent -query-size] 0]
+	while 1 {
+		osd configure $osd_text_element -text $current
+		set width [lindex [osd info $osd_text_element -query-size] 0]
+		if {$width < $max_width} {return $current}
+		set parts [file split $newpath]
+		if {[llength $parts] == 1} {return $current}
+		set newpath [file join {*}[lrange $parts 1 end]]
+		set current "$prefix ...[file sep]$newpath"
+	}
+}
+
+proc get_display_item_with_path {item_idx prefix path} {
+	peek_menu_info
+	set osd_elem [lindex [dict get $menuinfo osditems] $item_idx]
+	return [strip_string_ending_with_path_until_it_fits $osd_elem $prefix $path]
+}
+
 proc get_extension_slot { ext_name } {
 	set cart_slots [info command cart?]
 	foreach slot $cart_slots {
@@ -718,7 +783,9 @@ proc get_slot_content {slot} {
 		set slotcontent [file tail $contentname]
 		if {[string match "cart*" $slot]} {
 			# so, we have something in a cartridge slot
-			set slotcontent [get_extension_display_name $contentname]
+			# make sure to pass the device name
+			set devicename [lindex [$slot] 1]
+			set slotcontent [get_extension_display_name $devicename]
 		}
 	}
 	return $slotcontent
@@ -886,7 +953,7 @@ proc create_misc_setting_menu {} {
 	       { textexpr "OSD icon set: $osd_leds_set"
 	         actions { LEFT  { osd_menu::menu_setting [cycle_back osd_leds_set] }
 	                   RIGHT { osd_menu::menu_setting [cycle      osd_leds_set] }}}
-        }
+	}
 	if {[info exists ::joystick1_config]} {
 		lappend items { text "Host to MSX controller mapping..."
 	                        actions { A { osd_menu::menu_create_controller_mapping }}}
@@ -1308,7 +1375,7 @@ proc create_hardware_menu {} {
 		lappend items { text "Set Current Machine as Default"
 				 actions { A { set ::default_machine [machine_info config_name]; osd_menu::menu_close_top }}}
 		lappend items { text "Extensions..."
-				 actions { A { osd_menu::menu_create $osd_menu::extensions_menu }}}
+				 actions { A { if {[llength [list_extensions]] > 0} { osd_menu::menu_create $osd_menu::extensions_menu } else {osd_menu::menu_create [osd_menu::menu_create_extensions_list]}}}}
 		lappend items { text "Connectors..."
 				 actions { A { osd_menu::menu_create [osd_menu::menu_create_connectors_list] }}}
 	}
@@ -1328,7 +1395,7 @@ set extensions_menu {
 	width 175
 	xpos 100
 	ypos 120
-	items {{ text "Extensions"
+	items {{ textexpr "Extensions ([llength [list_extensions]] inserted)"
 	         font-size 10
 	         post-spacing 6
 	         selectable false }
@@ -1496,6 +1563,8 @@ proc menu_create_load_machine_list {{mode "replace"}} {
 	         width 210 \
 	         xpos 110 \
 	         ypos 130 \
+	         on-select   menu_machine_select \
+	         on-deselect menu_hardware_deselect \
 	         header { text "Select Machine to Run"
 	                  font-size 10
 	                  post-spacing 6 }]
@@ -1568,6 +1637,8 @@ proc menu_create_extensions_list {{slot "none"}} {
 	         width 200 \
 	         xpos 110 \
 	         ypos 130 \
+	         on-select   menu_extension_select \
+	         on-deselect menu_hardware_deselect \
 	         header [list text "Select Extension to $target_text" \
 	                  font-size 10 \
 	                  post-spacing 6] ]
@@ -1597,6 +1668,94 @@ proc menu_create_extensions_list {{slot "none"}} {
 	lappend menu_def presentation $presentation_sorted
 
 	return [prepare_menu_list $items_sorted 10 $menu_def]
+}
+
+proc get_detailed_machine_info {machine_name} {
+	set result [dict create]
+
+	set machineID [create_machine]
+	set ${machineID}::suppressmessages on
+	set err [catch {${machineID}::load_machine $machine_name} error_result]
+	if {$err} {
+		dict set result error $error_result
+	} else {
+		dict set result ramsize [utils::get_machine_total_ram ${machineID}]
+		dict set result vramsize [${machineID}::debug size "physical VRAM"]
+		dict set result nofdrives [llength [info command ::${machineID}::disk?]]
+		dict set result nofslots [llength [info command ::${machineID}::cart?]]
+		dict set result vdptype [dict get [${machineID}::machine_info device VDP] version]
+	}
+	delete_machine $machineID
+
+	return $result
+}
+
+proc get_hardware_description_text {hwtype hwitem} {
+	set err [catch {set info_data [openmsx_info ${hwtype}s $hwitem]} error_result]
+	if {$err} {
+		set info_data [dict create error $error_result]
+	} else {
+		if {$hwtype eq "machine"} {
+			set info_data [dict merge $info_data [get_detailed_machine_info $hwitem]]
+			# We have all data. Let's tweak for presentation where necessary
+			foreach k {ramsize vramsize} {
+				if {[dict exists $info_data $k]} {
+					dict set info_data $k [format "%dkB" [expr {[dict get $info_data $k] / 1024}]]
+				}
+			}
+			foreach k {nofdrives nofslots} {
+				if {[dict exists $info_data $k] && [dict get $info_data $k] == 0} {
+					set info_data [dict remove $info_data $k]
+				}
+			}
+		}
+	}
+	set items [list [list name Name] \
+			[list manufacturer Manufacturer] \
+			[list code "Product code"] \
+			[list release_year "Release year"] \
+			[list type Type] \
+			[list region Region] \
+			[list ramsize "RAM size"] \
+			[list vramsize "VRAM size"] \
+			[list vdptype "VDP type"] \
+			[list nofslots "Number of cartridge slots"] \
+			[list nofdrives "Number of diskdrives"] \
+			[list description Description] \
+			[list error "\nWARNING, broken"] \
+		]
+	set result ""
+	foreach {i} $items {
+		lassign $i key desc
+		catch {
+			set valtext [dict get $info_data $key]
+			if {$valtext ne ""} {
+				append result "${desc}: $valtext\n"
+			}
+		}
+	}
+	return [list $result [dict exists $info_data error]]
+}
+
+proc menu_machine_select {item} {
+	menu_hardware_select machine $item
+}
+
+proc menu_extension_select {item} {
+	menu_hardware_select extension $item
+}
+
+proc menu_hardware_select {hwtype item} {
+	variable default_bg_color
+	variable default_text_color
+	variable menu_z
+	lassign [get_hardware_description_text $hwtype $item] text has_error
+	set color [lmap c $default_bg_color {expr {$has_error ? (($c | 0xff000000) & 0xff7f7fff) : $c}}]
+	osd_widgets::text_box "hardware_infobox" -text $text -z $menu_z -x 60 -y 5 -w 200 -rgba $color -textrgba [expr {$default_text_color & 0xffffff00}] -scaled true
+}
+
+proc menu_hardware_deselect {item} {
+	osd destroy "hardware_infobox"
 }
 
 proc menu_add_extension_exec {slot item} {
@@ -1662,6 +1821,8 @@ proc menu_create_connectors_list {} {
 		set plugged_presentation ""
 		if {$plugged ne ""} {
 			set plugged_presentation "  ([machine_info pluggable $plugged])"
+		} else {
+			set plugged_presentation "(empty)"
 		}
 		lappend presentation "[machine_info connector $item]: $plugged$plugged_presentation"
 	}
@@ -1861,7 +2022,7 @@ proc menu_create_rom_list {path slot} {
 		width 200 \
 		xpos 100 \
 		ypos 120 \
-		header { textexpr "Cartridges $::osd_rom_path" \
+		header { textexpr "[osd_menu::get_display_item_with_path 0 {Cartridges} $::osd_rom_path]" \
 			font-size 10 \
 			post-spacing 6 }]
 	set extensions "rom|ri|mx1|mx2|zip|gz"
@@ -2133,7 +2294,7 @@ proc menu_create_disk_list {path drive} {
 		width 200 \
 		xpos 100 \
 		ypos 120 \
-		header { textexpr "Disks $::osd_disk_path" \
+		header { textexpr "[osd_menu::get_display_item_with_path 0 {Disks} $::osd_disk_path]" \
 			font-size 10 \
 			post-spacing 6 }]
 	set extensions "dsk|zip|gz|xsa|dmk|di1|di2|fd?|1|2|3|4|5|6|7|8|9"
@@ -2205,7 +2366,7 @@ proc menu_create_tape_list {path} {
 		width 200
 		xpos 100
 		ypos 120
-		header { textexpr "Tapes $::osd_tape_path"
+		header { textexpr "[osd_menu::get_display_item_with_path 0 {Tapes} $::osd_tape_path]"
 			font-size 10
 			post-spacing 6 }}
 	set extensions "cas|wav|zip|gz"
@@ -2288,7 +2449,7 @@ proc menu_create_hdd_list {path drive} {
 	                            width 200 \
 	                            xpos 100 \
 	                            ypos 120 \
-	                            header { textexpr "Hard disk images $::osd_hdd_path"
+	                            header { textexpr "[osd_menu::get_display_item_with_path 0 {Hard disk images} $::osd_hdd_path]"
 	                                     font-size 10
 	                                     post-spacing 6 }]]
 }
@@ -2326,7 +2487,7 @@ proc menu_create_ld_list {path} {
 		width 200 \
 		xpos 100 \
 		ypos 120 \
-		header { textexpr "LaserDiscs $::osd_ld_path" \
+		header { textexpr "[osd_menu::get_display_item_with_path 0 {LaserDiscs} $::osd_ld_path]" \
 			font-size 10 \
 			post-spacing 6 }]
 	set extensions "ogv"

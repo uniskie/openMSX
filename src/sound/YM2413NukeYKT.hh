@@ -42,7 +42,7 @@
 *   of vgm files.
 *  - TODO document better what kind of transformations were done.
 *      * Emulate 18-steps at-a-time.
-*      * Specialize for the common case that testmode==0 (but still have slower
+*      * Specialize for the common case that testMode==0 (but still have slower
 *        fallback code).
 *      * Move sub-operations in the pipeline (e.g. to eliminate temporary state)
 *        when this doesn't have an observable effect.
@@ -165,24 +165,24 @@ private:
 	template<bool TEST_MODE> NEVER_INLINE void step18(std::span<float*, 9 + 5> out);
 	template<uint32_t CYCLES, bool TEST_MODE> ALWAYS_INLINE void step(Locals& l);
 
-	template<uint32_t CYCLES>                 ALWAYS_INLINE uint32_t phaseCalcIncrement(const Patch& patch1) const;
-	template<uint32_t CYCLES>                 ALWAYS_INLINE void channelOutput(std::span<float*, 9 + 5> out, int32_t ch_out);
-	template<uint32_t CYCLES>                 ALWAYS_INLINE const Patch& preparePatch1(bool use_rm_patches) const;
-	template<uint32_t CYCLES, bool TEST_MODE> ALWAYS_INLINE uint32_t getPhase(uint8_t& rm_hh_bits);
-	template<uint32_t CYCLES>                 ALWAYS_INLINE bool keyOnEvent() const;
-	template<uint32_t CYCLES, bool TEST_MODE> ALWAYS_INLINE void incrementPhase(uint32_t phase_incr, bool prev_rhythm);
-	template<uint32_t CYCLES>                 ALWAYS_INLINE uint32_t getPhaseMod(uint8_t fb_t);
-	template<uint32_t CYCLES>                 ALWAYS_INLINE void doOperator(std::span<float*, 9 + 5> out, bool eg_silent);
-	template<uint32_t CYCLES, bool TEST_MODE> ALWAYS_INLINE uint8_t envelopeOutput(uint32_t ksltl, int8_t am_t) const;
-	template<uint32_t CYCLES>                 ALWAYS_INLINE uint32_t envelopeKSLTL(const Patch& patch1, bool use_rm_patches) const;
-	template<uint32_t CYCLES>                 ALWAYS_INLINE void envelopeTimer1();
-	template<uint32_t CYCLES, bool TEST_MODE> ALWAYS_INLINE void envelopeTimer2(bool& eg_timer_carry);
-	template<uint32_t CYCLES>                 ALWAYS_INLINE bool envelopeGenerate1();
-	template<uint32_t CYCLES>                 ALWAYS_INLINE void envelopeGenerate2(const Patch& patch1, bool use_rm_patches);
-	template<uint32_t CYCLES, bool TEST_MODE> ALWAYS_INLINE void doLFO(bool& lfo_am_car);
-	template<uint32_t CYCLES, bool TEST_MODE> ALWAYS_INLINE void doRhythm();
-	template<uint32_t CYCLES>                 ALWAYS_INLINE void doRegWrite();
-	template<uint32_t CYCLES>                 ALWAYS_INLINE void doIO();
+	template<uint32_t CYCLES>                 [[nodiscard]] ALWAYS_INLINE uint32_t phaseCalcIncrement(const Patch& patch1) const;
+	template<uint32_t CYCLES>                               ALWAYS_INLINE void channelOutput(std::span<float*, 9 + 5> out, int32_t ch_out);
+	template<uint32_t CYCLES>                 [[nodiscard]] ALWAYS_INLINE const Patch& preparePatch1(bool use_rm_patches) const;
+	template<uint32_t CYCLES, bool TEST_MODE> [[nodiscard]] ALWAYS_INLINE uint32_t getPhase(uint8_t& rm_hh_bits);
+	template<uint32_t CYCLES>                 [[nodiscard]] ALWAYS_INLINE bool keyOnEvent() const;
+	template<uint32_t CYCLES, bool TEST_MODE>               ALWAYS_INLINE void incrementPhase(uint32_t phase_incr, bool prev_rhythm);
+	template<uint32_t CYCLES>                 [[nodiscard]] ALWAYS_INLINE uint32_t getPhaseMod(uint8_t fb_t);
+	template<uint32_t CYCLES>                               ALWAYS_INLINE void doOperator(std::span<float*, 9 + 5> out, bool eg_silent);
+	template<uint32_t CYCLES, bool TEST_MODE> [[nodiscard]] ALWAYS_INLINE uint8_t envelopeOutput(uint32_t ksltl, int8_t am_t) const;
+	template<uint32_t CYCLES>                 [[nodiscard]] ALWAYS_INLINE uint32_t envelopeKSLTL(const Patch& patch1, bool use_rm_patches) const;
+	template<uint32_t CYCLES>                               ALWAYS_INLINE void envelopeTimer1();
+	template<uint32_t CYCLES, bool TEST_MODE>               ALWAYS_INLINE void envelopeTimer2(bool& eg_timer_carry);
+	template<uint32_t CYCLES>                 [[nodiscard]] ALWAYS_INLINE bool envelopeGenerate1();
+	template<uint32_t CYCLES>                               ALWAYS_INLINE void envelopeGenerate2(const Patch& patch1, bool use_rm_patches);
+	template<uint32_t CYCLES, bool TEST_MODE>               ALWAYS_INLINE void doLFO(bool& lfo_am_car);
+	template<uint32_t CYCLES, bool TEST_MODE>               ALWAYS_INLINE void doRhythm();
+	template<uint32_t CYCLES>                               ALWAYS_INLINE void doRegWrite();
+	template<uint32_t CYCLES>                               ALWAYS_INLINE void doIO();
 
 	NEVER_INLINE void doRegWrite(uint32_t channel);
 	             void doRegWrite(uint8_t block, uint8_t channel, uint8_t data);
@@ -251,7 +251,7 @@ private:
 	std::array<uint8_t, 9> inst;
 	std::array<const Patch*, 9> p_inst; // redundant: &patches[inst[]]
 	uint8_t rhythm;
-	uint8_t testmode;
+	uint8_t testMode;
 	std::array<Patch, 1 + 15> patches; // user patch (modifiable) + 15 ROM patches
 	std::array<uint8_t, 3> c_dcm;
 

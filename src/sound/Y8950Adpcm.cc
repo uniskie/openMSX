@@ -1,6 +1,6 @@
 // The actual sample playing part is duplicated for the 'emu' domain and the
 // 'audio' domain. The emu part is responsible for cycle accurate sample
-// readback (see peekReg() register 0x13 and 0x14) and for cycle accurate
+// read back (see peekReg() register 0x13 and 0x14) and for cycle accurate
 // status register updates (the status bits related to playback, e.g.
 // end-of-sample). The audio part is responsible for the actual sound
 // generation. This split up allows for the two parts to be out-of-sync. So for
@@ -14,6 +14,7 @@
 #include "DeviceConfig.hh"
 #include "MSXMotherBoard.hh"
 #include "Math.hh"
+#include "narrow.hh"
 #include "serialize.hh"
 #include <algorithm>
 #include <array>
@@ -37,9 +38,9 @@ static constexpr int R08_SAMPL       = 0x08;
 static constexpr int R08_NOTE_SET    = 0x40;
 static constexpr int R08_CSM         = 0x80;
 
-static constexpr int DMAX = 0x6000;
-static constexpr int DMIN = 0x7F;
-static constexpr int DDEF = 0x7F;
+static constexpr int DIFF_MAX     = 0x6000;
+static constexpr int DIFF_MIN     = 0x7F;
+static constexpr int DIFF_DEFAULT = 0x7F;
 
 static constexpr int STEP_BITS = 16;
 static constexpr int STEP_MASK = (1 << STEP_BITS) -1;
@@ -51,7 +52,6 @@ Y8950Adpcm::Y8950Adpcm(Y8950& y8950_, const DeviceConfig& config,
 	, y8950(y8950_)
 	, ram(config, name + " RAM", "Y8950 sample RAM", sampleRam)
 	, clock(config.getMotherBoard().getCurrentTime())
-	, volume(0)
 {
 	clearRam();
 }
@@ -98,7 +98,7 @@ void Y8950Adpcm::restart(PlayData& pd)
 	pd.nowStep = (1 << STEP_BITS) - delta;
 	pd.out = 0;
 	pd.output = 0;
-	pd.diff = DDEF;
+	pd.diff = DIFF_DEFAULT;
 	pd.nextLeveling = 0;
 	pd.sampleStep = 0;
 	pd.adpcm_data = 0; // dummy, avoid UMR in serialize
@@ -120,7 +120,7 @@ void Y8950Adpcm::schedule()
 	assert(isPlaying());
 	if ((stopAddr > startAddr) && (delta != 0)) {
 		// TODO possible optimization, no need to set sync points if
-		//      the corresponding bit is masked in the interupt enable
+		//      the corresponding bit is masked in the interrupt enable
 		//      register
 		if (reg7 & R07_MEMORY_DATA) {
 			// we already did a sync(time), so clock is up-to-date
@@ -132,7 +132,7 @@ void Y8950Adpcm::schedule()
 			stop += unsigned(length / delta);
 			setSyncPoint(stop.getTime());
 		} else {
-			// TODO we should also set a syncpoint in this case
+			// TODO we should also set a sync-point in this case
 			//      because this mode sets the STATUS_BUF_RDY bit
 			//      which also triggers an IRQ
 		}
@@ -474,14 +474,14 @@ int Y8950Adpcm::calcSample(bool doEmu)
 			}
 		}();
 		int prevOut = pd.out;
-		pd.out = Math::clipIntToShort(pd.out + (pd.diff * F1[val]) / 8);
-		pd.diff = std::clamp((pd.diff * F2[val]) / 64, DMIN, DMAX);
+		pd.out = Math::clipToInt16(pd.out + (pd.diff * F1[val]) / 8);
+		pd.diff = std::clamp((pd.diff * F2[val]) / 64, DIFF_MIN, DIFF_MAX);
 
 		int prevLeveling = pd.nextLeveling;
 		pd.nextLeveling = (prevOut + pd.out) / 2;
 		int deltaLeveling = pd.nextLeveling - prevLeveling;
 		pd.sampleStep = deltaLeveling * volumeWStep;
-		int tmp = deltaLeveling * ((volume * pd.nowStep) >> STEP_BITS);
+		int tmp = deltaLeveling * ((volume * narrow<int>(pd.nowStep)) >> STEP_BITS);
 		pd.output = prevLeveling * volume + tmp;
 
 		++pd.memPtr;

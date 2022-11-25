@@ -57,7 +57,7 @@ private:
 	inline void renderBogus   (std::span<Pixel, 256> buf);
 	inline void renderBlank   (std::span<Pixel, 256> buf);
 	inline void renderMultiHelper(Pixel* pixelPtr, int line,
-	                       int mask, int patternQuarter);
+	                       unsigned mask, unsigned patternQuarter);
 
 	[[nodiscard]] std::span<const byte, 32> getNamePtr(int line, int scroll);
 
@@ -68,7 +68,7 @@ private:
 	std::span<const Pixel, 16> palFg;
 	std::span<const Pixel, 16> palBg;
 
-	unsigned modeBase;
+	unsigned modeBase = 0; // not strictly needed, but avoids Coverity warning
 };
 
 } // namespace openmsx

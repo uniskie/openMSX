@@ -26,12 +26,9 @@ RealDrive::RealDrive(MSXMotherBoard& motherBoard_, EmuDuration::param motorTimeo
 		motherBoard.getReactor().getGlobalSettings().getThrottleManager())
 	, motorTimeout(motorTimeout_)
 	, motorTimer(getCurrentTime())
-	, headPos(0), side(0), startAngle(0)
-	, motorStatus(false)
 	, doubleSizedDrive(doubleSided)
 	, signalsNeedMotorOn(signalsNeedMotorOn_)
 	, trackMode(trackMode_)
-	, trackValid(false), trackDirty(false)
 {
 	drivesInUse = motherBoard.getSharedStuff<DrivesInUse>("drivesInUse");
 
@@ -47,10 +44,10 @@ RealDrive::RealDrive(MSXMotherBoard& motherBoard_, EmuDuration::param motorTimeo
 	if (motherBoard.getMSXCommandController().hasCommand(driveName)) {
 		throw MSXException("Duplicated drive name: ", driveName);
 	}
-	motherBoard.registerMediaInfoProvider(driveName, *this);
 	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, driveName, "add");
 	changer.emplace(motherBoard, driveName, true, doubleSizedDrive,
 	                [this]() { invalidateTrack(); });
+	motherBoard.registerMediaInfo(changer->getDriveName(), *this);
 }
 
 RealDrive::~RealDrive()
@@ -62,8 +59,9 @@ RealDrive::~RealDrive()
 	}
 	doSetMotor(false, getCurrentTime()); // to send LED event
 
+	motherBoard.unregisterMediaInfo(*this);
+
 	const auto& driveName = changer->getDriveName();
-	motherBoard.unregisterMediaInfoProvider(driveName);
 	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, driveName, "remove");
 
 	unsigned driveNum = driveName[4] - 'a';
@@ -73,14 +71,17 @@ RealDrive::~RealDrive()
 
 void RealDrive::getMediaInfo(TclObject& result)
 {
-	std::string typeStr = "file";
-	if (dynamic_cast<DummyDisk*>(&(changer->getDisk()))) {
-		typeStr = "empty";
-	} else if (dynamic_cast<DirAsDSK*>(&(changer->getDisk()))) {
-		typeStr = "dirasdisk";
-	} else if (dynamic_cast<RamDSKDiskImage*>(&(changer->getDisk()))) {
-		typeStr = "ramdsk";
-	}
+	auto typeStr = [&]() -> std::string_view {
+		if (dynamic_cast<DummyDisk*>(&(changer->getDisk()))) {
+			return "empty";
+		} else if (dynamic_cast<DirAsDSK*>(&(changer->getDisk()))) {
+			return "dirasdisk";
+		} else if (dynamic_cast<RamDSKDiskImage*>(&(changer->getDisk()))) {
+			return "ramdsk";
+		} else {
+			return "file";
+		}
+	}();
 	result.addDictKeyValues("target", changer->getDiskName().getResolved(),
 	                        "type", typeStr,
 	                        "readonly", changer->getDisk().isWriteProtected());

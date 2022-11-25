@@ -3,6 +3,7 @@
 #include "RendererFactory.hh"
 #include "V9990Renderer.hh"
 #include "Reactor.hh"
+#include "narrow.hh"
 #include "serialize.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
@@ -66,11 +67,8 @@ V9990::V9990(const DeviceConfig& config)
 	, cmdEngine(*this, getCurrentTime(), display.getRenderSettings())
 	, frameStartTime(getCurrentTime())
 	, hScanSyncTime(getCurrentTime())
-	, pendingIRQs(0)
-	, externalVideoSource(false)
 {
 	// clear regs TODO find realistic init values
-	ranges::fill(regs, 0);
 	setDisplayMode(calcDisplayMode());
 
 	// initialize palette
@@ -84,14 +82,9 @@ V9990::V9990(const DeviceConfig& config)
 	vram.setCmdEngine(cmdEngine);
 
 	// Start with NTSC timing
-	palTiming = false;
-	interlaced = false;
 	setVerticalTiming();
 
 	// Initialise rendering system
-	isDisplayArea = false;
-	displayEnabled = false; // avoid UMR (used by createRenderer())
-	superimposing  = false; // avoid UMR
 	EmuTime::param time = getCurrentTime();
 	createRenderer(time);
 
@@ -844,7 +837,7 @@ void V9990::scheduleHscan(EmuTime::param time)
 		return;
 	}
 
-	int ticks = frameStartTime.getTicksTill_fast(time);
+	int ticks = narrow<int>(frameStartTime.getTicksTill_fast(time));
 	int offset = [&] {
 		if (regs[INTERRUPT_2] & 0x80) {
 			// every line

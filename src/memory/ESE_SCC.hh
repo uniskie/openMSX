@@ -29,7 +29,7 @@ public:
 	void serialize(Archive& ar, unsigned version);
 
 private:
-	[[nodiscard]] unsigned getSramSize(bool withSCSI) const;
+	[[nodiscard]] size_t getSramSize(bool withSCSI) const;
 	void setMapperLow(unsigned page, byte value);
 	void setMapperHigh(byte value);
 
@@ -41,9 +41,9 @@ private:
 
 	const byte mapperMask;
 	std::array<byte, 4> mapper;
-	bool spcEnable;
-	bool sccEnable;
-	bool writeEnable;
+	bool spcEnable = false;
+	bool sccEnable = false;
+	bool writeEnable = false;
 };
 
 } // namespace openmsx

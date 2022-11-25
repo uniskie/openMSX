@@ -12,6 +12,7 @@
 #include "DisplayMode.hh"
 #include "EnumSetting.hh"
 #include "Observer.hh"
+#include "narrow.hh"
 #include "openmsx.hh"
 #include "outer.hh"
 #include <memory>
@@ -110,8 +111,8 @@ public:
 		return (version & VM_NO_MIRRORING) != 0;
 	}
 
-	/** Is this a VDP that has pattern/colortable mirroring?
-	 * @return True iff this VDP has pattern/colortable mirroring
+	/** Is this a VDP that has pattern/color table mirroring?
+	 * @return True iff this VDP has pattern/color table mirroring
 	 */
 	[[nodiscard]] inline bool vdpHasPatColMirroring() const {
 		return (version & VM_PALCOL_MIRRORING) != 0;
@@ -203,7 +204,7 @@ public:
 	  *   In Graphic7 mode with YJK off, the range is [0..255].
 	  *   In other modes, the range is [0..15].
 	  */
-	[[nodiscard]] inline int getBackgroundColor() const {
+	[[nodiscard]] inline unsigned getBackgroundColor() const {
 		byte reg7 = controlRegs[7];
 		if (displayMode.getByte() == DisplayMode::GRAPHIC7) {
 			return reg7;
@@ -238,7 +239,7 @@ public:
 	  * @return Color value in the format of the palette registers:
 	  *   bit 10..8 is green, bit 6..4 is red and bit 2..0 is blue.
 	  */
-	[[nodiscard]] inline word getPalette(int index) const {
+	[[nodiscard]] inline word getPalette(unsigned index) const {
 		return palette[index];
 	}
 
@@ -355,7 +356,7 @@ public:
 	  *
 	  * See ticket#1091: "Support for undocumented V99x8 register 1 bit 2"
 	  *    https://github.com/openMSX/openMSX/issues/1091
-	  * for testcases and links to more information.
+	  * for test cases and links to more information.
 	  */
 	[[nodiscard]] inline bool isFastBlinkEnabled() const {
 		return (controlRegs[1] & 4) != 0;
@@ -395,7 +396,7 @@ public:
 	  * @pre !isFastBlinkEnabled()
 	  * @return Line number mask that expressed even/odd state.
 	  */
-	[[nodiscard]] inline int getEvenOddMask() const {
+	[[nodiscard]] inline unsigned getEvenOddMask() const {
 		// TODO: Verify which page is displayed on even fields.
 		assert(!isFastBlinkEnabled());
 		return (((~controlRegs[9] & 4) << 6) | ((statusReg2 & 2) << 7)) &
@@ -408,7 +409,7 @@ public:
 	  * result is no longer fixed per frame, and thus this method takes
 	  * an additional line parameter.
 	  */
-	[[nodiscard]] inline int getEvenOddMask(int line) const {
+	[[nodiscard]] inline unsigned getEvenOddMask(int line) const {
 		if (isFastBlinkEnabled()) {
 			// EO and IL not considered in this mode
 			auto p = calculateLineBlinkState(line);
@@ -447,15 +448,15 @@ public:
 			// We start in the 'odd' period -> do the opposite
 			std::swap(evenLen, oddLen);
 		}
-		int newCount = blinkCount - line;
+		int newCount = blinkCount - narrow<int>(line);
 		if (newCount <= 0) {
 			// switch even->odd    (or odd->even)
 			resultState = !resultState;
-			newCount += oddLen;
+			newCount += narrow<int>(oddLen);
 			if (newCount <= 0) {
 				// switch odd->even   (or even->odd)
 				resultState = !resultState;
-				newCount += evenLen;
+				newCount += narrow<int>(evenLen);
 				assert(newCount > 0);
 			}
 		}
@@ -466,7 +467,7 @@ public:
 	  * a given time and the start of this frame.
 	  */
 	[[nodiscard]] inline int getTicksThisFrame(EmuTime::param time) const {
-		return frameStartTime.getTicksTill_fast(time);
+		return narrow<int>(frameStartTime.getTicksTill_fast(time));
 	}
 
 	[[nodiscard]] inline EmuTime::param getFrameStartTime() const {
@@ -498,7 +499,7 @@ public:
 		return palTiming ? 313 : 262;
 	}
 
-	/** Gets the number of VDP clockticks (21MHz) per frame.
+	/** Gets the number of VDP clock ticks (21MHz) per frame.
 	  */
 	[[nodiscard]] inline int getTicksPerFrame() const {
 		return getLinesPerFrame() * TICKS_PER_LINE;
@@ -525,7 +526,7 @@ public:
 		return horizontalAdjust;
 	}
 
-	/** Gets the number of VDP clockticks between start of line and the start
+	/** Gets the number of VDP clock ticks between start of line and the start
 	  * of the sprite plane.
 	  * The location of the sprite plane is not influenced by horizontal scroll
 	  * or border mask.
@@ -538,7 +539,7 @@ public:
 			+ (displayMode.isTextMode() ? 36 : 0);
 	}
 
-	/** Gets the number of VDP clockticks between start of line and the end
+	/** Gets the number of VDP clock ticks between start of line and the end
 	  * of the left border.
 	  * Does not include extra pixels of horizontal scroll low, since those
 	  * are not actually border pixels (sprites appear in front of them).
@@ -547,7 +548,7 @@ public:
 		return getLeftSprites() + (isBorderMasked() ? 8 * 4 : 0);
 	}
 
-	/** Gets the number of VDP clockticks between start of line and the start
+	/** Gets the number of VDP clock ticks between start of line and the start
 	  * of the right border.
 	  */
 	[[nodiscard]] inline int getRightBorder() const {
@@ -555,7 +556,7 @@ public:
 			+ (displayMode.isTextMode() ? 960 : 1024);
 	}
 
-	/** Gets the number of VDP clockticks between start of line and the time
+	/** Gets the number of VDP clock ticks between start of line and the time
 	  * when the background pixel with X coordinate 0 would be drawn.
 	  * This includes extra pixels of horizontal scroll low,
 	  * but disregards border mask.
@@ -954,7 +955,7 @@ private:
 	  *   bit 10..8 is green, bit 6..4 is red and bit 2..0 is blue.
 	  * @param time Moment in time palette change occurs.
 	  */
-	void setPalette(int index, word grb, EmuTime::param time);
+	void setPalette(unsigned index, word grb, EmuTime::param time);
 
 	// Observer<Setting>
 	void update(const Setting& setting) noexcept override;
@@ -1172,7 +1173,7 @@ private:
 	/** Is interlace active?
 	  * @see isInterlaced.
 	  */
-	bool interlaced;
+	bool interlaced = false;
 
 	/** Status register 0.
 	  * Both the F flag (bit 7) and the sprite related bits (bits 6-0)
@@ -1229,7 +1230,7 @@ private:
 	  */
 	bool cpuExtendedVram;
 
-	/** Current dispay mode. Note that this is not always the same as the
+	/** Current display mode. Note that this is not always the same as the
 	  * display mode that can be obtained by combining the different mode
 	  * bits because a mode change only takes place at the start of the
 	  * next line.
@@ -1250,9 +1251,9 @@ private:
 	bool spriteEnabled;
 
 	/** Has a warning been printed.
-	  * This is set when a warning about setting the dotclock direction
+	  * This is set when a warning about setting the dot clock direction
 	  * is printed.  */
-	bool warningPrinted;
+	bool warningPrinted = false;
 
 	/** Cached version of cmdTiming/tooFastAccess setting. */
 	bool brokenCmdTiming;

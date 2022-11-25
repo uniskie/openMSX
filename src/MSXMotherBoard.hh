@@ -3,6 +3,7 @@
 
 #include "EmuTime.hh"
 #include "VideoSourceSetting.hh"
+#include "BooleanSetting.hh"
 #include "hash_map.hh"
 #include "serialize_meta.hh"
 #include "xxhash.hh"
@@ -17,7 +18,6 @@
 namespace openmsx {
 
 class AddRemoveUpdate;
-class BooleanSetting;
 class CartridgeSlotManager;
 class CassettePortInterface;
 class CliComm;
@@ -130,7 +130,7 @@ public:
 	using Extensions = std::vector<std::unique_ptr<HardwareConfig>>;
 	[[nodiscard]] const Extensions& getExtensions() const { return extensions; }
 	[[nodiscard]] HardwareConfig* findExtension(std::string_view extensionName);
-	std::string loadExtension(std::string_view extensionName, std::string_view slotname);
+	std::string loadExtension(std::string_view extensionName, std::string_view slotName);
 	std::string insertExtension(std::string_view name,
 	                            std::unique_ptr<HardwareConfig> extension);
 	void removeExtension(const HardwareConfig& extension);
@@ -157,6 +157,7 @@ public:
 	[[nodiscard]] ReverseManager& getReverseManager() { return *reverseManager; }
 	[[nodiscard]] Reactor& getReactor() { return reactor; }
 	[[nodiscard]] VideoSourceSetting& getVideoSource() { return videoSourceSetting; }
+	[[nodiscard]] BooleanSetting& suppressMessages() { return suppressMessagesSetting; }
 
 	// convenience methods
 	[[nodiscard]] CommandController& getCommandController();
@@ -223,8 +224,8 @@ public:
 	/** Register and unregister providers of media info, for the media info
 	 * topic.
 	 */
-	void registerMediaInfoProvider(const std::string& slot, MediaInfoProvider& infoProvider);
-	void unregisterMediaInfoProvider(const std::string& slot);
+	void registerMediaInfo(std::string_view name, MediaInfoProvider& provider);
+	void unregisterMediaInfo(MediaInfoProvider& provider);
 
 	template<typename Archive>
 	void serialize(Archive& ar, unsigned version);
@@ -244,7 +245,7 @@ private:
 	hash_map<std::string, std::vector<std::string>, XXHasher> userNames;
 
 	std::unique_ptr<MSXMapperIO> mapperIO;
-	unsigned mapperIOCounter;
+	unsigned mapperIOCounter = 0;
 
 	// These two should normally be the same, only during savestate loading
 	// machineConfig will already be filled in, but machineConfig2 not yet.
@@ -252,7 +253,7 @@ private:
 	// machineConfig2 (otherwise machineConfig2 gets deleted twice).
 	// See also HardwareConfig::serialize() and setMachineConfig()
 	std::unique_ptr<HardwareConfig> machineConfig2;
-	HardwareConfig* machineConfig;
+	HardwareConfig* machineConfig = nullptr;
 
 	Extensions extensions; // order matters: later extension might depend on earlier ones
 
@@ -280,6 +281,7 @@ private:
 	std::unique_ptr<RenShaTurbo> renShaTurbo;
 	std::unique_ptr<LedStatus> ledStatus;
 	VideoSourceSetting videoSourceSetting;
+	BooleanSetting suppressMessagesSetting;
 
 	std::unique_ptr<CartridgeSlotManager> slotManager;
 	std::unique_ptr<ReverseManager> reverseManager;
@@ -300,9 +302,9 @@ private:
 	friend class SettingObserver;
 	BooleanSetting& powerSetting;
 
-	bool powered;
-	bool active;
-	bool fastForwarding;
+	bool powered = false;
+	bool active = false;
+	bool fastForwarding = false;
 };
 SERIALIZE_CLASS_VERSION(MSXMotherBoard, 5);
 

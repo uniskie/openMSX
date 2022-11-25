@@ -44,6 +44,7 @@
 #include "TclObject.hh"
 #include "DynamicClock.hh"
 #include "EmuDuration.hh"
+#include "checked_cast.hh"
 #include "serialize.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
@@ -73,9 +74,6 @@ CassettePlayer::CassettePlayer(const HardwareConfig& hwConf)
 	: ResampledSoundDevice(hwConf.getMotherBoard(), getCassettePlayerName(), DESCRIPTION, 1, DUMMY_INPUT_RATE, false)
 	, syncEndOfTape(hwConf.getMotherBoard().getScheduler())
 	, syncAudioEmu (hwConf.getMotherBoard().getScheduler())
-	, tapePos(EmuTime::zero())
-	, prevSyncTime(EmuTime::zero())
-	, audioPos(0)
 	, motherBoard(hwConf.getMotherBoard())
 	, tapeCommand(
 		motherBoard.getCommandController(),
@@ -86,13 +84,8 @@ CassettePlayer::CassettePlayer(const HardwareConfig& hwConf)
 	, autoRunSetting(
 		motherBoard.getCommandController(),
 		"autoruncassettes", "automatically try to run cassettes", true)
-	, sampCnt(0)
-	, state(STOP)
-	, lastOutput(false)
-	, motor(false), motorControl(true)
-	, syncScheduled(false)
 {
-	static XMLElement* xml = [] {
+	static const XMLElement* xml = [] {
 		auto& doc = XMLDocument::getStaticDocument();
 		XMLElement* result = doc.allocateElement("cassetteplayer");
 		result->setFirstChild(doc.allocateElement("sound"))
@@ -103,7 +96,7 @@ CassettePlayer::CassettePlayer(const HardwareConfig& hwConf)
 
 	motherBoard.getReactor().getEventDistributor().registerEventListener(
 		EventType::BOOT, *this);
-	motherBoard.registerMediaInfoProvider(string(getCassettePlayerName()), *this);
+	motherBoard.registerMediaInfo(getCassettePlayerName(), *this);
 	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, getCassettePlayerName(), "add");
 
 	removeTape(EmuTime::zero());
@@ -117,7 +110,7 @@ CassettePlayer::~CassettePlayer()
 	}
 	motherBoard.getReactor().getEventDistributor().unregisterEventListener(
 		EventType::BOOT, *this);
-	motherBoard.unregisterMediaInfoProvider(string(getCassettePlayerName()));
+	motherBoard.unregisterMediaInfo(*this);
 	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, getCassettePlayerName(), "remove");
 }
 
@@ -574,7 +567,7 @@ std::string_view CassettePlayer::getDescription() const
 void CassettePlayer::plugHelper(Connector& conn, EmuTime::param time)
 {
 	sync(time);
-	lastOutput = static_cast<CassettePort&>(conn).lastOut();
+	lastOutput = checked_cast<CassettePort&>(conn).lastOut();
 }
 
 void CassettePlayer::unplugHelper(EmuTime::param time)
@@ -602,7 +595,7 @@ float CassettePlayer::getAmplificationFactorImpl() const
 	return playImage ? playImage->getAmplificationFactorImpl() : 1.0f;
 }
 
-int CassettePlayer::signalEvent(const Event& event) noexcept
+int CassettePlayer::signalEvent(const Event& event)
 {
 	if (getType(event) == EventType::BOOT) {
 		if (!getImageName().empty()) {

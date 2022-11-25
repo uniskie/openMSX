@@ -19,7 +19,6 @@ protected:
 			std::array{
 				"-text"sv, "-font"sv, "-size"sv,
 				"-wrap"sv, "-wrapw"sv, "-wraprelw"sv,
-				"-query-size"sv,
 			});
 	}();
 
@@ -52,17 +51,15 @@ private:
 	[[nodiscard]] std::string getCharWrappedText(const std::string& txt, unsigned maxWidth) const;
 	[[nodiscard]] std::string getWordWrappedText(const std::string& txt, unsigned maxWidth) const;
 
-	[[nodiscard]] gl::vec2 getRenderedSize() const;
-
 private:
 	enum WrapMode { NONE, WORD, CHAR };
 
 	std::string text;
 	std::string fontFile;
 	TTFFont font;
-	int size;
-	WrapMode wrapMode;
-	float wrapw, wraprelw;
+	int size = 12;
+	WrapMode wrapMode = NONE;
+	float wrapw = 0.0f, wraprelw = 1.0f;
 
 	friend struct SplitAtChar;
 };

@@ -58,7 +58,7 @@ template<typename T> struct ClassLoader;
  */
 template<typename T> struct PolymorphicConstructorArgs;
 
-/** Store association between (polymorphic) sub- and baseclass.
+/** Store association between (polymorphic) sub- and base class.
  * Specialization of this class should provide a 'using type = <base>'.
  */
 template<typename T> struct PolymorphicBaseClass;
@@ -68,7 +68,7 @@ template<typename Base> struct MapConstrArgsEmpty
 	using TUPLEIn = typename PolymorphicConstructorArgs<Base>::type;
 	std::tuple<> operator()(const TUPLEIn& /*t*/)
 	{
-		return std::tuple<>();
+		return {};
 	}
 };
 template<typename Base, typename Derived> struct MapConstrArgsCopy
@@ -299,18 +299,18 @@ static RegisterLoaderHelper<MemInputArchive,   C> registerHelper5##C(N); \
 static RegisterSaverHelper <MemOutputArchive,  C> registerHelper6##C(N); \*/
 #define REGISTER_POLYMORPHIC_CLASS_HELPER(B,C,N) \
 static_assert(std::is_base_of_v<B,C>, "must be base and sub class"); \
-static RegisterLoaderHelper<MemInputArchive,  C> registerHelper3##C(N); \
-static RegisterSaverHelper <MemOutputArchive, C> registerHelper4##C(N); \
-static RegisterLoaderHelper<XmlInputArchive,  C> registerHelper5##C(N); \
-static RegisterSaverHelper <XmlOutputArchive, C> registerHelper6##C(N); \
+static const RegisterLoaderHelper<MemInputArchive,  C> registerHelper3##C(N); \
+static const RegisterSaverHelper <MemOutputArchive, C> registerHelper4##C(N); \
+static const RegisterLoaderHelper<XmlInputArchive,  C> registerHelper5##C(N); \
+static const RegisterSaverHelper <XmlOutputArchive, C> registerHelper6##C(N); \
 template<> struct PolymorphicBaseClass<C> { using type = B; };
 
 #define REGISTER_POLYMORPHIC_INITIALIZER_HELPER(B,C,N) \
 static_assert(std::is_base_of_v<B,C>, "must be base and sub class"); \
-static RegisterInitializerHelper<MemInputArchive,  C> registerHelper3##C(N); \
-static RegisterSaverHelper      <MemOutputArchive, C> registerHelper4##C(N); \
-static RegisterInitializerHelper<XmlInputArchive,  C> registerHelper5##C(N); \
-static RegisterSaverHelper      <XmlOutputArchive, C> registerHelper6##C(N); \
+static const RegisterInitializerHelper<MemInputArchive,  C> registerHelper3##C(N); \
+static const RegisterSaverHelper      <MemOutputArchive, C> registerHelper4##C(N); \
+static const RegisterInitializerHelper<XmlInputArchive,  C> registerHelper5##C(N); \
+static const RegisterSaverHelper      <XmlOutputArchive, C> registerHelper6##C(N); \
 template<> struct PolymorphicBaseClass<C> { using type = B; };
 
 #define REGISTER_BASE_NAME_HELPER(B,N) \

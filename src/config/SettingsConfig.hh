@@ -30,7 +30,7 @@ public:
 	[[nodiscard]] SettingsManager& getSettingsManager() { return settingsManager; }
 
 	// manipulate info that would be stored in settings.xml
-	const std::string* getValueForSetting(std::string_view setting) const;
+	[[nodiscard]] const std::string* getValueForSetting(std::string_view setting) const;
 	void setValueForSetting(std::string_view setting, std::string_view value);
 	void removeValueForSetting(std::string_view setting);
 
@@ -55,7 +55,7 @@ private:
 	hash_map<std::string, std::string, XXHasher> settingValues;
 	HotKey& hotKey;
 	std::string saveName;
-	bool mustSaveSettings;
+	bool mustSaveSettings = false;
 };
 
 } // namespace openmsx

@@ -2,6 +2,7 @@
 #include "DeviceConfig.hh"
 #include "MSXMotherBoard.hh"
 #include "DynamicClock.hh"
+#include "narrow.hh"
 #include "serialize.hh"
 
 namespace openmsx {
@@ -11,7 +12,6 @@ static constexpr unsigned DUMMY_INPUT_RATE = 44100; // actual rate depends on fr
 DACSound16S::DACSound16S(std::string_view name_, static_string_view desc,
                          const DeviceConfig& config)
 	: SoundDevice(config.getMotherBoard().getMSXMixer(), name_, desc, 1, DUMMY_INPUT_RATE, false)
-	, lastWrittenValue(0)
 {
 	registerSound(config);
 }
@@ -39,7 +39,7 @@ void DACSound16S::writeDAC(int16_t value, EmuTime::param time)
 
 	BlipBuffer::TimeIndex t;
 	getHostSampleClock().getTicksTill(time, t);
-	blip.addDelta(t, delta);
+	blip.addDelta(t, narrow<float>(delta));
 }
 
 void DACSound16S::generateChannels(std::span<float*> bufs, unsigned num)
@@ -53,7 +53,7 @@ void DACSound16S::generateChannels(std::span<float*> bufs, unsigned num)
 	}
 }
 
-bool DACSound16S::updateBuffer(unsigned length, float* buffer,
+bool DACSound16S::updateBuffer(size_t length, float* buffer,
                                EmuTime::param /*time*/)
 {
 	return mixChannels(buffer, length);

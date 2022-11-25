@@ -8,6 +8,7 @@
 #include "MemBuffer.hh"
 #include "MSXException.hh"
 #include "aligned.hh"
+#include "narrow.hh"
 #include "ranges.hh"
 #include "one_of.hh"
 #include "vla.hh"
@@ -44,8 +45,8 @@ static void allocateMixBuffer(size_t size)
 void SoundDevice::addFill(float*& buf, float val, unsigned num)
 {
 	// Note: in the past we tried to optimize this by always producing
-	// a multiple of 4 output values. In the general case a sounddevice is
-	// allowed to do this, but only at the end of the soundbuffer. This
+	// a multiple of 4 output values. In the general case a SoundDevice is
+	// allowed to do this, but only at the end of the sound buffer. This
 	// method can also be called in the middle of a buffer (so multiple
 	// times per buffer), in such case it does go wrong.
 	assert(num > 0);
@@ -61,8 +62,6 @@ SoundDevice::SoundDevice(MSXMixer& mixer_, std::string_view name_, static_string
 	, description(description_)
 	, numChannels(numChannels_)
 	, stereo(stereo_ ? 2 : 1)
-	, numRecordChannels(0)
-	, balanceCenter(true)
 {
 	assert(numChannels <= MAX_CHANNELS);
 	assert(stereo == one_of(1u, 2u));
@@ -89,7 +88,7 @@ float SoundDevice::getAmplificationFactorImpl() const
 void SoundDevice::registerSound(const DeviceConfig& config)
 {
 	const auto& soundConfig = config.getChild("sound");
-	float volume = soundConfig.getChildDataAsInt("volume", 0) / 32767.0f;
+	float volume = narrow<float>(soundConfig.getChildDataAsInt("volume", 0)) / 32767.0f;
 	int devBalance = 0;
 	std::string_view mode = soundConfig.getChildData("mode", "mono");
 	if (mode == "mono") {
@@ -188,7 +187,7 @@ void SoundDevice::muteChannel(unsigned channel, bool muted)
 	channelMuted[channel] = muted;
 }
 
-bool SoundDevice::mixChannels(float* dataOut, unsigned samples)
+bool SoundDevice::mixChannels(float* dataOut, size_t samples)
 {
 #ifdef __SSE2__
 	assert((uintptr_t(dataOut) & 15) == 0); // must be 16-byte aligned
@@ -238,7 +237,7 @@ bool SoundDevice::mixChannels(float* dataOut, unsigned samples)
 		assert(count == separateChannels);
 	}
 
-	generateChannels(bufs, samples);
+	generateChannels(bufs, narrow<unsigned>(samples));
 
 	if (separateChannels == 0) {
 		return ranges::any_of(xrange(numChannels),
@@ -261,7 +260,7 @@ bool SoundDevice::mixChannels(float* dataOut, unsigned samples)
 						amp.left, amp.right);
 				}
 			} else {
-				writer[i]->writeSilence(stereo * samples);
+				writer[i]->writeSilence(narrow<unsigned>(stereo * samples));
 			}
 		}
 	}
@@ -288,7 +287,7 @@ bool SoundDevice::mixChannels(float* dataOut, unsigned samples)
 
 	// actually mix channels
 	if (!balanceCenter) {
-		unsigned i = 0;
+		size_t i = 0;
 		do {
 			float left0  = 0.0f;
 			float right0 = 0.0f;
@@ -318,10 +317,10 @@ bool SoundDevice::mixChannels(float* dataOut, unsigned samples)
 
 	// In the past we had ARM and x86-SSE2 optimized assembly routines for
 	// the stuff below. Currently this code is only rarely used anymore
-	// (only when recording or muting individual soundchip channels), so
+	// (only when recording or muting individual sound chip channels), so
 	// it's not worth the extra complexity anymore.
-	unsigned num = samples * stereo;
-	unsigned i = 0;
+	size_t num = samples * stereo;
+	size_t i = 0;
 	do {
 		auto out0 = dataOut[i + 0];
 		auto out1 = dataOut[i + 1];

@@ -21,6 +21,7 @@
 #include "CommandException.hh"
 #include "Version.hh"
 #include "build-info.hh"
+#include "narrow.hh"
 #include "outer.hh"
 #include "ranges.hh"
 #include "stl.hh"
@@ -42,8 +43,6 @@ Display::Display(Reactor& reactor_)
 	, renderSettings(reactor.getCommandController())
 	, commandConsole(reactor.getGlobalCommandController(),
 	                 reactor.getEventDistributor(), *this)
-	, currentRenderer(RenderSettings::UNINITIALIZED)
-	, switchInProgress(false)
 {
 	frameDurationSum = 0;
 	repeat(NUM_FRAME_DURATIONS, [&] {
@@ -68,7 +67,6 @@ Display::Display(Reactor& reactor_)
 	renderSettings.getRendererSetting().attach(*this);
 	renderSettings.getFullScreenSetting().attach(*this);
 	renderSettings.getScaleFactorSetting().attach(*this);
-	renderFrozen = false;
 }
 
 Display::~Display()
@@ -171,7 +169,7 @@ void Display::executeRT()
 	repaint();
 }
 
-int Display::signalEvent(const Event& event) noexcept
+int Display::signalEvent(const Event& event)
 {
 	visit(overloaded{
 		[&](const FinishFrameEvent& e) {
@@ -182,7 +180,7 @@ int Display::signalEvent(const Event& event) noexcept
 			}
 		},
 		[&](const SwitchRendererEvent& /*e*/) {
-			doRendererSwitch();
+			doRendererSwitch(); // might throw
 		},
 		[&](const MachineLoadedEvent& /*e*/) {
 			videoSystem->updateWindowTitle();
@@ -292,15 +290,15 @@ void Display::doRendererSwitch()
 				currentRenderer = RenderSettings::SDL;
 			} else {
 				auto& scaleFactorSetting = renderSettings.getScaleFactorSetting();
-				unsigned curval = scaleFactorSetting.getInt();
-				if (curval == 1) {
-					throw MSXException(
+				auto curVal = scaleFactorSetting.getInt();
+				if (curVal == 1) {
+					throw FatalError(
 						e.getMessage(),
 						" (and I have no other ideas to try...)"); // give up and die... :(
 				}
 				strAppend(errorMsg, "\nTrying to decrease scale_factor setting from ",
-				          curval, " to ", curval - 1, "...");
-				scaleFactorSetting.setInt(curval - 1);
+				          curVal, " to ", curVal - 1, "...");
+				scaleFactorSetting.setInt(curVal - 1);
 			}
 			getCliComm().printWarning(errorMsg);
 		}
@@ -516,7 +514,7 @@ void Display::FpsInfoTopic::execute(std::span<const TclObject> /*tokens*/,
                                     TclObject& result) const
 {
 	auto& display = OUTER(Display, fpsInfo);
-	result = 1000000.0f * Display::NUM_FRAME_DURATIONS / display.frameDurationSum;
+	result = 1000000.0f * Display::NUM_FRAME_DURATIONS / narrow_cast<float>(display.frameDurationSum);
 }
 
 string Display::FpsInfoTopic::help(std::span<const TclObject> /*tokens*/) const

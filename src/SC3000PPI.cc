@@ -23,8 +23,6 @@ SC3000PPI::SC3000PPI(const DeviceConfig& config)
 		config.getMotherBoard().getMSXEventDistributor(),
 		config.getMotherBoard().getStateChangeDistributor(),
 		Keyboard::MATRIX_SEGA, config)
-	, prevBits(15)
-	, selectedRow(0)
 {
 	MSXMotherBoard& motherBoard = getMotherBoard();
 	auto time = getCurrentTime();
@@ -107,8 +105,7 @@ byte SC3000PPI::peekB(EmuTime::param time) const
 			PB6     BUSY input from printer
 			PB7     Cassette tape input
 		*/
-		auto& keyb = const_cast<Keyboard&>(keyboard);
-		auto keys = keyb.getKeys()[selectedRow + 7];
+		auto keys = keyboard.getKeys()[selectedRow + 7];
 		return 0xF0 | keys;
 	}
 }
@@ -144,7 +141,7 @@ void SC3000PPI::writeC1(nibble value, EmuTime::param time)
 		cassettePort.cassetteOut((value & 2) != 0, time);
 	}
 	//if ((prevBits ^ value) & 4) {
-	//	cassetteDevice.Mute(); // CASAUD, mute case speker (1=enable, 0=disable)
+	//	cassetteDevice.Mute(); // CASAUD, mute case speaker (1=enable, 0=disable)
 	//}
 	//if ((prevBits ^ value) & 8) {
 	//	click.setClick((value & 8) != 0, time);

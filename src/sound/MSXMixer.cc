@@ -17,6 +17,7 @@
 #include "stl.hh"
 #include "aligned.hh"
 #include "enumerate.hh"
+#include "narrow.hh"
 #include "one_of.hh"
 #include "outer.hh"
 #include "ranges.hh"
@@ -46,8 +47,6 @@ MSXMixer::MSXMixer(Mixer& mixer_, MSXMotherBoard& motherBoard_,
 	, throttleManager(globalSettings.getThrottleManager())
 	, prevTime(getCurrentTime(), 44100)
 	, soundDeviceInfo(commandController.getMachineInfoCommand())
-	, recorder(nullptr)
-	, synchronousCounter(0)
 {
 	hostSampleRate = 44100;
 	fragmentSize = 0;
@@ -119,7 +118,7 @@ void MSXMixer::registerSound(SoundDevice& device, float volume,
 	auto& i = infos.emplace_back(std::move(info));
 	updateVolumeParams(i);
 
-	commandController.getCliComm().update(CliComm::SOUNDDEVICE, device.getName(), "add");
+	commandController.getCliComm().update(CliComm::SOUND_DEVICE, device.getName(), "add");
 }
 
 void MSXMixer::unregisterSound(SoundDevice& device)
@@ -132,7 +131,7 @@ void MSXMixer::unregisterSound(SoundDevice& device)
 		s.mute->detach(*this);
 	}
 	move_pop_back(infos, it);
-	commandController.getCliComm().update(CliComm::SOUNDDEVICE, device.getName(), "remove");
+	commandController.getCliComm().update(CliComm::SOUND_DEVICE, device.getName(), "remove");
 }
 
 void MSXMixer::setSynchronousMode(bool synchronous)
@@ -321,7 +320,7 @@ static inline void mulMix2Acc(
 //     t0 = t1               requires only one state variable
 //    see: http://en.wikipedia.org/wiki/Digital_filter#Direct_Form_I
 //  with:
-//     R = 1 - (2*pi * cut-off-frequency / samplerate)
+//     R = 1 - (2*pi * cut-off-frequency / sample-rate)
 //  we take R = 511/512
 //   44100Hz --> cutoff freq = 14Hz
 //   22050Hz                     7Hz
@@ -627,7 +626,7 @@ void MSXMixer::unmute()
 void MSXMixer::reInit()
 {
 	prevTime.reset(getCurrentTime());
-	prevTime.setFreq(hostSampleRate / getEffectiveSpeed());
+	prevTime.setFreq(narrow_cast<unsigned>(hostSampleRate / getEffectiveSpeed()));
 	reschedule();
 }
 void MSXMixer::reschedule()
@@ -736,12 +735,12 @@ void MSXMixer::updateVolumeParams(SoundDeviceInfo& info)
 {
 	int mVolume = masterVolume.getInt();
 	int dVolume = info.volumeSetting->getInt();
-	float volume = info.defaultVolume * mVolume * dVolume / (100.0f * 100.0f);
+	float volume = info.defaultVolume * narrow<float>(mVolume) * narrow<float>(dVolume) / (100.0f * 100.0f);
 	int balance = info.balanceSetting->getInt();
 	auto [l1, r1, l2, r2] = [&] {
 		if (info.device->isStereo()) {
 			if (balance < 0) {
-				float b = (balance + 100.0f) / 100.0f;
+				float b = (narrow<float>(balance) + 100.0f) / 100.0f;
 				return std::tuple{
 					/*l1 =*/ volume,
 					/*r1 =*/ 0.0f,
@@ -749,7 +748,7 @@ void MSXMixer::updateVolumeParams(SoundDeviceInfo& info)
 					/*r2 =*/ volume * sqrtf(std::max(0.0f,        b))
 				};
 			} else {
-				float b = balance / 100.0f;
+				float b = narrow<float>(balance) / 100.0f;
 				return std::tuple{
 					/*l1 =*/ volume * sqrtf(std::max(0.0f, 1.0f - b)),
 					/*r1 =*/ volume * sqrtf(std::max(0.0f,        b)),
@@ -760,7 +759,7 @@ void MSXMixer::updateVolumeParams(SoundDeviceInfo& info)
 		} else {
 			// make sure that in case of rounding errors
 			// we don't take sqrt() of negative numbers
-			float b = (balance + 100.0f) / 200.0f;
+			float b = (narrow<float>(balance) + 100.0f) / 200.0f;
 			return std::tuple{
 				/*l1 =*/ volume * sqrtf(std::max(0.0f, 1.0f - b)),
 				/*r1 =*/ volume * sqrtf(std::max(0.0f,        b)),
@@ -797,7 +796,7 @@ void MSXMixer::executeUntil(EmuTime::param time)
 	// This method gets called very regularly, typically 44100/512 = 86x
 	// per second (even if sound is muted and even with sound_driver=null).
 	// This rate is constant in real-time (compared to e.g. the VDP sync
-	// points that are constant in emutime). So we can use this to
+	// points that are constant in EmuTime). So we can use this to
 	// regularly exit from the main CPU emulation loop. Without this there
 	// were problems like described in 'bug#563 Console very slow when
 	// setting speed to low values like 1'.

@@ -50,7 +50,6 @@
 #include <functional>
 #include <iostream>
 #include <memory>
-#include <map>
 
 using std::make_unique;
 using std::string;
@@ -157,10 +156,15 @@ public:
 	             TclObject& result) const override;
 	[[nodiscard]] string help(std::span<const TclObject> tokens) const override;
 	void tabCompletion(std::vector<string>& tokens) const override;
-	void registerProvider(const string& slot, MediaInfoProvider& provider);
-	void unregisterProvider(const string& slot);
+	void registerProvider(std::string_view name, MediaInfoProvider& provider);
+	void unregisterProvider(MediaInfoProvider& provider);
 private:
-	std::map<string, MediaInfoProvider*> providers;
+	struct ProviderInfo {
+		std::string_view name;
+		MediaInfoProvider* provider;
+	};
+	// There will only be a handful of providers, use an unsorted vector.
+	std::vector<ProviderInfo> providers;
 };
 
 class DeviceInfo final : public InfoTopic
@@ -208,8 +212,6 @@ static unsigned machineIDCounter = 0;
 MSXMotherBoard::MSXMotherBoard(Reactor& reactor_)
 	: reactor(reactor_)
 	, machineID(strCat("machine", ++machineIDCounter))
-	, mapperIOCounter(0)
-	, machineConfig(nullptr)
 	, msxCliComm(make_unique<MSXCliComm>(*this, reactor.getGlobalCliComm()))
 	, msxEventDistributor(make_unique<MSXEventDistributor>())
 	, stateChangeDistributor(make_unique<StateChangeDistributor>())
@@ -221,12 +223,15 @@ MSXMotherBoard::MSXMotherBoard(Reactor& reactor_)
 		reactor.getMixer(), *this,
 		reactor.getGlobalSettings()))
 	, videoSourceSetting(*msxCommandController)
+	, suppressMessagesSetting(*msxCommandController, "suppressmessages",
+		"Suppress info, warning and error messages for this machine. "
+		"Intended use is for scripts that create temporary machines "
+		"of which you don't want to see warning messages about blank "
+		"SRAM content or PSG port directions for instance.",
+		false, Setting::DONT_SAVE)
 	, fastForwardHelper(make_unique<FastForwardHelper>(*this))
 	, settingObserver(make_unique<SettingObserver>(*this))
 	, powerSetting(reactor.getGlobalSettings().getPowerSetting())
-	, powered(false)
-	, active(false)
-	, fastForwarding(false)
 {
 	slotManager = make_unique<CartridgeSlotManager>(*this);
 	reverseManager = make_unique<ReverseManager>(*this);
@@ -245,8 +250,8 @@ MSXMotherBoard::MSXMotherBoard(Reactor& reactor_)
 	msxMixer->mute(); // powered down
 
 	// Do this before machine-specific settings are created, otherwise
-	// a setting-info clicomm message is send with a machine id that hasn't
-	// been announced yet over clicomm.
+	// a setting-info CliComm message is send with a machine id that hasn't
+	// been announced yet over CliComm.
 	addRemoveUpdate = make_unique<AddRemoveUpdate>(*this);
 
 	// TODO: Initialization of this field cannot be done much earlier because
@@ -260,10 +265,12 @@ MSXMotherBoard::MSXMotherBoard(Reactor& reactor_)
 		*this, reactor.getGlobalSettings(), *eventDelay);
 
 	powerSetting.attach(*settingObserver);
+	suppressMessagesSetting.attach(*settingObserver);
 }
 
 MSXMotherBoard::~MSXMotherBoard()
 {
+	suppressMessagesSetting.detach(*settingObserver);
 	powerSetting.detach(*settingObserver);
 	deleteMachine();
 
@@ -363,12 +370,12 @@ string MSXMotherBoard::loadMachine(const string& machine)
 	return machineName;
 }
 
-string MSXMotherBoard::loadExtension(std::string_view name, std::string_view slotname)
+string MSXMotherBoard::loadExtension(std::string_view name, std::string_view slotName)
 {
 	std::unique_ptr<HardwareConfig> extension;
 	try {
 		extension = HardwareConfig::createExtensionConfig(
-			*this, string(name), slotname);
+			*this, string(name), slotName);
 	} catch (FileException& e) {
 		throw MSXException(
 			"Extension \"", name, "\" not found: ", e.getMessage());
@@ -752,14 +759,14 @@ void MSXMotherBoard::freeUserName(const string& hwName, const string& userName)
 	move_pop_back(s, rfind_unguarded(s, userName));
 }
 
-void MSXMotherBoard::registerMediaInfoProvider(const string& slot, MediaInfoProvider& infoProvider)
+void MSXMotherBoard::registerMediaInfo(std::string_view name, MediaInfoProvider& provider)
 {
-	machineMediaInfo->registerProvider(slot, infoProvider);
+	machineMediaInfo->registerProvider(name, provider);
 }
 
-void MSXMotherBoard::unregisterMediaInfoProvider(const string& slot)
+void MSXMotherBoard::unregisterMediaInfo(MediaInfoProvider& provider)
 {
-	machineMediaInfo->unregisterProvider(slot);
+	machineMediaInfo->unregisterProvider(provider);
 }
 
 
@@ -810,7 +817,7 @@ LoadMachineCmd::LoadMachineCmd(MSXMotherBoard& motherBoard_)
 	// create_machine command:
 	// - It's not allowed to use load_machine on a machine that has
 	//   already a machine configuration loaded earlier.
-	// - We also disallow executing most machine-specifc commands on an
+	// - We also disallow executing most machine-specific commands on an
 	//   'empty machine' (an 'empty machine', is a machine returned by
 	//   create_machine before the load_machine command is executed, so a
 	//   machine without a machine configuration). The only exception is
@@ -889,11 +896,11 @@ void ExtCmd::execute(std::span<const TclObject> tokens, TclObject& result,
 {
 	checkNumArgs(tokens, 2, "extension");
 	try {
-		auto slotname = (commandName.size() == 4)
+		auto slotName = (commandName.size() == 4)
 			? std::string_view(&commandName[3], 1)
 			: "any";
 		result = motherBoard.loadExtension(
-			tokens[1].getString(), slotname);
+			tokens[1].getString(), slotName);
 	} catch (MSXException& e) {
 		throw CommandException(std::move(e).getMessage());
 	}
@@ -1060,15 +1067,14 @@ void MachineMediaInfo::execute(std::span<const TclObject> tokens,
 	checkNumArgs(tokens, Between{2, 3}, Prefix{2}, "?media-slot-name?");
 	if (tokens.size() == 2) {
 		result.addListElements(
-			view::transform(providers,
-				[](auto& e) -> std::string_view { return e.first; }));
+			view::transform(providers, &ProviderInfo::name));
 	} else if (tokens.size() == 3) {
-		string slotname = string(tokens[2].getString());
-		auto pIt = providers.find(slotname);
-		if (pIt == providers.end()) {
-			throw CommandException("No info about media slot ", slotname);
+		auto name = tokens[2].getString();
+		if (auto it = ranges::find(providers, name, &ProviderInfo::name);
+		    it != providers.end()) {
+			it->provider->getMediaInfo(result);
 		} else {
-			pIt->second->getMediaInfo(result);
+			throw CommandException("No info about media slot ", name);
 		}
 	}
 }
@@ -1082,19 +1088,21 @@ void MachineMediaInfo::tabCompletion(std::vector<string>& tokens) const
 {
 	if (tokens.size() == 3) {
 		completeString(tokens, view::transform(
-			providers,
-			[](auto& e) -> std::string_view { return e.first; }));
+			providers, &ProviderInfo::name));
 	}
 }
 
-void MachineMediaInfo::registerProvider(const string& slot, MediaInfoProvider& provider)
+void MachineMediaInfo::registerProvider(std::string_view name, MediaInfoProvider& provider)
 {
-	providers[slot] = &provider;
+	assert(!contains(providers, name, &ProviderInfo::name));
+	assert(!contains(providers, &provider, &ProviderInfo::provider));
+	providers.push_back(ProviderInfo{name, &provider});
 }
 
-void MachineMediaInfo::unregisterProvider(const string& slot)
+void MachineMediaInfo::unregisterProvider(MediaInfoProvider& provider)
 {
-	providers.erase(slot);
+	move_pop_back(providers,
+	              rfind_unguarded(providers, &provider, &ProviderInfo::provider));
 }
 
 // DeviceInfo
@@ -1195,6 +1203,8 @@ void SettingObserver::update(const Setting& setting) noexcept
 		} else {
 			motherBoard.powerDown();
 		}
+	} else if (&setting == &motherBoard.suppressMessagesSetting) {
+		motherBoard.msxCliComm->setSuppressMessages(motherBoard.suppressMessagesSetting.getBoolean());
 	} else {
 		UNREACHABLE;
 	}
@@ -1218,7 +1228,7 @@ void MSXMotherBoard::serialize(Archive& ar, unsigned version)
 
 	// Scheduler must come early so that devices can query current time
 	ar.serialize("scheduler", *scheduler);
-	// MSXMixer has already set syncpoints, those are invalid now
+	// MSXMixer has already set sync points, those are invalid now
 	// the following call will fix this
 	if constexpr (Archive::IS_LOADER) {
 		msxMixer->reInit();

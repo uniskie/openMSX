@@ -145,7 +145,7 @@ public: // Will be called by Mixer:
 	  * samples should be ignored, though the caller must make sure the
 	  * buffer has enough space to hold them.
 	  */
-	[[nodiscard]] virtual bool updateBuffer(unsigned length, float* buffer,
+	[[nodiscard]] virtual bool updateBuffer(size_t length, float* buffer,
 	                                        EmuTime::param time) = 0;
 
 protected:
@@ -186,7 +186,7 @@ protected:
 	  * samples should be ignored, though the caller must make sure the
 	  * buffer has enough space to hold them.
 	  */
-	[[nodiscard]] bool mixChannels(float* dataOut, unsigned samples);
+	[[nodiscard]] bool mixChannels(float* dataOut, size_t samples);
 
 	/** See MSXMixer::getHostSampleClock(). */
 	[[nodiscard]] const DynamicClock& getHostSampleClock() const;
@@ -204,10 +204,10 @@ private:
 	unsigned inputSampleRate;
 	const unsigned numChannels;
 	const unsigned stereo;
-	unsigned numRecordChannels;
+	unsigned numRecordChannels = 0;
 	std::array<int,  MAX_CHANNELS> channelBalance;
 	std::array<bool, MAX_CHANNELS> channelMuted;
-	bool balanceCenter;
+	bool balanceCenter = true;
 };
 
 } // namespace openmsx

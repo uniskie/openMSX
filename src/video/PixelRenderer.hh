@@ -48,14 +48,14 @@ public:
 	void updateBlinkForegroundColor(int color, EmuTime::param time) override;
 	void updateBlinkBackgroundColor(int color, EmuTime::param time) override;
 	void updateBlinkState(bool enabled, EmuTime::param time) override;
-	void updatePalette(int index, int grb, EmuTime::param time) override;
+	void updatePalette(unsigned index, int grb, EmuTime::param time) override;
 	void updateVerticalScroll(int scroll, EmuTime::param time) override;
 	void updateHorizontalAdjust(int adjust, EmuTime::param time) override;
 	void updateDisplayEnabled(bool enabled, EmuTime::param time) override;
 	void updateDisplayMode(DisplayMode mode, EmuTime::param time) override;
-	void updateNameBase(int addr, EmuTime::param time) override;
-	void updatePatternBase(int addr, EmuTime::param time) override;
-	void updateColorBase(int addr, EmuTime::param time) override;
+	void updateNameBase(unsigned addr, EmuTime::param time) override;
+	void updatePatternBase(unsigned addr, EmuTime::param time) override;
+	void updateColorBase(unsigned addr, EmuTime::param time) override;
 	void updateSpritesEnabled(bool enabled, EmuTime::param time) override;
 	void updateVRAM(unsigned offset, EmuTime::param time) override;
 	void updateWindow(bool enabled, EmuTime::param time) override;
@@ -85,7 +85,7 @@ private:
 		int startX, int startY, int endX, int endY,
 		int clipL, int clipR, DrawType drawType);
 
-	[[nodiscard]] inline bool checkSync(int offset, EmuTime::param time);
+	[[nodiscard]] inline bool checkSync(unsigned offset, EmuTime::param time);
 
 	/** Update renderer state to specified moment in time.
 	  * @param time Moment in emulated time to update to.
@@ -124,8 +124,8 @@ private:
 
 	const std::unique_ptr<Rasterizer> rasterizer;
 
-	float finishFrameDuration;
-	float frameSkipCounter;
+	float finishFrameDuration = 0.0f;
+	float frameSkipCounter = 999.0f; // force drawing of frame
 
 	/** Number of the next position within a line to render.
 	  * Expressed in VDP clock ticks since start of line.
@@ -153,7 +153,7 @@ private:
 	/** Should current frame be draw or can it be skipped.
 	  */
 	bool renderFrame;
-	bool prevRenderFrame;
+	bool prevRenderFrame = false;
 
 	/** Should a rendered frame be painted to the window?
 	  * When renderFrame is false, paintFrame must be false as well.

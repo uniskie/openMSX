@@ -10,6 +10,7 @@
 #include "StringOp.hh"
 #include "Version.hh"
 #include "Date.hh"
+#include "narrow.hh"
 #include "one_of.hh"
 #include "stl.hh"
 #include "build-info.hh"
@@ -475,7 +476,17 @@ void XmlInputArchive::load(int& i)
 void XmlInputArchive::load(unsigned& u)
 {
 	string_view str = loadStr();
-	fastAtoi(str, u);
+	try {
+		fastAtoi(str, u);
+	} catch (XMLException&) {
+		// One reason could be that the type of a member was corrected
+		// from 'int' to 'unsigned'. In that case loading an old
+		// savestate (that contains a negative value) might fail. So try
+		// again parsing as an 'int'.
+		int i;
+		fastAtoi(str, i);
+		u = narrow_cast<unsigned>(i);
+	}
 }
 void XmlInputArchive::load(unsigned long long& ull)
 {
@@ -484,21 +495,21 @@ void XmlInputArchive::load(unsigned long long& ull)
 }
 void XmlInputArchive::load(unsigned char& b)
 {
-	unsigned i;
-	load(i);
-	b = i;
+	unsigned u;
+	load(u);
+	b = narrow_cast<unsigned char>(u);
 }
 void XmlInputArchive::load(signed char& c)
 {
 	int i;
 	load(i);
-	c = i;
+	c = narrow_cast<signed char>(i);
 }
 void XmlInputArchive::load(char& c)
 {
 	int i;
 	load(i);
-	c = i;
+	c = narrow_cast<char>(i);
 }
 
 void XmlInputArchive::beginTag(const char* tag)

@@ -95,7 +95,7 @@ public:
 	  *   all other bits are zero.
 	  * @param time The moment in emulated time this change occurs.
 	  */
-	virtual void updatePalette(int index, int grb, EmuTime::param time) = 0;
+	virtual void updatePalette(unsigned index, int grb, EmuTime::param time) = 0;
 
 	/** Informs the renderer of a vertical scroll change.
 	  * @param scroll The new scroll value.
@@ -158,19 +158,19 @@ public:
 	  * @param addr The new base address.
 	  * @param time The moment in emulated time this change occurs.
 	  */
-	virtual void updateNameBase(int addr, EmuTime::param time) = 0;
+	virtual void updateNameBase(unsigned addr, EmuTime::param time) = 0;
 
 	/** Informs the renderer of a pattern table base address change.
 	  * @param addr The new base address.
 	  * @param time The moment in emulated time this change occurs.
 	  */
-	virtual void updatePatternBase(int addr, EmuTime::param time) = 0;
+	virtual void updatePatternBase(unsigned addr, EmuTime::param time) = 0;
 
 	/** Informs the renderer of a color table base address change.
 	  * @param addr The new base address.
 	  * @param time The moment in emulated time this change occurs.
 	  */
-	virtual void updateColorBase(int addr, EmuTime::param time) = 0;
+	virtual void updateColorBase(unsigned addr, EmuTime::param time) = 0;
 
 	/** Informs the renderer of a VDP sprites enabled change.
 	  * @param enabled The new sprites enabled state.

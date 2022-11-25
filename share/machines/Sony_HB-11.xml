@@ -2,13 +2,22 @@
 <!DOCTYPE msxconfig SYSTEM 'msxconfig2.dtd'>
 <msxconfig>
 
+<!--
+Dumps provided by Peter Hanraets, thanks!
+Serial number of his machine: 205243
+
+MSX.org photos:
+CPU: NEC D780C-1
+PPI/PSG: Yamaha S3527 - ANSI
+VDP: TMS9118NL
+-->
+
   <info>
-    <manufacturer>National</manufacturer>
-    <code>FS-4000</code>
-    <release_year>1985</release_year>
-    <description>Japanese MSX1 with built in printer, targeted for word processing, supported by built in software.</description>
+    <manufacturer>Sony</manufacturer>
+    <code>HB-11</code>
+    <release_year>1986</release_year>
+    <description>The last Sony MSX1 released. "Hit Bit U". A 64kB MSX1 with a kanji ROM built in.</description>
     <type>MSX</type>
-    <region>jp</region>
   </info>
 
   <CassettePort/>
@@ -17,8 +26,8 @@
 
     <Kanji id="Kanji ROM">
       <rom>
-        <filename>fs-4000_kanjifont.rom</filename>
-        <sha1>9ed3ab6d893632b9246e91b412cd5db519e7586b</sha1>
+        <filename>hb-11_kanjifont.rom</filename>
+        <sha1>6acaf2eeb57f65f7408235d5e07b7563229de799</sha1>
       </rom>
       <io base="0xD8" num="2" type="O"/>
       <io base="0xD9" num="1" type="I"/>
@@ -30,15 +39,15 @@
       </sound>
       <io base="0xA8" num="4"/>
       <keyboard_type>jp_ansi</keyboard_type>
-      <has_keypad>true</has_keypad>
-      <key_ghosting_sgc_protected>false</key_ghosting_sgc_protected>
+      <has_keypad>false</has_keypad>
+      <key_ghosting_sgc_protected>false</key_ghosting_sgc_protected> <!-- as checked by Peter -->
       <code_kana_locks>true</code_kana_locks>
       <graph_locks>false</graph_locks>
     </PPI>
 
     <VDP id="VDP">
-      <version>TMS9128</version>
-      <io base="0x98" num="2"/>
+      <version>TMS9118</version>
+      <io base="0x98" num="2"/> <!-- mirroring unknown -->
     </VDP>
 
     <PSG id="PSG">
@@ -59,8 +68,8 @@
     <primary slot="0">
       <ROM id="MSX BIOS with BASIC ROM">
         <rom>
-          <filename>fs-4000_basic-bios1.rom</filename>
-          <sha1>df48902f5f12af8867ae1a87f255145f0e5e0774</sha1>
+          <filename>hb-11_basic-bios1.rom</filename>
+          <sha1>6716404cf248f92d672fa4c54c9c07f47990b011</sha1>
         </rom>
         <mem base="0x0000" size="0x8000"/>
       </ROM>
@@ -73,20 +82,20 @@
     <primary slot="3">
 
       <secondary slot="0">
-        <ROM id="MSX Word">
+        <ROM id="Firmware 1">
           <rom>
-            <filename>fs-4000_msxword.rom</filename>
-            <sha1>931d6318774bd495a32ec3dabf8d0edfc9913324</sha1>
+            <filename>hb-11_firmware_1.rom</filename>
+            <sha1>21baaf52bc5355417d810dd479679482bb9a45a0</sha1>
           </rom>
-          <mem base="0x0000" size="0x8000"/>
+          <mem base="0x4000" size="0x8000"/>
         </ROM>
       </secondary>
 
       <secondary slot="1">
-        <ROM id="MSX Kanji Driver">
+        <ROM id="Firmware 2">
           <rom>
-            <filename>fs-4000_kanjibasic.rom</filename>
-            <sha1>77bd67d5d10d459d343e79eafcd8e17eb0f209dd</sha1>
+            <filename>hb-11_firmware_2.rom</filename>
+            <sha1>4ee80ca1645c1f3c01fd04c3ceb6f78d44fc13c0</sha1>
           </rom>
           <mem base="0x4000" size="0x8000"/>
         </ROM>
@@ -95,10 +104,19 @@
       <secondary slot="2">
         <RAM id="Main RAM">
           <mem base="0x0000" size="0x10000"/>
+          <initialContent encoding="gz-base64">eJxjYBhY8H+AAQAioH+B</initialContent> <!-- ((chr(0) * 128) + (chr(255) * 128)) -->
         </RAM>
       </secondary>
 
-      <secondary slot="3"/>
+      <secondary slot="3">
+        <ROM id="Firmware 3">
+          <rom>
+            <filename>hb-11_firmware_3.rom</filename>
+            <sha1>8a827cf0cddce2c98c6c6cdd830e7791eb9a28cf</sha1>
+          </rom>
+          <mem base="0x4000" size="0x8000"/>
+        </ROM>
+      </secondary>
 
     </primary>
 

@@ -270,7 +270,7 @@ static constexpr std::array keyTabs = {
 //
 // Issues:
 // - graph is a lock key and gets pressed when using alt-tab
-// - alt-F7 is bound to quickload
+// - alt-F7 is bound to quick-load
 // 0    1    2    3    4    5    6    7    8    9    a    b    c    d    e    f
    x  , x  , x  , x  , x  , x  , x  , x  ,0x34,0xC3, x  , x  , x  ,0x56, x  , x  , //000
    x  , x  , x  , x  , x  , x  , x  , x  , x  , x  , x  ,0xD0, x  , x  , x  , x  , //010
@@ -321,7 +321,6 @@ Keyboard::Keyboard(MSXMotherBoard& motherBoard,
 	, keybDebuggable(motherBoard)
 	, unicodeKeymap(config.getChildData(
 		"keyboard_type", defaultKeymapForMatrix[matrix]))
-	, msxModifiers(0xff)
 	, hasKeypad(config.getChildDataAsBool("has_keypad", true))
 	, blockRow11(matrix == MATRIX_MSX
 		&& !config.getChildDataAsBool("has_yesno_keys", false))
@@ -331,8 +330,6 @@ Keyboard::Keyboard(MSXMotherBoard& motherBoard,
 	, modifierIsLock(KeyInfo::CAPS_MASK
 		| (config.getChildDataAsBool("code_kana_locks", false) ? KeyInfo::CODE_MASK : 0)
 		| (config.getChildDataAsBool("graph_locks", false) ? KeyInfo::GRAPH_MASK : 0))
-	, keysChanged(false)
-	, locksOn(0)
 {
 	ranges::fill(keyMatrix,     255);
 	ranges::fill(cmdKeyMatrix,  255);
@@ -462,7 +459,7 @@ void Keyboard::signalMSXEvent(const Event& event,
 {
 	if (getType(event) == one_of(EventType::KEY_DOWN, EventType::KEY_UP)) {
 		// Ignore possible console on/off events:
-		// we do not rescan the keyboard since this may lead to
+		// we do not re-scan the keyboard since this may lead to
 		// an unwanted pressing of <return> in MSX after typing
 		// "set console off" in the console.
 		msxKeyEventQueue.process_asap(time, event);
@@ -492,7 +489,7 @@ void Keyboard::stopReplay(EmuTime::param time) noexcept
 uint8_t Keyboard::needsLockToggle(const UnicodeKeymap::KeyInfo& keyInfo) const
 {
 	return modifierIsLock
-	     & (locksOn ^ keyInfo.modmask)
+	     & (locksOn ^ keyInfo.modMask)
 	     & unicodeKeymap.getRelevantMods(keyInfo);
 }
 
@@ -582,13 +579,13 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 		      Keys::getName(keyEvent.getKeyCode()).c_str());
 	}
 
-	// Process deadkeys.
+	// Process dead keys.
 	if (mode == KeyboardSettings::CHARACTER_MAPPING) {
 		for (auto n : xrange(3)) {
-			if (key == keyboardSettings.getDeadkeyHostKey(n)) {
-				UnicodeKeymap::KeyInfo deadkey = unicodeKeymap.getDeadkey(n);
-				if (deadkey.isValid()) {
-					updateKeyMatrix(time, down, deadkey.pos);
+			if (key == keyboardSettings.getDeadKeyHostKey(n)) {
+				UnicodeKeymap::KeyInfo deadKey = unicodeKeymap.getDeadKey(n);
+				if (deadKey.isValid()) {
+					updateKeyMatrix(time, down, deadKey.pos);
 					return false;
 				}
 			}
@@ -615,7 +612,7 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 /*
  * Process a change (up or down event) of the CODE/KANA key
  * It presses or releases the key in the MSX keyboard matrix
- * and changes the kanalock state in case of a press
+ * and changes the kana-lock state in case of a press
  */
 void Keyboard::processCodeKanaChange(EmuTime::param time, bool down)
 {
@@ -628,7 +625,7 @@ void Keyboard::processCodeKanaChange(EmuTime::param time, bool down)
 /*
  * Process a change (up or down event) of the GRAPH key
  * It presses or releases the key in the MSX keyboard matrix
- * and changes the graphlock state in case of a press
+ * and changes the graph-lock state in case of a press
  */
 void Keyboard::processGraphChange(EmuTime::param time, bool down)
 {
@@ -934,23 +931,23 @@ bool Keyboard::pressUnicodeByUser(
 			// katakana on japanese model)
 			pressKeyMatrixEvent(time, keyInfo.pos);
 
-			uint8_t modmask = keyInfo.modmask & ~modifierIsLock;
+			uint8_t modMask = keyInfo.modMask & ~modifierIsLock;
 			if (('A' <= unicode && unicode <= 'Z') || ('a' <= unicode && unicode <= 'z')) {
 				// For a-z and A-Z, leave SHIFT unchanged, this to cater
 				// for difference in behaviour between host and emulated
 				// machine with respect to how the combination of CAPSLOCK
 				// and SHIFT is interpreted for these characters.
-				modmask &= ~KeyInfo::SHIFT_MASK;
+				modMask &= ~KeyInfo::SHIFT_MASK;
 			} else {
 				// Release SHIFT if our character does not require it.
-				if (~modmask & KeyInfo::SHIFT_MASK) {
+				if (~modMask & KeyInfo::SHIFT_MASK) {
 					releaseKeyMatrixEvent(time, modifierPos[KeyInfo::SHIFT]);
 				}
 			}
 			// Press required modifiers for our character.
 			// Note that these modifiers are only pressed, never released.
 			for (auto [i, mp] : enumerate(modifierPos)) {
-				if ((modmask >> i) & 1) {
+				if ((modMask >> i) & 1) {
 					pressKeyMatrixEvent(time, mp);
 				}
 			}
@@ -994,7 +991,7 @@ int Keyboard::pressAscii(unsigned unicode, bool down)
 	if (!keyInfo.isValid()) {
 		return releaseMask;
 	}
-	uint8_t modmask = keyInfo.modmask & ~modifierIsLock;
+	uint8_t modMask = keyInfo.modMask & ~modifierIsLock;
 	if (down) {
 		// check for modifier toggles
 		uint8_t toggleLocks = needsLockToggle(keyInfo);
@@ -1007,8 +1004,8 @@ int Keyboard::pressAscii(unsigned unicode, bool down)
 			}
 		}
 		if (releaseMask == 0) {
-			debug("Key pasted, unicode: 0x%04x, row: %02d, col: %d, modmask: %02x\n",
-			      unicode, keyInfo.pos.getRow(), keyInfo.pos.getColumn(), modmask);
+			debug("Key pasted, unicode: 0x%04x, row: %02d, col: %d, modMask: %02x\n",
+			      unicode, keyInfo.pos.getRow(), keyInfo.pos.getColumn(), modMask);
 			// Workaround MSX-BIOS(?) bug/limitation:
 			//
 			// Under these conditions:
@@ -1036,7 +1033,7 @@ int Keyboard::pressAscii(unsigned unicode, bool down)
 			// To fix both these problems (and possibly still undiscovered
 			// variations), I'm now extending the workaround to all characters
 			// that are typed via a key combination that includes GRAPH.
-			if (modmask & KeyInfo::GRAPH_MASK) {
+			if (modMask & KeyInfo::GRAPH_MASK) {
 				auto isPressed = [&](auto& key) {
 					return (typeKeyMatrix[key.getRow()] & key.getMask()) == 0;
 				};
@@ -1048,7 +1045,7 @@ int Keyboard::pressAscii(unsigned unicode, bool down)
 			}
 			// press modifiers
 			for (auto [i, mp] : enumerate(modifierPos)) {
-				if ((modmask >> i) & 1) {
+				if ((modMask >> i) & 1) {
 					typeKeyMatrix[mp.getRow()] &= ~mp.getMask();
 				}
 			}
@@ -1060,7 +1057,7 @@ int Keyboard::pressAscii(unsigned unicode, bool down)
 	} else {
 		typeKeyMatrix[keyInfo.pos.getRow()] |= keyInfo.pos.getMask();
 		for (auto [i, mp] : enumerate(modifierPos)) {
-			if ((modmask >> i) & 1) {
+			if ((modMask >> i) & 1) {
 				typeKeyMatrix[mp.getRow()] |= mp.getMask();
 			}
 		}
@@ -1139,7 +1136,7 @@ void Keyboard::KeyMatrixUpCmd::execute(
 
 std::string Keyboard::KeyMatrixUpCmd::help(std::span<const TclObject> /*tokens*/) const
 {
-	return "keymatrixup <row> <bitmask>  release a key in the keyboardmatrix\n";
+	return "keymatrixup <row> <bitmask>  release a key in the keyboard matrix\n";
 }
 
 
@@ -1163,7 +1160,7 @@ void Keyboard::KeyMatrixDownCmd::execute(std::span<const TclObject> tokens,
 
 std::string Keyboard::KeyMatrixDownCmd::help(std::span<const TclObject> /*tokens*/) const
 {
-	return "keymatrixdown <row> <bitmask>  press a key in the keyboardmatrix\n";
+	return "keymatrixdown <row> <bitmask>  press a key in the keyboard matrix\n";
 }
 
 
@@ -1231,12 +1228,6 @@ Keyboard::KeyInserter::KeyInserter(
 	: RecordedCommand(commandController_, stateChangeDistributor_,
 		scheduler_, "type_via_keyboard")
 	, Schedulable(scheduler_)
-	, last(0) // avoid UMR
-	, lockKeysMask(0)
-	, releaseLast(false)
-	, oldLocksOn(0)
-	, releaseBeforePress(false)
-	, typingFrequency(15)
 {
 }
 
@@ -1474,7 +1465,6 @@ Keyboard::CapsLockAligner::CapsLockAligner(
 		Scheduler& scheduler_)
 	: Schedulable(scheduler_)
 	, eventDistributor(eventDistributor_)
-	, state(IDLE)
 {
 	eventDistributor.registerEventListener(EventType::BOOT,  *this);
 	eventDistributor.registerEventListener(EventType::FOCUS, *this);
@@ -1486,7 +1476,7 @@ Keyboard::CapsLockAligner::~CapsLockAligner()
 	eventDistributor.unregisterEventListener(EventType::BOOT,  *this);
 }
 
-int Keyboard::CapsLockAligner::signalEvent(const Event& event) noexcept
+int Keyboard::CapsLockAligner::signalEvent(const Event& event)
 {
 	if constexpr (!SANE_CAPSLOCK_BEHAVIOR) {
 		// don't even try

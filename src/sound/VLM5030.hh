@@ -42,12 +42,12 @@ private:
 	[[nodiscard]] float getAmplificationFactorImpl() const override;
 
 	void setupParameter(uint8_t param);
-	[[nodiscard]] int getBits(unsigned sBit, unsigned bits);
+	[[nodiscard]] unsigned getBits(unsigned sBit, unsigned bits);
 	[[nodiscard]] int parseFrame();
 
 private:
 	Rom rom;
-	int address_mask;
+	unsigned address_mask;
 
 	// state of option parameter
 	int frame_size;
@@ -78,13 +78,13 @@ private:
 	uint8_t sample_count; // sample number within interp
 	uint8_t pitch_count;
 
-	uint8_t latch_data;
+	uint8_t latch_data{0};
 	uint8_t parameter;
 	uint8_t phase;
-	bool pin_BSY;
-	bool pin_ST;
-	bool pin_VCU;
-	bool pin_RST;
+	bool pin_BSY{false};
+	bool pin_ST{false};
+	bool pin_VCU{false};
+	bool pin_RST{false};
 };
 
 } // namespace openmsx

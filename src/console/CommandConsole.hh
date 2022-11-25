@@ -86,7 +86,7 @@ private:
 	[[nodiscard]] unsigned getOutputColumns() const override;
 
 	// EventListener
-	int signalEvent(const Event& event) noexcept override;
+	int signalEvent(const Event& event) override;
 
 	bool handleEvent(const KeyEvent& keyEvent);
 	void tabCompletion();
@@ -126,8 +126,8 @@ private:
 	IntegerSetting historySizeSetting;
 	BooleanSetting removeDoublesSetting;
 
-	static constexpr int LINESHISTORY = 1000;
-	CircularBuffer<ConsoleLine, LINESHISTORY> lines;
+	static constexpr int LINES_HISTORY = 1000;
+	CircularBuffer<ConsoleLine, LINES_HISTORY> lines;
 	std::string commandBuffer;
 	std::string prompt;
 	/** Saves Current Command to enable command recall. */
@@ -139,7 +139,7 @@ private:
 	int consoleScrollBack;
 	/** Position within the current command. */
 	unsigned cursorPosition;
-	bool executingCommand;
+	bool executingCommand = false;
 };
 
 } // namespace openmsx

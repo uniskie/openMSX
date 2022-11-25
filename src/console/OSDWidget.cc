@@ -138,12 +138,7 @@ GLScopedClip::~GLScopedClip()
 
 OSDWidget::OSDWidget(Display& display_, TclObject name_)
 	: display(display_)
-	, parent(nullptr)
 	, name(std::move(name_))
-	, z(0.0)
-	, scaled(false)
-	, clip(false)
-	, suppressErrors(false)
 {
 }
 
@@ -154,7 +149,7 @@ void OSDWidget::addWidget(std::unique_ptr<OSDWidget> widget)
 	// Insert the new widget in the correct place (sorted on ascending Z)
 	// heuristic: often we have either
 	//  - many widgets with all the same Z
-	//  - only a few total number of subwidgets (possibly with different Z)
+	//  - only a few total number of subWidgets (possibly with different Z)
 	// In the former case we can simply append at the end. In the latter
 	// case a linear search is probably faster than a binary search. Only
 	// when there are many sub-widgets with not all the same Z (and not
@@ -350,7 +345,7 @@ void OSDWidget::paintGLRecursive (OutputSurface& output)
 int OSDWidget::getScaleFactor(const OutputSurface& output) const
 {
 	if (scaled) {
-		return output.getLogicalWidth() / 320;;
+		return output.getLogicalWidth() / 320;
 	} else if (getParent()) {
 		return getParent()->getScaleFactor(output);
 	} else {

@@ -3,6 +3,7 @@
 #include "CliComm.hh"
 #include "FileContext.hh"
 #include "MSXException.hh"
+#include "narrow.hh"
 #include "serialize.hh"
 #include "xrange.hh"
 #include <cassert>
@@ -52,7 +53,6 @@ SamplePlayer::SamplePlayer(const std::string& name_, static_string_view desc,
                            std::string_view alternativeName)
 	: ResampledSoundDevice(config.getMotherBoard(), name_, desc, 1, DUMMY_INPUT_RATE, false)
 	, samples(loadSamples(name_, config, samplesBaseName, alternativeName, numSamples))
-	, index(0) // avoid UMR on serialize
 {
 	registerSound(config);
 	reset();
@@ -129,7 +129,7 @@ void SamplePlayer::generateChannels(std::span<float*> bufs, unsigned num)
 				break;
 			}
 		}
-		bufs[0][i] = 3 * wav.getSample(index++);
+		bufs[0][i] = narrow<float>(3 * wav.getSample(index++));
 	}
 }
 

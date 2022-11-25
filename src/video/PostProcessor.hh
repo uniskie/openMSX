@@ -128,20 +128,20 @@ protected:
 	  * This can be simply a RawFrame or two RawFrames combined in a
 	  * DeinterlacedFrame or DoubledFrame.
 	  */
-	FrameSource* paintFrame;
+	FrameSource* paintFrame = nullptr;
 
 	/** Video recorder, nullptr when not recording. */
-	AviRecorder* recorder;
+	AviRecorder* recorder = nullptr;
 
 	/** Video frame on which to superimpose the (VDP) output.
 	  * nullptr when not superimposing. */
-	const RawFrame* superImposeVideoFrame;
-	const FrameSource* superImposeVdpFrame;
+	const RawFrame* superImposeVideoFrame = nullptr;
+	const FrameSource* superImposeVdpFrame = nullptr;
 
-	int interleaveCount; // for interleave-black-frame
-	int lastFramesCount; // How many items in lastFrames[] are up-to-date
-	int maxWidth; // we lazily create RawFrame objects in lastFrames[]
-	int height;   // these two vars remember how big those should be
+	int interleaveCount = 0; // for interleave-black-frame
+	int lastFramesCount = 0; // How many items in lastFrames[] are up-to-date
+	unsigned maxWidth; // we lazily create RawFrame objects in lastFrames[]
+	unsigned height;   // these two vars remember how big those should be
 
 private:
 	// Schedulable

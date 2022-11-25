@@ -17,11 +17,8 @@ Video9000::Video9000(const DeviceConfig& config)
 	: MSXDevice(config)
 	, VideoLayer(getMotherBoard(), getName())
 	, videoSourceSetting(getMotherBoard().getVideoSource())
-	, activeLayer(nullptr) // we can't set activeLayer yet
-	, v99x8Layer(nullptr)
-	, v9990Layer(nullptr)
-	, value(0x10)
 {
+	// we can't set activeLayer yet
 	EventDistributor& distributor = getReactor().getEventDistributor();
 	distributor.registerEventListener(EventType::FINISH_FRAME, *this);
 	getReactor().getDisplay().attach(*this);
@@ -61,10 +58,10 @@ void Video9000::writeIO(word /*port*/, byte newValue, EmuTime::param /*time*/)
 {
 	if (newValue == value) return;
 	value = newValue;
-	recalc();
+	recalculate();
 }
 
-void Video9000::recalc()
+void Video9000::recalculate()
 {
 	int video9000id = getVideoSource();
 	v99x8Layer = vdp  ->getPostProcessor();
@@ -87,10 +84,10 @@ void Video9000::recalc()
 		showV9990 ? VideoLayer::ACTIVE_FRONT : VideoLayer::INACTIVE);
 	activeLayer = showV9990 ? v9990Layer : v99x8Layer;
 	// activeLayer==nullptr is possible for renderer=none
-	recalcVideoSource();
+	recalculateVideoSource();
 }
 
-void Video9000::recalcVideoSource()
+void Video9000::recalculateVideoSource()
 {
 	// Disable superimpose when gfx9000 layer is selected. That way you
 	// can look at the gfx9000-only output even when the video9000 software
@@ -114,7 +111,7 @@ void Video9000::postVideoSystemChange() noexcept
 void Video9000::paint(OutputSurface& output)
 {
 	if (!activeLayer) {
-		recalc();
+		recalculate();
 	}
 	// activeLayer==nullptr is possible for renderer=none, but in that case
 	// the paint() method will never be called.
@@ -130,7 +127,7 @@ void Video9000::takeRawScreenShot(unsigned height, const std::string& filename)
 	layer->takeRawScreenShot(height, filename);
 }
 
-int Video9000::signalEvent(const Event& event) noexcept
+int Video9000::signalEvent(const Event& event)
 {
 	int video9000id = getVideoSource();
 
@@ -159,7 +156,7 @@ void Video9000::update(const Setting& setting) noexcept
 {
 	VideoLayer::update(setting);
 	if (&setting == &videoSourceSetting) {
-		recalcVideoSource();
+		recalculateVideoSource();
 	}
 }
 
@@ -169,7 +166,7 @@ void Video9000::serialize(Archive& ar, unsigned /*version*/)
 	ar.template serializeBase<MSXDevice>(*this);
 	ar.serialize("value", value);
 	if constexpr (Archive::IS_LOADER) {
-		recalc();
+		recalculate();
 	}
 }
 INSTANTIATE_SERIALIZE_METHODS(Video9000);

@@ -12,11 +12,6 @@ namespace openmsx {
 
 AbstractIDEDevice::AbstractIDEDevice(MSXMotherBoard& motherBoard_)
 	: motherBoard(motherBoard_)
-	, transferIdx(0) // avoid UMR on serialize
-	, bufferLeft(0)
-	, transferCount(0)
-	, transferRead(false)
-	, transferWrite(false)
 {
 	ranges::fill(buffer, 0);
 }
@@ -74,10 +69,10 @@ byte AbstractIDEDevice::readReg(nibble reg, EmuTime::param /*time*/)
 	case 3: // sector number register / LBA low
 		return sectorNumReg;
 
-	case 4: // cyclinder low register / LBA mid
+	case 4: // cylinder low register / LBA mid
 		return cylinderLowReg;
 
-	case 5: // cyclinder high register / LBA high
+	case 5: // cylinder high register / LBA high
 		return cylinderHighReg;
 
 	case 6: // device/head register
@@ -121,11 +116,11 @@ void AbstractIDEDevice::writeReg(
 		sectorNumReg = value;
 		break;
 
-	case 4: // cyclinder low register / LBA mid
+	case 4: // cylinder low register / LBA mid
 		cylinderLowReg = value;
 		break;
 
-	case 5: // cyclinder high register / LBA high
+	case 5: // cylinder high register / LBA high
 		cylinderHighReg = value;
 		break;
 

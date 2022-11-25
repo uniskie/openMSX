@@ -11,10 +11,11 @@
 #include "V9990VRAM.hh"
 #include "SimpleDebuggable.hh"
 #include "Clock.hh"
-#include "serialize_meta.hh"
+#include "narrow.hh"
 #include "openmsx.hh"
 #include "one_of.hh"
 #include "outer.hh"
+#include "serialize_meta.hh"
 #include "unreachable.hh"
 #include <array>
 #include <memory>
@@ -118,7 +119,7 @@ public:
 	  * @return      Number of UC ticks.
 	  */
 	[[nodiscard]] inline int getUCTicksThisFrame(EmuTime::param time) const {
-		return frameStartTime.getTicksTill_fast(time);
+		return narrow<int>(frameStartTime.getTicksTill_fast(time));
 	}
 
 	/** Is PAL timing active?
@@ -313,14 +314,14 @@ public:
 		return *horTiming;
 	}
 
-	/** Get the number of VDP clockticks between the start of the line and
+	/** Get the number of VDP clock-ticks between the start of the line and
 	  * the end of the left border.
 	  */
 	[[nodiscard]] inline int getLeftBorder() const {
 		return horTiming->blank + horTiming->border1 +
 		       (((regs[DISPLAY_ADJUST] & 0x0F) ^ 7) - 8) * 8;
 	}
-	/** Get the number of VDP clockticks between the start of the line and
+	/** Get the number of VDP clock-ticks between the start of the line and
 	  * the end of the right border.
 	  */
 	[[nodiscard]] inline int getRightBorder() const {
@@ -569,32 +570,32 @@ private:
 
 	/** Interrupt flag (P#6)
 	  */
-	byte pendingIRQs;
+	byte pendingIRQs = 0;
 
 	/** Registers
 	  */
-	std::array<byte, 0x40> regs;
+	std::array<byte, 0x40> regs = {}; // fill with zero
 	byte regSelect;
 
 	/** Is PAL timing active?  False means NTSC timing
 	  */
-	bool palTiming;
+	bool palTiming{false};
 
 	/** Is interlace active?
 	  * @see isInterlaced.
 	  */
-	bool interlaced;
+	bool interlaced{false};
 
 	/** Is the current scan position inside the display area?
 	  */
-	bool isDisplayArea;
+	bool isDisplayArea{false};
 
 	/** Is display enabled. Note that this is not always the same as bit 7
 	  * of the CONTROL register because the display enable status change
 	  * only takes place at the start of the next frame.
 	  * Note: on V99x8, display enable takes effect the next line
 	  */
-	bool displayEnabled;
+	bool displayEnabled{false};
 
 	/** Changing high byte of vertical scroll registers only takes effect
 	  * at the start of the next page. These members hold the current
@@ -613,16 +614,16 @@ private:
 	  */
 	bool systemReset;
 
-	/** Is there an external video source availble to superimpose on?
+	/** Is there an external video source available to superimpose on?
 	  * In 32bpp we could just always output an alpha channel. But in
 	  * 16bpp we only want to output the special color-key when later
 	  * it will be replaced by a pixel from the external video source. */
-	bool externalVideoSource;
+	bool externalVideoSource{false};
 
 	/** Combination of 'externalVideoSource' and R#8 bit 5 (YSE). This
 	  * variable only changes once per frame, so we can't directly
 	  * calculate it from the two former states. */
-	bool superimposing;
+	bool superimposing{false};
 
 	// --- methods ----------------------------------------------------
 

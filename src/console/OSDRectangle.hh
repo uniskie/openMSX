@@ -4,6 +4,7 @@
 #include "OSDImageBasedWidget.hh"
 #include "stl.hh"
 #include <array>
+#include <cstdint>
 #include <memory>
 
 namespace openmsx {
@@ -49,8 +50,10 @@ private:
 private:
 	std::string imageName;
 	gl::vec2 size, relSize;
-	float scale, borderSize, relBorderSize;
-	unsigned borderRGBA;
+	float scale = 1.0f;
+	float borderSize = 0.0f;
+	float  relBorderSize = 0.0f;
+	uint32_t borderRGBA = 0x000000ff;
 };
 
 } // namespace openmsx

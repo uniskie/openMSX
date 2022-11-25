@@ -92,15 +92,15 @@ public:
 	bool replace_IO_Out(byte port, MSXDevice* oldDevice, MSXDevice* newDevice);
 
 	/**
-	 * Devices can register themself in the MSX slotstructure.
+	 * Devices can register themself in the MSX slot structure.
 	 * This is normally done in their constructor. Once devices
 	 * are registered their readMem() / writeMem() methods can
 	 * get called.
 	 */
 	void registerMemDevice(MSXDevice& device,
-	                       int ps, int ss, int base, int size);
+	                       int ps, int ss, unsigned base, unsigned size);
 	void unregisterMemDevice(MSXDevice& device,
-	                         int ps, int ss, int base, int size);
+	                         int ps, int ss, unsigned base, unsigned size);
 
 	/** (Un)register global writes.
 	  * @see MSXDevice::globalWrite()
@@ -199,7 +199,7 @@ public:
 	}
 
 	/**
-	 * CPU uses this method to read 'extra' data from the databus
+	 * CPU uses this method to read 'extra' data from the data bus
 	 * used in interrupt routines. In MSX this returns always 255.
 	 */
 	[[nodiscard]] byte readIRQVector();
@@ -300,11 +300,11 @@ private:
 	                   MSXDevice*& devicePtr, MSXDevice* device);
 	void unregister_IO(MSXDevice*& devicePtr, MSXDevice* device);
 	void testRegisterSlot(MSXDevice& device,
-	                      int ps, int ss, int base, int size);
+	                      int ps, int ss, unsigned base, unsigned size);
 	void registerSlot(MSXDevice& device,
-	                  int ps, int ss, int base, int size);
+	                  int ps, int ss, unsigned base, unsigned size);
 	void unregisterSlot(MSXDevice& device,
-	                    int ps, int ss, int base, int size);
+	                    int ps, int ss, unsigned base, unsigned size);
 
 
 	void checkBreakPoints(std::pair<BreakPoints::const_iterator,
@@ -383,8 +383,8 @@ private:
 	  * was modified.
 	  * @param page page [0..3] to update visibleDevices for.
 	  */
-	void updateVisible(int page);
-	inline void updateVisible(int page, int ps, int ss);
+	void updateVisible(unsigned page);
+	inline void updateVisible(unsigned page, int ps, int ss);
 	void setSubSlot(byte primSlot, byte value);
 
 	std::unique_ptr<DummyDevice> dummyDevice;
@@ -417,7 +417,7 @@ private:
 	byte initialPrimarySlots;
 	std::array<unsigned, 4> expanded;
 
-	bool fastForward; // no need to serialize
+	bool fastForward = false; // no need to serialize
 
 	//  All CPUs (Z80 and R800) of all MSX machines share this state.
 	static inline BreakPoints breakPoints; // sorted on address

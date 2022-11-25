@@ -69,7 +69,6 @@ SettingsConfig::SettingsConfig(
 	, loadSettingsCommand(commandController)
 	, settingsManager(globalCommandController)
 	, hotKey(hotKey_)
-	, mustSaveSettings(false)
 {
 }
 
@@ -157,7 +156,7 @@ void SettingsConfig::saveSetting(std::string filename)
 
 	struct SettingsWriter {
 		SettingsWriter(std::string filename)
-			: file(filename, File::TRUNCATE)
+			: file(std::move(filename), File::TRUNCATE)
 		{
 			std::string_view header =
 				"<!DOCTYPE settings SYSTEM 'settings.dtd'>\n";
@@ -178,7 +177,7 @@ void SettingsConfig::saveSetting(std::string filename)
 		File file;
 	};
 
-	SettingsWriter writer(filename);
+	SettingsWriter writer(std::move(filename));
 	XMLOutputStream xml(writer);
 	xml.begin("settings");
 	{

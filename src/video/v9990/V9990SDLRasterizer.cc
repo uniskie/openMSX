@@ -7,6 +7,7 @@
 #include "RenderSettings.hh"
 #include "MemoryOps.hh"
 #include "enumerate.hh"
+#include "narrow.hh"
 #include "one_of.hh"
 #include "xrange.hh"
 #include "build-info.hh"
@@ -26,8 +27,6 @@ V9990SDLRasterizer<Pixel>::V9990SDLRasterizer(
 	, screen(screen_)
 	, workFrame(std::make_unique<RawFrame>(screen.getPixelFormat(), 1280, 240))
 	, renderSettings(display.getRenderSettings())
-	, displayMode(P1) // dummy value
-	, colorMode(PP)   //   avoid UMR
 	, postProcessor(std::move(postProcessor_))
 	, bitmapConverter(vdp, palette64, palette64_32768, palette256, palette256_32768, palette32768)
 	, p1Converter(vdp, palette64)
@@ -81,7 +80,7 @@ void V9990SDLRasterizer<Pixel>::frameStart()
 
 	// Center image on the window.
 
-	// In SDLLo, one window pixel represents 8 UC clockticks, so the
+	// In SDLLo, one window pixel represents 8 UC clock ticks, so the
 	// window = 320 * 8 UC ticks wide. In SDLHi, one pixel is 4 clock-
 	// ticks and the window 640 pixels wide -- same amount of UC ticks.
 	colZero = horTiming.blank + horTiming.border1 +
@@ -295,7 +294,7 @@ void V9990SDLRasterizer<Pixel>::preCalcPalettes()
 		// special case speeds up palette precalculation a lot.
 		std::array<int, 32> intensity;
 		for (auto [i, r] : enumerate(intensity)) {
-			r = int(255 * renderSettings.transformComponent(i / 31.0f));
+			r = narrow_cast<int>(255.0f * renderSettings.transformComponent(narrow<float>(i) / 31.0f));
 		}
 		for (auto [grb, col] : enumerate(palette32768)) {
 			col = screen.mapKeyedRGB255<Pixel>(gl::ivec3(
@@ -307,9 +306,11 @@ void V9990SDLRasterizer<Pixel>::preCalcPalettes()
 		for (auto g : xrange(32)) {
 			for (auto r : xrange(32)) {
 				for (auto b : xrange(32)) {
+					gl::vec3 rgb{narrow<float>(r),
+					             narrow<float>(g),
+					             narrow<float>(b)};
 					palette32768[(g << 10) + (r << 5) + b] =
-						screen.mapRGB(renderSettings.transformRGB(
-							gl::vec3(r, g, b) / 31.0f));
+						screen.mapRGB(renderSettings.transformRGB(rgb / 31.0f));
 				}
 			}
 		}
@@ -323,7 +324,7 @@ void V9990SDLRasterizer<Pixel>::preCalcPalettes()
 			for (auto b : xrange(4)) {
 				auto idx256 = (g << 5) | (r << 2) | b;
 				auto idx32768 = (mapRG[g] << 10) | (mapRG[r] << 5) | mapB[b];
-				palette256_32768[idx256] = idx32768;
+				palette256_32768[idx256] = narrow<int16_t>(idx32768);
 				palette256[idx256] = palette32768[idx32768];
 			}
 		}
@@ -337,7 +338,7 @@ void V9990SDLRasterizer<Pixel>::setPalette(int index,
                                            byte r, byte g, byte b, bool ys)
 {
 	auto idx32768 = ((g & 31) << 10) | ((r & 31) << 5) | ((b & 31) << 0);
-	palette64_32768[index & 63] = idx32768; // TODO what with ys?
+	palette64_32768[index & 63] = narrow<int16_t>(idx32768); // TODO what with ys?
 	palette64[index & 63] = ys ? screen.getKeyColor<Pixel>()
 	                           : palette32768[idx32768];
 }

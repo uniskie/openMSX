@@ -8,6 +8,7 @@
 #include "components.hh"
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #if COMPONENT_GL
 #include "GLImage.hh"
@@ -19,8 +20,6 @@ namespace openmsx {
 
 OSDRectangle::OSDRectangle(Display& display_, const TclObject& name_)
 	: OSDImageBasedWidget(display_, name_)
-	, scale(1.0), borderSize(0.0), relBorderSize(0.0)
-	, borderRGBA(0x000000ff)
 {
 }
 
@@ -82,7 +81,7 @@ void OSDRectangle::setProperty(
 			invalidateLocal();
 		}
 	} else if (propName == "-borderrgba") {
-		unsigned newRGBA = value.getInt(interp);
+		uint32_t newRGBA = value.getInt(interp);
 		if (borderRGBA != newRGBA) {
 			borderRGBA = newRGBA;
 			invalidateLocal();

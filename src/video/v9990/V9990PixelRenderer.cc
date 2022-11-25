@@ -15,6 +15,7 @@
 #include "Reactor.hh"
 #include "RenderSettings.hh"
 #include "IntegerSetting.hh"
+#include "narrow.hh"
 #include "one_of.hh"
 #include "unreachable.hh"
 #include <cassert>
@@ -30,11 +31,6 @@ V9990PixelRenderer::V9990PixelRenderer(V9990& vdp_)
 	, rasterizer(vdp.getReactor().getDisplay().
 	                getVideoSystem().createV9990Rasterizer(vdp))
 {
-	frameSkipCounter = 999; // force drawing of frame;
-	finishFrameDuration = 0;
-	drawFrame = false; // don't draw before frameStart is called
-	prevDrawFrame = false;
-
 	reset(vdp.getMotherBoard().getCurrentTime());
 
 	renderSettings.getMaxFrameSkipSetting().attach(*this);
@@ -115,7 +111,7 @@ void V9990PixelRenderer::frameEnd(EmuTime::param time)
 		auto time1 = Timer::getTime();
 		rasterizer->frameEnd(time);
 		auto time2 = Timer::getTime();
-		auto current = time2 - time1;
+		auto current = narrow_cast<float>(time2 - time1);
 		const float ALPHA = 0.2f;
 		finishFrameDuration = finishFrameDuration * (1 - ALPHA) +
 		                      current * ALPHA;

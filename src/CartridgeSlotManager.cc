@@ -7,10 +7,11 @@
 #include "MSXCPUInterface.hh"
 #include "MSXRom.hh"
 #include "CliComm.hh"
-#include "unreachable.hh"
+#include "narrow.hh"
 #include "one_of.hh"
 #include "outer.hh"
 #include "ranges.hh"
+#include "unreachable.hh"
 #include "xrange.hh"
 #include <array>
 #include <cassert>
@@ -43,9 +44,9 @@ void CartridgeSlotManager::Slot::getMediaInfo(TclObject& result)
 	if (config) {
 		if (config->getType() == HardwareConfig::Type::EXTENSION) {
 			// A 'true' extension, as specified in an XML file
-			result.addDictKeyValue("target", config->getConfigName());
-			result.addDictKeyValue("devicename", config->getName());
-			result.addDictKeyValue("type", "extension");
+			result.addDictKeyValues("target", config->getConfigName(),
+			                        "devicename", config->getName(),
+			                        "type", "extension");
 		} else {
 			assert(config->getType() == HardwareConfig::Type::ROM);
 			result.addDictKeyValue("type", "rom");
@@ -58,7 +59,7 @@ void CartridgeSlotManager::Slot::getMediaInfo(TclObject& result)
 			try {
 				const auto& patchesElem = romConfig.getChild("patches");
 				for (const auto* p : patchesElem.getChildren("ips")) {
-					patches.addListElement(string(p->getData()));
+					patches.addListElement(p->getData());
 				}
 			} catch (MSXException&) {} // no patches found, no prob
 			result.addDictKeyValue("patches", patches);
@@ -67,7 +68,7 @@ void CartridgeSlotManager::Slot::getMediaInfo(TclObject& result)
 			}
 		}
 	} else {
-		result.addDictKeyValue("target", string{});
+		result.addDictKeyValue("target", std::string_view{});
 	}
 }
 
@@ -119,24 +120,26 @@ void CartridgeSlotManager::createExternalSlot(int ps, int ss)
 	if (isExternalSlot(ps, ss, false)) {
 		throw MSXException("Slot is already an external slot.");
 	}
-	for (auto slot : xrange(MAX_SLOTS)) {
-		if (!slots[slot].exists()) {
-			slots[slot].ps = ps;
-			slots[slot].ss = ss;
+	for (auto slotNum : xrange(MAX_SLOTS)) {
+		auto& slot = slots[slotNum];
+		if (!slot.exists()) {
+			slot.ps = ps;
+			slot.ss = ss;
 
 			std::array slotName = {'c','a','r','t','X','\0'};
-			slotName[4] = 'a' + slot;
-			motherBoard.registerMediaInfoProvider(slotName.data(), slots[slot]);
+			slotName[4] = narrow<char>('a' + slotNum);
 			motherBoard.getMSXCliComm().update(
 				CliComm::HARDWARE, slotName.data(), "add");
-			slots[slot].cartCommand.emplace(
+			slot.cartCommand.emplace(
 				*this, motherBoard, slotName.data());
+			motherBoard.registerMediaInfo(
+				slot.cartCommand->getName(), slot);
 
 			std::array extName = {'e','x','t','X','\0'};
-			extName[3] = 'a' + slot;
-			slots[slot].extCommand.emplace(
+			extName[3] = narrow<char>('a' + slotNum);
+			slot.extCommand.emplace(
 				motherBoard, extName.data());
-			slots[slot].cpuInterface = &motherBoard.getCPUInterface();
+			slot.cpuInterface = &motherBoard.getCPUInterface();
 			return;
 		}
 	}
@@ -144,7 +147,7 @@ void CartridgeSlotManager::createExternalSlot(int ps, int ss)
 }
 
 
-int CartridgeSlotManager::getSlot(int ps, int ss) const
+unsigned CartridgeSlotManager::getSlot(int ps, int ss) const
 {
 	for (auto slot : xrange(MAX_SLOTS)) {
 		if (slots[slot].exists() &&
@@ -165,7 +168,7 @@ void CartridgeSlotManager::testRemoveExternalSlot(
 void CartridgeSlotManager::testRemoveExternalSlot(
 	int ps, int ss, const HardwareConfig& allowed) const
 {
-	int slot = getSlot(ps, ss);
+	auto slot = getSlot(ps, ss);
 	if (slots[slot].used(&allowed)) {
 		throw MSXException("Slot still in use.");
 	}
@@ -178,14 +181,14 @@ void CartridgeSlotManager::removeExternalSlot(int ps)
 
 void CartridgeSlotManager::removeExternalSlot(int ps, int ss)
 {
-	int slot = getSlot(ps, ss);
-	assert(!slots[slot].used());
-	const auto& slotName = slots[slot].cartCommand->getName();
-	motherBoard.unregisterMediaInfoProvider(slotName);
+	auto slotNum = getSlot(ps, ss);
+	auto& slot = slots[slotNum];
+	assert(!slot.used());
+	motherBoard.unregisterMediaInfo(slot);
 	motherBoard.getMSXCliComm().update(
-		CliComm::HARDWARE, slotName, "remove");
-	slots[slot].cartCommand.reset();
-	slots[slot].extCommand.reset();
+		CliComm::HARDWARE, slot.cartCommand->getName(), "remove");
+	slot.cartCommand.reset();
+	slot.extCommand.reset();
 }
 
 void CartridgeSlotManager::getSpecificSlot(unsigned slot, int& ps, int& ss) const
@@ -255,7 +258,7 @@ int CartridgeSlotManager::allocateAnyPrimarySlot(const HardwareConfig& hwConfig)
 void CartridgeSlotManager::freePrimarySlot(
 		int ps, const HardwareConfig& hwConfig)
 {
-	int slot = getSlot(ps, -1);
+	auto slot = getSlot(ps, -1);
 	assert(slots[slot].config == &hwConfig); (void)hwConfig;
 	assert(slots[slot].useCount == 1);
 	slots[slot].config = nullptr;
@@ -325,31 +328,31 @@ CartridgeSlotManager::CartCmd::CartCmd(
 }
 
 const HardwareConfig* CartridgeSlotManager::CartCmd::getExtensionConfig(
-	std::string_view cartname)
+	std::string_view cartName)
 {
-	if (cartname.size() != 5) {
+	if (cartName.size() != 5) {
 		throw SyntaxError();
 	}
-	int slot = cartname[4] - 'a';
+	int slot = cartName[4] - 'a';
 	return manager.slots[slot].config;
 }
 
 void CartridgeSlotManager::CartCmd::execute(
 	std::span<const TclObject> tokens, TclObject& result, EmuTime::param /*time*/)
 {
-	std::string_view cartname = tokens[0].getString();
+	std::string_view cartName = tokens[0].getString();
 
 	// strip namespace qualification
 	//  TODO investigate whether it's a good idea to strip namespace at a
 	//       higher level for all commands. How does that interact with
 	//       the event recording feature?
-	if (auto pos = cartname.rfind("::"); pos != std::string_view::npos) {
-		cartname = cartname.substr(pos + 2);
+	if (auto pos = cartName.rfind("::"); pos != std::string_view::npos) {
+		cartName = cartName.substr(pos + 2);
 	}
 	if (tokens.size() == 1) {
 		// query name of cartridge
-		const auto* extConf = getExtensionConfig(cartname);
-		result.addListElement(tmpStrCat(cartname, ':'),
+		const auto* extConf = getExtensionConfig(cartName);
+		result.addListElement(tmpStrCat(cartName, ':'),
 		                      extConf ? extConf->getName() : string{});
 		if (!extConf) {
 			TclObject options = makeTclList("empty");
@@ -362,10 +365,10 @@ void CartridgeSlotManager::CartCmd::execute(
 				"Warning: use of '-eject' is deprecated, "
 				"instead use the 'eject' subcommand";
 		}
-		if (const auto* extConf = getExtensionConfig(cartname)) {
+		if (const auto* extConf = getExtensionConfig(cartName)) {
 			try {
 				manager.motherBoard.removeExtension(*extConf);
-				cliComm.update(CliComm::MEDIA, cartname, {});
+				cliComm.update(CliComm::MEDIA, cartName, {});
 			} catch (MSXException& e) {
 				throw CommandException("Can't remove cartridge: ",
 				                       e.getMessage());
@@ -373,8 +376,8 @@ void CartridgeSlotManager::CartCmd::execute(
 		}
 	} else {
 		// insert cartridge
-		auto slotname = (cartname.size() == 5)
-			? cartname.substr(4, 1)
+		auto slotName = (cartName.size() == 5)
+			? cartName.substr(4, 1)
 			: "any";
 		size_t extensionNameToken = 1;
 		if (tokens[1] == "insert") {
@@ -386,18 +389,18 @@ void CartridgeSlotManager::CartCmd::execute(
 		}
 		auto options = tokens.subspan(extensionNameToken + 1);
 		try {
-			std::string_view romname = tokens[extensionNameToken].getString();
+			std::string_view romName = tokens[extensionNameToken].getString();
 			auto extension = HardwareConfig::createRomConfig(
-				manager.motherBoard, string(romname), string(slotname), options);
-			if (slotname != "any") {
-				if (const auto* extConf = getExtensionConfig(cartname)) {
+				manager.motherBoard, string(romName), string(slotName), options);
+			if (slotName != "any") {
+				if (const auto* extConf = getExtensionConfig(cartName)) {
 					// still a cartridge inserted, (try to) remove it now
 					manager.motherBoard.removeExtension(*extConf);
 				}
 			}
 			result = manager.motherBoard.insertExtension(
 				"ROM", std::move(extension));
-			cliComm.update(CliComm::MEDIA, cartname, romname);
+			cliComm.update(CliComm::MEDIA, cartName, romName);
 		} catch (MSXException& e) {
 			throw CommandException(std::move(e).getMessage());
 		}

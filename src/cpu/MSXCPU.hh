@@ -122,7 +122,7 @@ public:
 	  */
 	[[nodiscard]] bool isM1Cycle(unsigned address) const;
 
-	/** See CPUCore::exitCPULoopsync() */
+	/** See CPUCore::exitCPULoopSync() */
 	void exitCPULoopSync();
 	/** See CPUCore::exitCPULoopAsync() */
 	void exitCPULoopAsync();
@@ -133,7 +133,7 @@ public:
 	/** Switch the Z80 clock freq. */
 	void setZ80Freq(unsigned freq);
 
-	void setInterface(MSXCPUInterface* interf);
+	void setInterface(MSXCPUInterface* interface);
 
 	void disasmCommand(Interpreter& interp,
 	                   std::span<const TclObject> tokens,
@@ -212,11 +212,11 @@ private:
 		void write(unsigned address, byte value) override;
 	} debuggable;
 
-	EmuTime reference;
-	bool z80Active;
-	bool newZ80Active;
+	EmuTime reference{EmuTime::zero()};
+	bool z80Active{true};
+	bool newZ80Active{true};
 
-	MSXCPUInterface* interface = nullptr; // only used for debug
+	MSXCPUInterface* interface{nullptr}; // only used for debug
 };
 SERIALIZE_CLASS_VERSION(MSXCPU, 2);
 

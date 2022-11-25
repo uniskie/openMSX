@@ -31,6 +31,7 @@ DEALINGS IN THE SOFTWARE.
 #define UTF8_UNCHECKED_HH
 
 #include "utf8_core.hh"
+#include "narrow.hh"
 #include "xrange.hh"
 #include <string_view>
 
@@ -64,7 +65,7 @@ octet_iterator append(uint32_t cp, octet_iterator result)
 template<typename octet_iterator>
 uint32_t next(octet_iterator& it)
 {
-	uint32_t cp = *it;
+	uint32_t cp = narrow_cast<unsigned char>(*it);
 	switch (utf8::internal::sequence_length(cp)) {
 	case 1:
 		break;
@@ -241,7 +242,7 @@ public:
 	} else {
 		e = end(utf8);
 	}
-	return std::string_view(&*b, e - b);
+	return {&*b, narrow<std::string_view::size_type>(e - b)};
 }
 
 } // namespace utf8::unchecked

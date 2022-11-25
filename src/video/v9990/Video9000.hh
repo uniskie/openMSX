@@ -30,8 +30,8 @@ public:
 	void serialize(Archive& ar, unsigned version);
 
 private:
-	void recalc();
-	void recalcVideoSource();
+	void recalculate();
+	void recalculateVideoSource();
 
 	// VideoSystemChangeListener
 	void preVideoSystemChange() noexcept override;
@@ -42,7 +42,7 @@ private:
 	void takeRawScreenShot(unsigned height, const std::string& filename) override;
 
 	// EventListener
-	int signalEvent(const Event& event) noexcept override;
+	int signalEvent(const Event& event) override;
 
 	// Observer<Setting>
 	void update(const Setting& setting) noexcept override;
@@ -51,10 +51,10 @@ private:
 	VideoSourceSetting& videoSourceSetting;
 	VDP* vdp;
 	V9990* v9990;
-	Layer* activeLayer;
-	PostProcessor* v99x8Layer;
-	PostProcessor* v9990Layer;
-	byte value;
+	Layer* activeLayer = nullptr;
+	PostProcessor* v99x8Layer = nullptr;
+	PostProcessor* v9990Layer = nullptr;
+	byte value = 0x10;
 };
 
 } // namespace openmsx

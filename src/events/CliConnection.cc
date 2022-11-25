@@ -104,7 +104,7 @@ static TemporaryString reply(std::string_view message, bool status)
 	                 XMLEscape(message), "</reply>\n");
 }
 
-int CliConnection::signalEvent(const Event& event) noexcept
+int CliConnection::signalEvent(const Event& event)
 {
 	assert(getType(event) == EventType::CLICOMMAND);
 	const auto& commandEvent = get<CliCommandEvent>(event);
@@ -275,7 +275,7 @@ SocketConnection::SocketConnection(CommandController& commandController_,
                                    EventDistributor& eventDistributor_,
                                    SOCKET sd_)
 	: CliConnection(commandController_, eventDistributor_)
-	, sd(sd_), established(false)
+	, sd(sd_)
 {
 }
 
@@ -336,7 +336,7 @@ void SocketConnection::output(std::string_view message_)
 	// std::span message = message_; // error with clang-15/libc++
 	std::span message{message_.begin(), message_.end()};
 	while (!message.empty()) {
-		int bytesSend;
+		ptrdiff_t bytesSend;
 		{
 			std::lock_guard<std::mutex> lock(sdMutex);
 			if (sd == OPENMSX_INVALID_SOCKET) return;

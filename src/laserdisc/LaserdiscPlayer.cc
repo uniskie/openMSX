@@ -113,23 +113,11 @@ LaserdiscPlayer::LaserdiscPlayer(
 	, laserdiscCommand(motherBoard.getCommandController(),
 		           motherBoard.getStateChangeDistributor(),
 		           motherBoard.getScheduler())
-	, sampleClock(EmuTime::zero())
-	, start(EmuTime::zero())
-	, muteLeft(false)
-	, muteRight(false)
-	, remoteState(REMOTE_IDLE)
-	, remoteLastEdge(EmuTime::zero())
-	, remoteLastBit(false)
-	, remoteProtocol(IR_NONE)
-	, ack(false)
-	, seeking(false)
-	, playerState(PLAYER_STOPPED)
 	, autoRunSetting(
 		motherBoard.getCommandController(), "autorunlaserdisc",
 		"automatically try to run Laserdisc", true)
 	, loadingIndicator(
 		motherBoard.getReactor().getGlobalSettings().getThrottleManager())
-	, sampleReads(0)
 {
 	motherBoard.getCassettePort().setLaserdiscPlayer(this);
 
@@ -140,7 +128,7 @@ LaserdiscPlayer::LaserdiscPlayer(
 	reactor.getEventDistributor().registerEventListener(EventType::BOOT, *this);
 	scheduleDisplayStart(getCurrentTime());
 
-	static XMLElement* xml = [] {
+	static const XMLElement* xml = [] {
 		auto& doc = XMLDocument::getStaticDocument();
 		auto* result = doc.allocateElement(string(getLaserDiscPlayerName()).c_str());
 		result->setFirstChild(doc.allocateElement("sound"))
@@ -149,7 +137,7 @@ LaserdiscPlayer::LaserdiscPlayer(
 	}();
 	registerSound(DeviceConfig(hwConf, *xml));
 
-	motherBoard.registerMediaInfoProvider(string(getLaserDiscPlayerName()), *this);
+	motherBoard.registerMediaInfo(getLaserDiscPlayerName(), *this);
 	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, getLaserDiscPlayerName(), "add");
 }
 
@@ -159,7 +147,7 @@ LaserdiscPlayer::~LaserdiscPlayer()
 	Reactor& reactor = motherBoard.getReactor();
 	reactor.getDisplay().detach(*this);
 	reactor.getEventDistributor().unregisterEventListener(EventType::BOOT, *this);
-	motherBoard.unregisterMediaInfoProvider(string(getLaserDiscPlayerName()));
+	motherBoard.unregisterMediaInfo(*this);
 	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, getLaserDiscPlayerName(), "remove");
 }
 
@@ -668,7 +656,7 @@ void LaserdiscPlayer::setImageName(string newImage, EmuTime::param time)
 	}
 }
 
-int LaserdiscPlayer::signalEvent(const Event& event) noexcept
+int LaserdiscPlayer::signalEvent(const Event& event)
 {
 	if (getType(event) == EventType::BOOT && video) {
 		autoRun();
@@ -776,7 +764,7 @@ float LaserdiscPlayer::getAmplificationFactorImpl() const
 	return 2.0f;
 }
 
-bool LaserdiscPlayer::updateBuffer(unsigned length, float* buffer,
+bool LaserdiscPlayer::updateBuffer(size_t length, float* buffer,
                                    EmuTime::param time)
 {
 	bool result = ResampledSoundDevice::updateBuffer(length, buffer, time);
@@ -1127,7 +1115,7 @@ void LaserdiscPlayer::serialize(Archive& ar, unsigned version)
 		             "SampleClock", sampleClock);
 
 		if constexpr (Archive::IS_LOADER) {
-			// If the samplerate differs, adjust accordingly
+			// If the sample rate differs, adjust accordingly
 			if (video->getSampleRate() != sampleClock.getFreq()) {
 				uint64_t pos = playingFromSample;
 
