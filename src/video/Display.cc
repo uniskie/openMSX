@@ -203,7 +203,14 @@ bool Display::signalEvent(const Event& event)
 
 std::string Display::getWindowTitle()
 {
+#if defined(FOR_MAMI)
+	auto title = strCat(Version::full(), " for MAmidiMEmo");
+	if (!Version::RELEASE) {
+		strAppend(title, " [", BUILD_FLAVOUR, ']');
+	}
+#else
 	auto title = strCat(Version::full(), strCat_if(!Version::RELEASE, " [", BUILD_FLAVOUR, ']'));
+#endif
 	if (MSXMotherBoard* motherboard = reactor.getMotherBoard()) {
 		if (const HardwareConfig* machine = motherboard->getMachineConfig()) {
 			const auto& config = machine->getConfig();
