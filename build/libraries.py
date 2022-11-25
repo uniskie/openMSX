@@ -534,6 +534,13 @@ class ZLib(Library):
 			return None if version is None else version.strip('"')
 		return execute
 
+# --> FOR_MAMI
+class Rpclib(Library):
+	libName = 'rpclib'
+	makeName = 'RPCLIB'
+	header = '<rpclib.h>'
+# <-- FOR_MAMI
+
 # Build a dictionary of libraries using introspection.
 librariesByName = {
 	obj.makeName: obj
