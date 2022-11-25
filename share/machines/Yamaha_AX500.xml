@@ -134,7 +134,7 @@
     <primary slot="3">
 
       <secondary slot="0">
-        <ROM id="Painter &amp; Graphic BIOS">
+        <ROM id="Painter & Graphic BIOS">
           <mem base="0x0000" size="0x10000"/>
           <rom>
             <sha1>80872d997d18e1a633e70b9da35a0d28113073e5</sha1>
@@ -144,7 +144,7 @@
       </secondary>
 
       <secondary slot="1">
-        <ROM id="MSX Sub ROM">
+        <ROM id="MSX2 subROM">
           <mem base="0x0000" size="0x4000"/>
           <rom>
             <sha1>7f86af13e81259a0db8f70d8a7e026fb918ee652</sha1>

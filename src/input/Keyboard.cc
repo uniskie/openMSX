@@ -867,6 +867,16 @@ void Keyboard::signalMSXEvent(const Event& event,
 {
 	if (getType(event) == one_of(EventType::KEY_DOWN, EventType::KEY_UP)) {
 		const auto& keyEvent = get_event<KeyEvent>(event);
+		// --> disable Windows IME trouble
+		//     from t.hara fix 09/26th/2024
+	#if defined(_WIN32)
+		if (keyEvent.getSdlEvent().key.keysym.scancode == SDL_SCANCODE_GRAVE) {
+			// Ignore Japanexe ZEN/HAN key
+			// This key can not handle KEYUP event.
+			return;
+		}
+	#endif
+		// <--
 		if (keyEvent.getRepeat()) return;
 		// Ignore possible console on/off events:
 		// we do not re-scan the keyboard since this may lead to
@@ -1013,12 +1023,6 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 		      keyEvent.getScanCode(),
 		      SDL_GetScancodeName(keyEvent.getScanCode()),
 		      key.toString().c_str());
-	}
-
-	// To work around a Japanese keyboard Kanji mode bug. (Multi-character
-	// input makes a keydown event without keyrelease message.)
-	if (keyEvent.getScanCode() == SDL_SCANCODE_UNKNOWN) {
-		return false;
 	}
 
 	// Process dead keys.
