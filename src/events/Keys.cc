@@ -676,7 +676,8 @@ std::pair<KeyCode, KeyCode> getCodes(SDL_Keycode sdlkeycode, Uint16 mod, SDL_Sca
 		switch (sdlscancode) {
 		// Keys found on Japanese keyboards:
 		case 49:
-			key = K_ZENKAKU_HENKAKU;
+		case SDL_SCANCODE_LANG5: // = 148, /**< Zenkaku/Hankaku */
+				key = K_ZENKAKU_HENKAKU;
 			break;
 		case 129:
 			key = K_HENKAN_MODE;

@@ -7,11 +7,6 @@
 #include "openmsx.hh"
 #include <array>
 
-//HACK: MAmi
-#include "rpc/server.h"
-#include "rpc/client.h"
-#include <WinSock2.h>
-
 namespace openmsx {
 
 class SCC final : public ResampledSoundDevice
@@ -47,7 +42,6 @@ private:
 	[[nodiscard]] byte getFreqVol(unsigned address) const;
 
 private:
-	rpc::client* m_rpcClient; //HACK: MAmi
 	static constexpr int CLOCK_FREQ = 3579545;
 
 	struct Debuggable final : SimpleDebuggable {

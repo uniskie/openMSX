@@ -8,11 +8,6 @@
 #include "openmsx.hh"
 #include <array>
 
-//HACK: MAmi
-#include "rpc/server.h"
-#include "rpc/client.h"
-#include <WinSock2.h>
-
 namespace openmsx {
 
 class AY8910Periphery;
@@ -175,7 +170,6 @@ private:
 	void wrtReg(unsigned reg, byte value, EmuTime::param time);
 
 private:
-	rpc::client* m_rpcClient;	//HACK: MAmi
 	AY8910Periphery& periphery;
 
 	struct Debuggable final : SimpleDebuggable {

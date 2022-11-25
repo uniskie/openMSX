@@ -67,25 +67,13 @@ YM2413::YM2413(const std::string& name_, const DeviceConfig& config)
 	: ResampledSoundDevice(config.getMotherBoard(), name_, "MSX-MUSIC", 9 + 5, INPUT_RATE, false)
 	, core(createCore(config))
 	, debuggable(config.getMotherBoard(), getName())
-	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	registerSound(config);
-
-	//HACK: MAmi
-	try {
-		m_rpcClient = new rpc::client("localhost", 30000);
-	} catch (...) {
-		// pass through
-	}
 }
 
 YM2413::~YM2413()
 {
 	unregisterSound();
-
-	//HACK: MAmi
-	if (m_rpcClient != NULL)
-		m_rpcClient->~client();
 }
 
 void YM2413::reset(EmuTime::param time)
@@ -96,23 +84,6 @@ void YM2413::reset(EmuTime::param time)
 
 void YM2413::writePort(bool port, byte value, EmuTime::param time)
 {
-	if (port == 0)
-	{
-		address = value;
-	}else 
-	{
-		//HACK: MAmi
-		try {
-			if (m_rpcClient) 
-			{
-				//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
-				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)address, (unsigned int)value);
-			}
-		} catch (...) {
-			// pass through
-		}
-	}
-
 	updateStream(time);
 
 	auto [integral, fractional] = getEmuClock().getTicksTillAsIntFloat(time);
@@ -125,10 +96,6 @@ void YM2413::writePort(bool port, byte value, EmuTime::param time)
 
 void YM2413::pokeReg(byte reg, byte value, EmuTime::param time)
 {
-	//HACK: MAmi
-	//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
-	m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg, (unsigned int)value);
-
 	updateStream(time);
 	core->pokeReg(reg, value);
 }

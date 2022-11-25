@@ -125,30 +125,17 @@ SCC::SCC(const std::string& name_, const DeviceConfig& config,
 	, debuggable(config.getMotherBoard(), getName())
 	, deformTimer(time)
 	, currentChipMode(mode)
-	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	// Make valgrind happy
 	ranges::fill(orgPeriod, 0);
 
 	powerUp(time);
 	registerSound(config);
-
-	//HACK: MAmi
-	try {
-		m_rpcClient = new rpc::client("localhost", 30000);
-	} catch (...) {
-		// pass through
-	}
-
 }
 
 SCC::~SCC()
 {
 	unregisterSound();
-
-	//HACK: MAmi
-	if (m_rpcClient != NULL)
-		m_rpcClient->~client();
 }
 
 void SCC::powerUp(EmuTime::param time)
@@ -297,20 +284,6 @@ byte SCC::getFreqVol(unsigned address) const
 
 void SCC::writeMem(byte address, byte value, EmuTime::param time)
 {
-	//HACK: MAmi
-	try {
-		if (m_rpcClient)
-		{
-			//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
-			if(currentChipMode != SCC_plusmode)
-				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)address, (unsigned int)value);
-			else
-				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)(0x100 + address), (unsigned int)value);
-		}
-	} catch (...) {
-		// pass through
-	}
-
 	updateStream(time);
 
 	switch (currentChipMode) {

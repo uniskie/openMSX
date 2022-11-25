@@ -493,7 +493,6 @@ AY8910::AY8910(const std::string& name_, AY8910Periphery& periphery_,
 	, isAY8910(checkAY8910(config))
 	, ignorePortDirections(config.getChildDataAsBool("ignorePortDirections", true))
 	, detuneInitialized(false) // (lazily) initialize detune stuff
-	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	update(vibratoPercent);
 
@@ -506,13 +505,6 @@ AY8910::AY8910(const std::string& name_, AY8910Periphery& periphery_,
 	// only attach once all initialization is successful
 	vibratoPercent.attach(*this);
 	detunePercent .attach(*this);
-
-	//HACK: MAmi
-	try {
-		m_rpcClient = new rpc::client("localhost", 30000);
-	} catch (...) {
-		// pass through
-	}
 }
 
 AY8910::~AY8910()
@@ -521,10 +513,6 @@ AY8910::~AY8910()
 	detunePercent .detach(*this);
 
 	unregisterSound();
-
-	//HACK: MAmi
-	if (m_rpcClient != NULL)
-		m_rpcClient->~client();
 }
 
 void AY8910::reset(EmuTime::param time)
@@ -595,17 +583,6 @@ void AY8910::writeRegister(unsigned reg, byte value, EmuTime::param time)
 }
 void AY8910::wrtReg(unsigned reg, byte value, EmuTime::param time)
 {
-	//HACK: MAmi
-	try  {
-		if (m_rpcClient)
-		{
-			//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
-			m_rpcClient->async_call("DirectAccessToChip", (unsigned char)11, (unsigned char)0, (unsigned int)reg, (unsigned int)value);
-		}
-	} catch(...) {
-		// pass through
-	}
-
 	// Warn/force port directions
 	if (reg == AY_ENABLE) {
 		if (value & PORT_A_DIRECTION) {

@@ -8,11 +8,6 @@
 #include <memory>
 #include <string>
 
-//HACK: MAmi
-#include "rpc/server.h"
-#include "rpc/client.h"
-#include <WinSock2.h>
-
 namespace openmsx {
 
 class YM2413Core;
@@ -38,8 +33,6 @@ private:
 
 private:
 	const std::unique_ptr<YM2413Core> core;
-	rpc::client* m_rpcClient;	//HACK: MAmi
-	byte address;
 
 	struct Debuggable final : SimpleDebuggable {
 		Debuggable(MSXMotherBoard& motherBoard, const std::string& name);
