@@ -9,6 +9,7 @@ std::string Version::full()
 {
 	std::string result = strCat("openMSX ", VERSION);
 	if constexpr (!RELEASE) strAppend(result, '-', REVISION);
+	
 	return result;
 }
 

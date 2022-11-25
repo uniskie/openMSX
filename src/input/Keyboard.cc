@@ -1014,6 +1014,7 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 		      SDL_GetScancodeName(keyEvent.getScanCode()),
 		      key.toString().c_str());
 	}
+#endif // KEYTEST
 
 	// To work around a Japanese keyboard Kanji mode bug. (Multi-character
 	// input makes a keydown event without keyrelease message.)

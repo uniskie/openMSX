@@ -283,6 +283,9 @@ const std::string& ImGuiMedia::getTestResult(ExtensionInfo& info)
 				// Non C-BIOS machine (see below) might e.g.
 				// generate warnings about conflicting IO ports.
 				mb->getMSXCliComm().setSuppressMessages(true);
+			#if defined(FOR_MAMI)
+				mb->setTestMode(true);
+			#endif
 				try {
 					mb->loadMachine("C-BIOS_MSX1");
 				} catch (MSXException& e1) {
