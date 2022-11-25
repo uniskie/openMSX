@@ -344,6 +344,13 @@ bool MSXMotherBoard::hasToshibaEngine() const
 		   devices.findChild("T9769") != nullptr;
 }
 
+#if defined(FOR_MAMI)
+void MSXMotherBoard::setTestMode(bool testMode_)
+{
+	testMode = testMode_;
+}
+#endif
+
 string MSXMotherBoard::loadMachine(const string& machine)
 {
 	assert(machineName.empty());

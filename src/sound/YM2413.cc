@@ -11,6 +11,9 @@
 #include "outer.hh"
 #include <cmath>
 #include <memory>
+#if defined(FOR_MAMI)
+#include "MSXMotherBoard.hh"
+#endif
 
 namespace openmsx {
 
@@ -70,11 +73,28 @@ YM2413::YM2413(const std::string& name_, const DeviceConfig& config)
 	, debuggable(config.getMotherBoard(), getName())
 {
 	registerSound(config);
+
+#if defined(FOR_MAMI)
+	//HACK: MAmi
+	if (!config.getMotherBoard().isTest()) {
+	try {
+		m_rpcClient = new rpc::client("localhost", 30000);
+	} catch (...) {
+		// pass through
+	}
+	}
+#endif
 }
 
 YM2413::~YM2413()
 {
 	unregisterSound();
+
+#if defined(FOR_MAMI)
+	//HACK: MAmi
+	if (m_rpcClient != nullptr)
+		m_rpcClient->~client();
+#endif
 }
 
 void YM2413::reset(EmuTime::param time)
@@ -85,6 +105,22 @@ void YM2413::reset(EmuTime::param time)
 
 void YM2413::writePort(bool port, uint8_t value, EmuTime::param time)
 {
+#if defined(FOR_MAMI)
+	//HACK: MAmi
+	if (port == 0)	{
+		reg_address = value;
+	} else if( 0 <= reg_address ) {
+		if (m_rpcClient && (m_rpcClient->get_connection_state() == rpc::client::connection_state::connected)) {
+			try {
+				//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
+				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg_address, (unsigned int)value);
+			} catch (...) {
+				// pass through
+			}
+		}
+	}
+#endif
+
 	updateStream(time);
 
 	auto [integral, fractional] = getEmuClock().getTicksTillAsIntFloat(time);
@@ -98,6 +134,14 @@ void YM2413::writePort(bool port, uint8_t value, EmuTime::param time)
 
 void YM2413::pokeReg(uint8_t reg, uint8_t value, EmuTime::param time)
 {
+#if defined(FOR_MAMI)
+	//HACK: MAmi
+	if (m_rpcClient && (m_rpcClient->get_connection_state() == rpc::client::connection_state::connected)) {
+		//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
+		m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg, (unsigned int)value);
+	}
+#endif
+
 	updateStream(time);
 	core->pokeReg(reg, value);
 }

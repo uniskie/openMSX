@@ -9,6 +9,13 @@
 #include <array>
 #include <cstdint>
 
+#if defined(FOR_MAMI)
+//HACK: MAmi
+#include "rpc/server.h"
+#include "rpc/client.h"
+#include <WinSock2.h>
+#endif
+
 namespace openmsx {
 
 class SCC final : public ResampledSoundDevice
@@ -47,6 +54,9 @@ private:
 	[[nodiscard]] uint8_t getFreqVol(unsigned address) const;
 
 private:
+#if defined(FOR_MAMI)
+	rpc::client* m_rpcClient = nullptr; //HACK: MAmi
+#endif
 	static constexpr int CLOCK_FREQ = 3579545;
 
 	struct Debuggable final : SimpleDebuggable {
