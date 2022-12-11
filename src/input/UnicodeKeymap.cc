@@ -53,10 +53,10 @@ namespace openmsx {
 	return KeyMatrixPosition(narrow_cast<uint8_t>(*rowCol));
 }
 
-UnicodeKeymap::UnicodeKeymap(string_view keyboardType)
+UnicodeKeymap::UnicodeKeymap(string_view extension)
 {
 	auto filename = systemFileContext().resolve(
-		tmpStrCat("unicodemaps/unicodemap.", keyboardType));
+		tmpStrCat("keyboard_info/unicodemap.", extension));
 	try {
 		File file(filename);
 		auto buf = file.mmap();
