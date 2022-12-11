@@ -297,6 +297,35 @@ static constexpr std::array keyTabs = {
   }
 };
 
+static std::string getKeyboardType(const DeviceConfig& config, Keyboard::MatrixType matrix)
+{
+	// In the (near?) future all machine configs should have a
+	// <keyboard_type> tag. But keep supporting the default value for
+	// backwards compatibility with old savestates.
+	std::string keyboardType(
+		config.getChildData("keyboard_type", defaultKeymapForMatrix[matrix]));
+
+	// TODO in the (near?) future machine configs should NOT have
+	// <has_keypad> or <has_yesno_key> tags anymore. But to support old
+	// savestates we still parse these tags (they now alter the value of
+	// the <keyboard_type> tag).
+
+	 // Note: the old meaning of a missing <has_keypad> tag was: "assume it
+	 // is present". That conflicts with our desire to make this tag
+	 // optional in the future. But luckily there weren't too many (old)
+	 // machine configs which were missing this tag.
+	if (config.getChildDataAsBool("has_keypad", false) &&
+	    (keyboardType.find("_numpad") == std::string::npos)) {
+		keyboardType += "_numpad";
+	}
+	if (config.getChildDataAsBool("has_yesno_keys", false) &&
+	    (keyboardType.find("_yesno") == std::string::npos)) {
+		keyboardType += "_yesno";
+	}
+
+	return keyboardType;
+}
+
 Keyboard::Keyboard(MSXMotherBoard& motherBoard,
                    Scheduler& scheduler_,
                    CommandController& commandController_,
@@ -321,8 +350,7 @@ Keyboard::Keyboard(MSXMotherBoard& motherBoard,
 	, keyboardSettings(commandController)
 	, msxKeyEventQueue(scheduler_, commandController.getInterpreter())
 	, keybDebuggable(motherBoard)
-	, keyboardInfo(config.getChildData(
-		"keyboard_type", defaultKeymapForMatrix[matrix]))
+	, keyboardInfo(getKeyboardType(config, matrix))
 	, hasKeypad(config.getChildDataAsBool("has_keypad", true))
 	, blockRow11(matrix == MATRIX_MSX
 		&& !config.getChildDataAsBool("has_yesno_keys", false))
