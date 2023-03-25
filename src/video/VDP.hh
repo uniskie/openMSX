@@ -204,7 +204,7 @@ public:
 	  *   In Graphic7 mode with YJK off, the range is [0..255].
 	  *   In other modes, the range is [0..15].
 	  */
-	[[nodiscard]] inline unsigned getBackgroundColor() const {
+	[[nodiscard]] inline byte getBackgroundColor() const {
 		byte reg7 = controlRegs[7];
 		if (displayMode.getByte() == DisplayMode::GRAPHIC7) {
 			return reg7;
@@ -988,6 +988,26 @@ private:
 		void write(unsigned address, byte value, EmuTime::param time) override;
 	} vramPointerDebug;
 
+	struct RegisterLatchStatusDebug final : SimpleDebuggable {
+		explicit RegisterLatchStatusDebug(VDP& vdp);
+		[[nodiscard]] byte read(unsigned address) override;
+	} registerLatchStatusDebug;
+
+	struct VramAccessStatusDebug final : SimpleDebuggable {
+		explicit VramAccessStatusDebug(VDP& vdp);
+		[[nodiscard]] byte read(unsigned address) override;
+	} vramAccessStatusDebug;
+
+	struct PaletteLatchStatusDebug final : SimpleDebuggable {
+		explicit PaletteLatchStatusDebug(VDP& vdp);
+		[[nodiscard]] byte read(unsigned address) override;
+	} paletteLatchStatusDebug;
+
+	struct DataLatchDebug final : SimpleDebuggable {
+		explicit DataLatchDebug(VDP& vdp);
+		[[nodiscard]] byte read(unsigned address) override;
+	} dataLatchDebug;
+
 	class Info : public InfoTopic {
 	public:
 		void execute(std::span<const TclObject> tokens,
@@ -1135,7 +1155,7 @@ private:
 	  * makes MSX2 registers inaccessible on MSX1,
 	  * instead the MSX1 registers are mirrored.
 	  */
-	int controlRegMask;
+	byte controlRegMask;
 
 	/** Mask on the values of control registers.
 	  * This saves a lot of masking when using the register values,
@@ -1202,6 +1222,14 @@ private:
 	  */
 	byte dataLatch;
 
+	/** Direction of VRAM access for reading or writing
+	  * Note: this variable is _only_ used for the 'VRAM access status' debuggable.
+	  *   The real VDP allows to setup a read/write VRAM address and then do the opposite
+	  *   out/in operation.
+	  * See the variables 'cpuVramData' and 'cpuVramReqIsRead' for more details.
+	  */
+	bool writeAccess;
+
 	/** Does the data latch have register data (port #99) stored?
 	  */
 	bool registerDataStored;
@@ -1263,7 +1291,7 @@ private:
 	MSXCPU& cpu;
 	const byte fixedVDPIOdelayCycles;
 };
-SERIALIZE_CLASS_VERSION(VDP, 9);
+SERIALIZE_CLASS_VERSION(VDP, 10);
 
 } // namespace openmsx
 

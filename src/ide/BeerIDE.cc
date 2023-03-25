@@ -2,6 +2,7 @@
 #include "IDEDeviceFactory.hh"
 #include "IDEDevice.hh"
 #include "GlobalSettings.hh"
+#include "narrow.hh"
 #include "serialize.hh"
 
 namespace openmsx {
@@ -66,7 +67,7 @@ byte BeerIDE::readA(EmuTime::param time)
 }
 byte BeerIDE::peekA(EmuTime::param /*time*/) const
 {
-	return (dataReg & 0xFF);
+	return narrow_cast<byte>(dataReg & 0xFF);
 }
 void BeerIDE::writeA(byte value, EmuTime::param /*time*/)
 {
@@ -80,7 +81,7 @@ byte BeerIDE::readB(EmuTime::param time)
 }
 byte BeerIDE::peekB(EmuTime::param /*time*/) const
 {
-	return (dataReg >> 8);
+	return narrow_cast<byte>(dataReg >> 8);
 }
 void BeerIDE::writeB(byte value, EmuTime::param /*time*/)
 {
@@ -106,7 +107,7 @@ nibble BeerIDE::peekC0(EmuTime::param /*time*/) const
 }
 void BeerIDE::writeC1(nibble value, EmuTime::param time)
 {
-	changeControl((controlReg & 0x0F) | (value << 4), time);
+	changeControl(byte((controlReg & 0x0F) | (value << 4)), time);
 }
 void BeerIDE::writeC0(nibble value, EmuTime::param time)
 {
@@ -131,7 +132,7 @@ void BeerIDE::changeControl(byte value, EmuTime::param time)
 		if (address == 0) {
 			device->writeData(dataReg, time);
 		} else {
-			device->writeReg(address, dataReg & 0xFF, time);
+			device->writeReg(address, narrow_cast<byte>(dataReg & 0xFF), time);
 		}
 		break;
 	default: // all (6) other cases, nothing

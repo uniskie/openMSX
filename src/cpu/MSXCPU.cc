@@ -25,7 +25,9 @@ MSXCPU::MSXCPU(MSXMotherBoard& motherboard_)
 		"CPU tracing on/off", false, Setting::DONT_SAVE)
 	, diHaltCallback(
 		motherboard.getCommandController(), "di_halt_callback",
-		"Tcl proc called when the CPU executed a DI/HALT sequence")
+		"Tcl proc called when the CPU executed a DI/HALT sequence",
+		"default_di_halt_callback",
+		Setting::SaveSetting::SAVE) // user must be able to override
 	, z80(std::make_unique<CPUCore<Z80TYPE>>(
 		motherboard, "z80", traceSetting,
 		diHaltCallback, EmuTime::zero()))
@@ -157,8 +159,11 @@ void MSXCPU::invalidateMemCacheSlot()
 
 void MSXCPU::updateVisiblePage(byte page, byte primarySlot, byte secondarySlot)
 {
+	assert(primarySlot < 4);
+	assert(secondarySlot < 4);
+
 	byte from = slots[page];
-	byte to = 4 * primarySlot + secondarySlot;
+	byte to = narrow<byte>(4 * primarySlot + secondarySlot);
 	slots[page] = to;
 
 	auto [cpuReadLines, cpuWriteLines] = z80Active ? z80->getCacheLines() : r800->getCacheLines();
@@ -470,9 +475,9 @@ byte MSXCPU::Debuggable::read(unsigned address)
 	case 24: return regs.getI();
 	case 25: return regs.getR();
 	case 26: return regs.getIM();
-	case 27: return 1 *  regs.getIFF1() +
-	                2 *  regs.getIFF2() +
-	                4 * (regs.getIFF1() && !regs.prevWasEI());
+	case 27: return byte(1 *  regs.getIFF1() +
+	                     2 *  regs.getIFF2() +
+	                     4 * (regs.getIFF1() && !regs.prevWasEI()));
 	default: UNREACHABLE; return 0;
 	}
 }

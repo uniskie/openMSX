@@ -63,6 +63,16 @@ V9990::V9990(const DeviceConfig& config)
 	, v9990PalDebug(*this)
 	, irq(getMotherBoard(), getName() + ".IRQ")
 	, display(getReactor().getDisplay())
+	, invalidRegisterReadCallback(getCommandController(),
+		"v9990_invalid_register_read_callback",
+		"Tcl proc to call when a write-only register was read from. "
+		"Input: register number (0-63)",
+                {}, Setting::SAVE)
+	, invalidRegisterWriteCallback(getCommandController(),
+		"v9990_invalid_register_write_callback",
+		"Tcl proc to call when a read-only register was written to. "
+		"Input: register number (0-63), 8-bit data",
+		{}, Setting::SAVE)
 	, vram(*this, getCurrentTime())
 	, cmdEngine(*this, getCurrentTime(), display.getRenderSettings())
 	, frameStartTime(getCurrentTime())
@@ -354,7 +364,7 @@ void V9990::writeIO(word port, byte val, EmuTime::param time)
 		case SYSTEM_CONTROL: {
 			// TODO investigate: does switching overscan mode
 			//      happen at next line or next frame
-			status = (status & 0xFB) | ((val & 1) << 2);
+			status = byte((status & 0xFB) | ((val & 1) << 2));
 			syncAtNextLine(syncSetMode, time);
 
 			bool newSystemReset = (val & 2) != 0;
@@ -364,7 +374,7 @@ void V9990::writeIO(word port, byte val, EmuTime::param time)
 					// Enter systemReset mode
 					//   Verified on real MSX: palette data
 					//   and VRAM content are NOT reset.
-					for (auto i : xrange(64)) {
+					for (auto i : xrange(byte(64))) {
 						writeRegister(i, 0, time);
 					}
 					// TODO verify IRQ behaviour
@@ -482,7 +492,7 @@ byte V9990::RegDebug::read(unsigned address)
 void V9990::RegDebug::write(unsigned address, byte value, EmuTime::param time)
 {
 	auto& v9990 = OUTER(V9990, v9990RegDebug);
-	v9990.writeRegister(address, value, time);
+	v9990.writeRegister(narrow<byte>(address), value, time);
 }
 
 // -------------------------------------------------------------------------
@@ -505,7 +515,7 @@ byte V9990::PalDebug::read(unsigned address)
 void V9990::PalDebug::write(unsigned address, byte value, EmuTime::param time)
 {
 	auto& v9990 = OUTER(V9990, v9990PalDebug);
-	v9990.writePaletteRegister(address, value, time);
+	v9990.writePaletteRegister(narrow<byte>(address), value, time);
 }
 
 // -------------------------------------------------------------------------
@@ -539,9 +549,11 @@ byte V9990::readRegister(byte reg, EmuTime::param time) const
 		} else {
 			word borderX = cmdEngine.getBorderX(time);
 			return (reg == CMD_PARAM_BORDER_X_0)
-			       ? (borderX & 0xFF) : (borderX >> 8);
+			       ? narrow_cast<byte>(borderX & 0xFF)
+			       : narrow_cast<byte>(borderX >> 8);
 		}
 	} else {
+		invalidRegisterReadCallback.execute(reg);
 		return 0xFF;
 	}
 }
@@ -568,6 +580,7 @@ void V9990::writeRegister(byte reg, byte val, EmuTime::param time)
 	assert(reg < 64);
 	if (!(regAccess[reg] & ALLOW_WRITE)) {
 		// register not writable
+		invalidRegisterWriteCallback.execute(reg, val);
 		return;
 	}
 	if (reg >= CMD_PARAM_SRC_ADDRESS_0) {

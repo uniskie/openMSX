@@ -3,6 +3,7 @@
 #include "File.hh"
 #include "FileContext.hh"
 #include "FileException.hh"
+#include "narrow.hh"
 #include "one_of.hh"
 #include "ranges.hh"
 #include "stl.hh"
@@ -87,6 +88,12 @@ UnicodeKeymap::UnicodeKeymap(string_view keyboardType)
 		auto buf = file.mmap();
 		parseUnicodeKeyMapFile(
 			string_view(reinterpret_cast<const char*>(buf.data()), buf.size()));
+		// TODO in the future we'll require the presence of
+		//      "MSX-Video-Characterset" in the keyboard information
+		//      file, then we don't need this fallback.
+		if (!msxChars.has_value()) {
+			msxChars.emplace("MSXVID.TXT");
+		}
 	} catch (FileException&) {
 		throw MSXException("Couldn't load unicode keymap file: ", filename);
 	}
@@ -175,10 +182,10 @@ void UnicodeKeymap::parseUnicodeKeyMapFile(string_view data)
 		if ((*rowcol & 0x0F) >= KeyMatrixPosition::NUM_COLS) {
 			throw MSXException("Too high column value in keymap file");
 		}
-		auto pos = KeyMatrixPosition(*rowcol);
+		auto pos = KeyMatrixPosition(narrow_cast<uint8_t>(*rowcol));
 
 		// Parse remaining tokens. It is an optional list of modifier keywords.
-		byte modMask = 0;
+		uint8_t modMask = 0;
 		while (true) {
 			token = nextToken(data);
 			if (token.empty()) {

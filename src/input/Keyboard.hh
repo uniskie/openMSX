@@ -58,6 +58,8 @@ public:
 
 	~Keyboard();
 
+	[[nodiscard]] const MsxChar2Unicode& getMsxChar2Unicode() const;
+
 	/** Returns a pointer to the current KeyBoard matrix
 	 */
 	[[nodiscard]] std::span<const uint8_t, KeyMatrixPosition::NUM_ROWS> getKeys() const;
@@ -94,7 +96,7 @@ private:
 	bool pressUnicodeByUser(
 			EmuTime::param time, UnicodeKeymap::KeyInfo keyInfo, unsigned unicode,
 			bool down);
-	int pressAscii(unsigned unicode, bool down);
+	uint8_t pressAscii(unsigned unicode, bool down);
 	void pressLockKeys(uint8_t lockKeysMask, bool down);
 	bool commonKeys(unsigned unicode1, unsigned unicode2);
 	void debug(const char* format, ...);

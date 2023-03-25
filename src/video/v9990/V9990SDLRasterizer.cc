@@ -256,6 +256,7 @@ void V9990SDLRasterizer<Pixel>::drawBxMode(
 
 	int lineStep = 1;
 	if (vdp.isEvenOddEnabled()) {
+		displayYA *= 2;
 		if (vdp.getEvenOdd()) {
 			++displayY;
 			++displayYA;
@@ -274,9 +275,8 @@ void V9990SDLRasterizer<Pixel>::drawBxMode(
 		// position of the borders into account, the display area
 		// plus 3 pixels cannot go beyond the end of the buffer.
 		unsigned y = scrollYBase + ((displayYA + scrollY) & rollMask);
-		auto dst = workFrame->getLineDirect<Pixel>(fromY).subspan(fromX);
-		bitmapConverter.convertLine(dst.subspan(displayWidth), x, y,
-		                            cursorY, drawSprites);
+		auto dst = workFrame->getLineDirect<Pixel>(fromY).subspan(fromX, displayWidth);
+		bitmapConverter.convertLine(dst, x, y, cursorY, drawSprites);
 		workFrame->setLineWidth(fromY, vdp.getLineWidth());
 		++fromY;
 		displayYA += lineStep;
@@ -309,8 +309,8 @@ void V9990SDLRasterizer<Pixel>::preCalcPalettes()
 					gl::vec3 rgb{narrow<float>(r),
 					             narrow<float>(g),
 					             narrow<float>(b)};
-					palette32768[(g << 10) + (r << 5) + b] =
-						screen.mapRGB(renderSettings.transformRGB(rgb / 31.0f));
+					palette32768[(g << 10) + (r << 5) + b] = Pixel(
+						screen.mapRGB(renderSettings.transformRGB(rgb / 31.0f)));
 				}
 			}
 		}
