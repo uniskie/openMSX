@@ -12,6 +12,8 @@
 #include "build-info.hh"
 #include <memory>
 
+#include "debugprint.h"
+
 namespace openmsx {
 
 InputEventGenerator::InputEventGenerator(CommandController& commandController,
@@ -96,12 +98,28 @@ void InputEventGenerator::poll()
 				if (unicode) { // possibly there are more characters
 					handleText(utf8);
 				}
+				DEBUGPRINT(false, L"TEXTINPUT '%c' - "
+					//"type:0x%08x, state:%d, "
+					"sym:0x%08x, mod:0x%04x, "
+					"scancode:0x%04x, %s\n",
+					unicode,
+					//prev->key.type, prev->key.state,
+					prev->key.keysym.sym, prev->key.keysym.mod,
+					prev->key.keysym.scancode,
+					SdlScanCodeString(prev->key.keysym.scancode)
+					);	::Sleep(0);
 				continue;
 			} else {
 				handle(*prev);
 			}
 		}
 		if (curr->type == SDL_KEYDOWN) {
+			DEBUGPRINT(false, L"KEYDOWN   - type:0x%08x, state:%d, scancode:0x%04x, sym:0x%08x, mod:0x%04x %s\n",
+				curr->key.type, curr->key.state,
+				curr->key.keysym.scancode, curr->key.keysym.sym, curr->key.keysym.mod,
+				SdlScanCodeString(curr->key.keysym.scancode)
+			);	::Sleep(0);
+
 			pending = true;
 			std::swap(curr, prev);
 		} else {
