@@ -133,7 +133,7 @@ void KeyJoystick::signalMSXEvent(const Event& event,
 		else if (key == right.getKey()) return JOY_RIGHT;
 		else if (key == trigA.getKey()) return JOY_BUTTONA;
 		else if (key == trigB.getKey()) return JOY_BUTTONB;
-		else                            return 0;
+		else                            return uint8_t(0);
 	};
 	visit(overloaded{
 		[&](const KeyDownEvent& e) { press   = getKey(e); },
@@ -165,7 +165,7 @@ void KeyJoystick::stopReplay(EmuTime::param time) noexcept
 	if (newStatus != status) {
 		uint8_t release = newStatus & ~status;
 		stateChangeDistributor.distributeNew<KeyJoyState>(
-			time, id, 0, release);
+			time, id, uint8_t(0), release);
 	}
 }
 

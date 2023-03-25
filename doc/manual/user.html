@@ -500,9 +500,10 @@ A: as disk image to use it.
 <h4><a id="diskmanagement">4.2.4 Managing Disk Images</a></h4>
 
 <p>
-openMSX has a special command with functionality to perform file
-imports and exports, with support for Sunrise harddisk images (FAT12 only) with partitions and normal
-disk images. Please see the separate manual for this, called
+openMSX has a special command with functionality to perform file imports and
+exports, with support for normal disk images, Sunrise IDE harddisk images (FAT12
+only) with partitions, and Nextor harddisk images (FAT12 and FAT16) with partitions.
+Please see the separate manual for this, called
 <a class="external" href="diskmanipulator.html">Using diskmanipulator</a>.
 </p>
 
@@ -586,7 +587,7 @@ configuration, in the form of a 100MB sized disk image. This is the default size
 not present, the file is created with this size. The image will end up in your openMSX user directory<code>/persistent/NAME/untitled1/IMAGENAME.dsk</code>, where NAME is the name of the extension used and IMAGENAME is a name that is configured in the extension's XML file (default <code>hd.dsk</code>).
 </p>
 
-<p>When using these extensions for the first time, one has to treat them as if they are real interfaces with a blank harddisk connected. How to initialise them depends on the type, it is advisable to read the manuals. The sections below give some hints. The <code><a class="external" href="diskmanipulator.html">diskmanipulator</a></code> may be helpful, but only supports hard disk images with a partition table format compatible with the Sunrise IDE at the moment.
+<p>When using these extensions for the first time, one has to treat them as if they are real interfaces with a blank harddisk connected. How to initialise them depends on the type, it is advisable to read the manuals. The sections below give some hints. The <code><a class="external" href="diskmanipulator.html">diskmanipulator</a></code> may be helpful, it supports hard disk images with both Sunrise IDE and Nextor compatible partition table formats.
 </p>
 
 <p>
@@ -659,22 +660,19 @@ set <a class="external" href="commands.html#power">power</a> off<br/>
 set <a class="external" href="commands.html#power">power</a> on
 </div>
 
-<p>Note that the diskmanipulator can only handle hard disk images that are compatible with the Sunrise IDE interface!</p>
-
 <p>
 As announced above, there is (limited) support for CD-ROM with the 'ide' extension. You can insert an ISO image in that virtual CD-ROM player with the <code>-cda</code> command line option and change it at run time with the <code><a class="external" href="commands.html#cd">cda</a></code> console command, all similar to the aforementioned <code><a class="external" href="commands.html#hd">hda</a></code> and <code><a class="external" href="commands.html#disk">diska</a></code> commands and options.
 </p>
 
 <h4><a id="beeride">4.4.2 Beer IDE</a></h4>
 
-<p>The Beer IDE interface, as brought to us by SOLID, is emulated by openMSX, too. This interfaces only offers a single device (no master and slave) and can only handle up to 5 partitions of 32MB. But the up side is that it doesn't need MSX-DOS2, and thus it can run on any MSX (with 64kB RAM to run MSX-DOS). Emulation of this interface is quite recent, so consider it experimental.</p>
+<p>The Beer IDE interface, as brought to us by SOLID, is emulated by openMSX, too. This interface only offers a single device (no master and slave) and can only handle up to 4 (version 1.9) or 5 (version 1.8) partitions of 32MB. But the upside is that it doesn't need MSX-DOS2, and thus it can run on any MSX (with 64kB RAM to run MSX-DOS). Emulation of this interface is quite recent, so consider it experimental.</p>
 
 <p>Usage is identical to using the Sunrise hard disk interface: you can use the <a class="external" href="commands.html#hd">hda</a> command and the matching command line parameter <code>-hda</code> to control which image will be used.</p>
 
-<p>By default, the image is 170MB, so that 5 partitions of 32MB fit easily. Firmware version 1.9RC1 is selected by default, because we could not get the 1.8 firmware to work: the MSXFDISK program didn't create partitions which actually worked with the 1.8 firmware. If you want to experiment with it, you can change the firmware to use by editing the extension file in <code>share/extensions/Beer_IDE.xml</code>.</p>
+<p>By default, the image is 128MB, so that it fits 4 partitions of 32MB. Firmware version 1.9RC1 is selected by default, because we could not get the 1.8 firmware to work: the MSXFDISK program didn't create partitions which actually worked with the 1.8 firmware. If you want to experiment with it, you can change the firmware to use by editing the extension file in <code>share/extensions/Beer_IDE.xml</code>.</p>
 
-<p>With the 1.9RC1 firmware, we were able to work with an existing harddisk image, partitioned with the Windows tools that come with that firmware. Using this firmware, you can also partly work with Sunrise IDE compatible hard disk images, so you can use diskmanipulator to create a hard disk image and to import and export to them. Be careful though, this has not been extensively tested. Always back-up your hard disk image before doing this, in case something goes wrong. Important note: the Sunrise partition format numbers partitions the other way around as what Beer IDE 1.9RC1 firmware expects. This also means that you can't boot from Sunrise IDE images (and thus also not from images created by diskmanipulator).
-</p>
+<p>With the 1.9RC1 firmware, you can use <code><a class="external" href="diskmanipulator.html">diskmanipulator</a></code> to create a hard disk image and import from and export to them. To get started, partition the default drive with <code>diskmanipulator partition hda -dos1 32M 32M 32M 32M</code>. Then import MSX-DOS system files onto the first partition using <code>diskmanipulator import hda1 &lt;host-path&gt;</code>, and now you should be able to boot into MSX-DOS.</p>
 
 <p>
 Unfortunately, the Beer IDE is hardly documented and the software is hard to find. So, it's for experts only!
@@ -710,7 +708,7 @@ To change the disk image of the LS-120 device, use the <code>lsa</code> (LS driv
 <p>Currently, by default, the first SD card is 8MB and the 2nd SD card is 100MB size. You can change these defaults by editing the extension file in <code>share/extensions/MegaFlashROM_SCC+_SD.xml</code>. For formatting and managing the SD cards, please refer to its manual and tools on the Flash part of the <a class="external" href="http://www.msxcartridgeshop.com/">MSX Cartridge Shop</a>. It also provides the ROM file with the initial content of the flash ROM as it is shipped on real MegaFlashROM SCC+ SD cartridges.
 </p>
 
-<p>One problem you may encounter compared to a real MegaFlashROM SCC+ SD is: how to get files on the SD cards... You can't take out the SD cards and put them in a PC or so. Your options are the same as on a real system when you don't have a PC at hand: use the floppy drive of your MSX to transfer files or use another mass storage medium. You can for instance use the Sunrise IDE concurrently with the MegaFlashROM SCC+ SD. And for the Sunrise IDE partitions, you could use <code><a class="external" href="diskmanipulator.html">diskmanipulator</a></code> to import a lot of files, as is explained <a class="internal" href="#ide">above at the Sunrise IDE</a> section. Once you have that you can copy these files from MSX-DOS2/Nextor onto the virtual SD card(s).
+<p>To get files on the SD cards, you can use <code><a class="external" href="diskmanipulator.html">diskmanipulator</a></code> with the <code>-nextor</code> option to partition and to import files, similar to what is explained above <a class="internal" href="#ide">in the Sunrise IDE section</a>.
 </p>
 
 <h3><a id="laserdisc">4.5 Running Laserdisc software</a></h3>

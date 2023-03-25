@@ -9,6 +9,7 @@
 #include "BreakPoint.hh"
 #include "WatchPoint.hh"
 #include "ProfileCounters.hh"
+#include "narrow.hh"
 #include "openmsx.hh"
 #include "ranges.hh"
 #include <array>
@@ -383,8 +384,8 @@ private:
 	  * was modified.
 	  * @param page page [0..3] to update visibleDevices for.
 	  */
-	void updateVisible(unsigned page);
-	inline void updateVisible(unsigned page, int ps, int ss);
+	void updateVisible(byte page);
+	inline void updateVisible(byte page, byte ps, byte ss);
 	void setSubSlot(byte primSlot, byte value);
 
 	std::unique_ptr<DummyDevice> dummyDevice;
@@ -470,14 +471,14 @@ struct GlobalWriteClient : GlobalRWHelper<MSXDEVICE, CT_INTERVALS...>
 	GlobalWriteClient()
 	{
 		this->execute([](MSXCPUInterface& cpu, MSXDevice& dev, unsigned addr) {
-			cpu.registerGlobalWrite(dev, addr);
+			cpu.registerGlobalWrite(dev, narrow<word>(addr));
 		});
 	}
 
 	~GlobalWriteClient()
 	{
 		this->execute([](MSXCPUInterface& cpu, MSXDevice& dev, unsigned addr) {
-			cpu.unregisterGlobalWrite(dev, addr);
+			cpu.unregisterGlobalWrite(dev, narrow<word>(addr));
 		});
 	}
 };
@@ -488,14 +489,14 @@ struct GlobalReadClient : GlobalRWHelper<MSXDEVICE, CT_INTERVALS...>
 	GlobalReadClient()
 	{
 		this->execute([](MSXCPUInterface& cpu, MSXDevice& dev, unsigned addr) {
-			cpu.registerGlobalRead(dev, addr);
+			cpu.registerGlobalRead(dev, narrow<word>(addr));
 		});
 	}
 
 	~GlobalReadClient()
 	{
 		this->execute([](MSXCPUInterface& cpu, MSXDevice& dev, unsigned addr) {
-			cpu.unregisterGlobalRead(dev, addr);
+			cpu.unregisterGlobalRead(dev, narrow<word>(addr));
 		});
 	}
 };

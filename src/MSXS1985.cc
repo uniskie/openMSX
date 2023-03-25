@@ -3,6 +3,7 @@
 #include "MSXMotherBoard.hh"
 #include "SRAM.hh"
 #include "enumerate.hh"
+#include "narrow.hh"
 #include "serialize.hh"
 #include <array>
 #include <memory>
@@ -29,7 +30,7 @@ MSXS1985::MSXS1985(const DeviceConfig& config)
 
 	auto& mapperIO = getMotherBoard().createMapperIO();
 	byte mask = 0b0001'1111; // always(?) 5 bits
-	byte baseValue = config.getChildDataAsInt("MapperReadBackBaseValue", 0x80);
+	auto baseValue = narrow_cast<byte>(config.getChildDataAsInt("MapperReadBackBaseValue", 0x80));
 	mapperIO.setMode(MSXMapperIO::Mode::INTERNAL, mask, baseValue);
 
 	reset(EmuTime::dummy());
@@ -50,7 +51,7 @@ byte MSXS1985::readSwitchedIO(word port, EmuTime::param time)
 	byte result = peekSwitchedIO(port, time);
 	switch (port & 0x0F) {
 	case 7:
-		pattern = (pattern << 1) | (pattern >> 7);
+		pattern = byte((pattern << 1) | (pattern >> 7));
 		break;
 	}
 	return result;

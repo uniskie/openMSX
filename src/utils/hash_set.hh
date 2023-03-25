@@ -6,10 +6,12 @@
 #ifndef HASH_SET_HH
 #define HASH_SET_HH
 
+#include "narrow.hh"
 #include "stl.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
 #include <cassert>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <initializer_list>
@@ -385,7 +387,7 @@ public:
 
 	explicit hash_set(std::initializer_list<Value> args)
 	{
-		reserve(args.size());
+		reserve(narrow<unsigned>(args.size()));
 		for (auto a : args) insert_noCapacityCheck(a); // need duplicate check??
 	}
 

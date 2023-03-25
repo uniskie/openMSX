@@ -52,7 +52,7 @@ static constexpr bool SANE_CAPSLOCK_BEHAVIOR = true;
 #endif
 
 
-static constexpr int TRY_AGAIN = 0x80; // see pressAscii()
+static constexpr uint8_t TRY_AGAIN = 0x80; // see pressAscii()
 
 using KeyInfo = UnicodeKeymap::KeyInfo;
 
@@ -352,6 +352,11 @@ Keyboard::~Keyboard()
 	msxEventDistributor.unregisterEventListener(*this);
 }
 
+const MsxChar2Unicode& Keyboard::getMsxChar2Unicode() const
+{
+	return unicodeKeymap.getMsxChars();
+}
+
 static constexpr void doKeyGhosting(std::span<uint8_t, KeyMatrixPosition::NUM_ROWS> matrix,
                                     bool protectRow6)
 {
@@ -397,7 +402,7 @@ static constexpr void doKeyGhosting(std::span<uint8_t, KeyMatrixPosition::NUM_RO
 					} else {
 						// not same and some common zero's
 						//  --> inherit other zero's
-						auto newRow = row1 & row2;
+						uint8_t newRow = row1 & row2;
 						matrix[i] = newRow;
 						matrix[j] = newRow;
 						row1 = newRow;
@@ -471,8 +476,8 @@ void Keyboard::signalStateChange(const StateChange& event)
 	const auto* kms = dynamic_cast<const KeyMatrixState*>(&event);
 	if (!kms) return;
 
-	userKeyMatrix[kms->getRow()] &= ~kms->getPress();
-	userKeyMatrix[kms->getRow()] |=  kms->getRelease();
+	userKeyMatrix[kms->getRow()] &= uint8_t(~kms->getPress());
+	userKeyMatrix[kms->getRow()] |=          kms->getRelease();
 	keysChanged = true; // do ghosting at next getKeys()
 }
 
@@ -711,7 +716,7 @@ void Keyboard::updateKeyMatrix(EmuTime::param time, bool down, KeyMatrixPosition
 		// restore them to the real key-combinations pressed by the user.
 		for (auto [i, mp] : enumerate(modifierPos)) {
 			if (pos == mp) {
-				msxModifiers &= ~(1 << i);
+				msxModifiers &= uint8_t(~(1 << i));
 			}
 		}
 	} else {
@@ -862,9 +867,9 @@ void Keyboard::processCmd(Interpreter& interp, std::span<const TclObject> tokens
 		throw CommandException("Invalid mask");
 	}
 	if (up) {
-		cmdKeyMatrix[row] |= mask;
+		cmdKeyMatrix[row] |= narrow_cast<uint8_t>(mask);
 	} else {
-		cmdKeyMatrix[row] &= ~mask;
+		cmdKeyMatrix[row] &= narrow_cast<uint8_t>(~mask);
 	}
 	keysChanged = true;
 }
@@ -984,9 +989,9 @@ bool Keyboard::pressUnicodeByUser(
  *    bits 0-4: release these modifiers and call again
  *    bit   7 : simply call again (used by SHIFT+GRAPH heuristic)
  */
-int Keyboard::pressAscii(unsigned unicode, bool down)
+uint8_t Keyboard::pressAscii(unsigned unicode, bool down)
 {
-	int releaseMask = 0;
+	uint8_t releaseMask = 0;
 	UnicodeKeymap::KeyInfo keyInfo = unicodeKeymap.get(unicode);
 	if (!keyInfo.isValid()) {
 		return releaseMask;
@@ -1000,7 +1005,7 @@ int Keyboard::pressAscii(unsigned unicode, bool down)
 				debug("Toggling lock %d\n", i);
 				locksOn ^= 1 << i;
 				releaseMask |= 1 << i;
-				typeKeyMatrix[mp.getRow()] &= ~mp.getMask();
+				typeKeyMatrix[mp.getRow()] &= uint8_t(~mp.getMask());
 			}
 		}
 		if (releaseMask == 0) {
@@ -1046,12 +1051,12 @@ int Keyboard::pressAscii(unsigned unicode, bool down)
 			// press modifiers
 			for (auto [i, mp] : enumerate(modifierPos)) {
 				if ((modMask >> i) & 1) {
-					typeKeyMatrix[mp.getRow()] &= ~mp.getMask();
+					typeKeyMatrix[mp.getRow()] &= uint8_t(~mp.getMask());
 				}
 			}
 			if (releaseMask == 0) {
 				// press key
-				typeKeyMatrix[keyInfo.pos.getRow()] &= ~keyInfo.pos.getMask();
+				typeKeyMatrix[keyInfo.pos.getRow()] &= uint8_t(~keyInfo.pos.getMask());
 			}
 		}
 	} else {
@@ -1078,7 +1083,7 @@ void Keyboard::pressLockKeys(uint8_t lockKeysMask, bool down)
 		if ((lockKeysMask >> i) & 1) {
 			if (down) {
 				// press lock key
-				typeKeyMatrix[mp.getRow()] &= ~mp.getMask();
+				typeKeyMatrix[mp.getRow()] &= uint8_t(~mp.getMask());
 			} else {
 				// release lock key
 				typeKeyMatrix[mp.getRow()] |= mp.getMask();
@@ -1234,18 +1239,13 @@ Keyboard::KeyInserter::KeyInserter(
 void Keyboard::KeyInserter::execute(
 	std::span<const TclObject> tokens, TclObject& /*result*/, EmuTime::param /*time*/)
 {
-	checkNumArgs(tokens, AtLeast{2}, "?-release? ?-freq hz? text");
+	checkNumArgs(tokens, AtLeast{2}, "?-release? ?-freq hz? ?-cancel? text");
 
+	bool cancel = false;
 	releaseBeforePress = false;
 	typingFrequency = 15;
-
-	// for full backwards compatibility: one option means type it...
-	if (tokens.size() == 2) {
-		type(tokens[1].getString());
-		return;
-	}
-
 	std::array info = {
+		flagArg("-cancel", cancel),
 		flagArg("-release", releaseBeforePress),
 		valueArg("-freq", typingFrequency),
 	};
@@ -1254,6 +1254,11 @@ void Keyboard::KeyInserter::execute(
 	if (typingFrequency <= 0) {
 		throw CommandException("Wrong argument for -freq (should be a positive number)");
 	}
+	if (cancel) {
+		text_utf8.clear();
+		return;
+	}
+
 	if (arguments.size() != 1) throw SyntaxError();
 
 	type(arguments[0].getString());
@@ -1263,7 +1268,8 @@ std::string Keyboard::KeyInserter::help(std::span<const TclObject> /*tokens*/) c
 {
 	return "Type a string in the emulated MSX.\n"
 	       "Use -release to make sure the keys are always released before typing new ones (necessary for some game input routines, but in general, this means typing is twice as slow).\n"
-	       "Use -freq to tweak how fast typing goes and how long the keys will be pressed (and released in case -release was used). Keys will be typed at the given frequency and will remain pressed/released for 1/freq seconds";
+	       "Use -freq to tweak how fast typing goes and how long the keys will be pressed (and released in case -release was used). Keys will be typed at the given frequency and will remain pressed/released for 1/freq seconds\n"
+	       "Use -cancel to cancel a (long) in-progress type command.";
 }
 
 void Keyboard::KeyInserter::tabCompletion(std::vector<std::string>& tokens) const
@@ -1299,7 +1305,7 @@ void Keyboard::KeyInserter::executeUntil(EmuTime::param time)
 	if (text_utf8.empty()) {
 		releaseLast = false;
 		keyboard.debug("Restoring locks: %02X -> %02X\n", keyboard.locksOn, oldLocksOn);
-		auto diff = oldLocksOn ^ keyboard.locksOn;
+		uint8_t diff = oldLocksOn ^ keyboard.locksOn;
 		lockKeysMask = diff;
 		if (diff != 0) {
 			// press CAPS, GRAPH and/or Code/Kana Lock keys

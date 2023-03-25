@@ -3,6 +3,7 @@
 
 #include "MSXDevice.hh"
 #include "Schedulable.hh"
+#include "TclCallback.hh"
 #include "VideoSystemChangeListener.hh"
 #include "IRQHelper.hh"
 #include "V9990CmdEngine.hh"
@@ -305,7 +306,7 @@ public:
 	/** return sprite palette offset
 	  */
 	[[nodiscard]] inline byte getSpritePaletteOffset() const {
-		return regs[SPRITE_PALETTE_CONTROL] << 2;
+		return narrow_cast<byte>(regs[SPRITE_PALETTE_CONTROL] << 2);
 	}
 
 	/** Get horizontal display timings
@@ -427,7 +428,7 @@ private:
 
 	/** IRQ types
 	  */
-	enum IRQType {
+	enum IRQType : byte {
 		VER_IRQ = 1,
 		HOR_IRQ = 2,
 		CMD_IRQ = 4
@@ -528,6 +529,9 @@ private:
 	IRQHelper irq;
 
 	Display& display;
+
+	TclCallback   invalidRegisterReadCallback;
+	TclCallback   invalidRegisterWriteCallback;
 
 	/** VRAM
 	  */

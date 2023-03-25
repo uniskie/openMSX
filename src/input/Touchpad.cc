@@ -200,7 +200,7 @@ void Touchpad::signalMSXEvent(const Event& event,
                               EmuTime::param time) noexcept
 {
 	ivec2 pos = hostPos;
-	int b = hostButtons;
+	auto b = hostButtons;
 
 	visit(overloaded{
 		[&](const MouseMotionEvent& e) {
@@ -239,7 +239,9 @@ void Touchpad::signalMSXEvent(const Event& event,
 		hostPos     = pos;
 		hostButtons = b;
 		createTouchpadStateChange(
-			time, pos[0], pos[1],
+			time,
+			narrow_cast<uint8_t>(pos[0]),
+			narrow_cast<uint8_t>(pos[1]),
 			(hostButtons & 1) != 0,
 			(hostButtons & 2) != 0);
 	}
@@ -268,7 +270,7 @@ void Touchpad::stopReplay(EmuTime::param time) noexcept
 	// TODO Get actual mouse state. Is it worth the trouble?
 	if (x || y || touch || button) {
 		stateChangeDistributor.distributeNew<TouchpadState>(
-			time, 0, 0, false, false);
+			time, uint8_t(0), uint8_t(0), false, false);
 	}
 }
 

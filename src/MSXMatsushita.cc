@@ -43,10 +43,10 @@ void MSXMatsushita::init()
 	auto& cpuInterface = getCPUInterface();
 	bool error = false;
 	for (auto i : xrange(2)) {
-		error |= !cpuInterface.replace_IO_In (0x98 + i, vdp, this);
+		error |= !cpuInterface.replace_IO_In (byte(0x98 + i), vdp, this);
 	}
 	for (auto i : xrange(4)) {
-		error |= !cpuInterface.replace_IO_Out(0x98 + i, vdp, this);
+		error |= !cpuInterface.replace_IO_Out(byte(0x98 + i), vdp, this);
 	}
 	if (error) {
 		unwrap();
@@ -67,16 +67,19 @@ void MSXMatsushita::unwrap()
 	// Unwrap the VDP ports.
 	auto& cpuInterface = getCPUInterface();
 	for (auto i : xrange(2)) {
-		cpuInterface.replace_IO_In (0x98 + i, this, vdp);
+		cpuInterface.replace_IO_In (byte(0x98 + i), this, vdp);
 	}
 	for (auto i : xrange(4)) {
-		cpuInterface.replace_IO_Out(0x98 + i, this, vdp);
+		cpuInterface.replace_IO_Out(byte(0x98 + i), this, vdp);
 	}
 }
 
 void MSXMatsushita::reset(EmuTime::param /*time*/)
 {
-	color1 = color2 = pattern = address = 0; // TODO check this
+	// TODO check this
+	color1 = color2 = 0;
+	pattern = 0;
+	address = 0;
 }
 
 byte MSXMatsushita::readSwitchedIO(word port, EmuTime::param time)
@@ -85,7 +88,7 @@ byte MSXMatsushita::readSwitchedIO(word port, EmuTime::param time)
 	byte result = peekSwitchedIO(port, time);
 	switch (port & 0x0F) {
 	case 3:
-		pattern = (pattern << 2) | (pattern >> 6);
+		pattern = byte((pattern << 2) | (pattern >> 6));
 		break;
 	case 9:
 		address = (address + 1) & 0x1FFF;
@@ -112,8 +115,8 @@ byte MSXMatsushita::peekSwitchedIO(word port, EmuTime::param /*time*/) const
 		return result;
 	}
 	case 3:
-		return (((pattern & 0x80) ? color2 : color1) << 4)
-		        | ((pattern & 0x40) ? color2 : color1);
+		return byte((((pattern & 0x80) ? color2 : color1) << 4) |
+		            (((pattern & 0x40) ? color2 : color1) << 0));
 	case 9:
 		if (address < 0x800 && sram) {
 			return (*sram)[address];
@@ -157,7 +160,7 @@ void MSXMatsushita::writeSwitchedIO(word port, byte value, EmuTime::param /*time
 		break;
 	case 8:
 		// set address (high)
-		address = (address & 0x00FF) | ((value & 0x1F) << 8);
+		address = word((address & 0x00FF) | ((value & 0x1F) << 8));
 		break;
 	case 9:
 		// write sram

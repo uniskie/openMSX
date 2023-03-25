@@ -120,7 +120,7 @@ void EEPROM_93C46::clockEvent(EmuTime::param time)
 		break;
 
 	case WAIT_FOR_COMMAND:
-		shiftRegister = (shiftRegister << 1) | int(pinDI);
+		shiftRegister = narrow_cast<uint16_t>((shiftRegister << 1) | int(pinDI));
 		++bits;
 		if (bits == (2 + ADDRESS_BITS)) {
 			execute_command(time);
@@ -130,7 +130,7 @@ void EEPROM_93C46::clockEvent(EmuTime::param time)
 	case READING_DATA:
 		if ((bits % DATA_BITS) == 0) {
 			uint8_t value = read(address);
-			shiftRegister = value << (SHIFT_REG_BITS - DATA_BITS);
+			shiftRegister = uint16_t(value << (SHIFT_REG_BITS - DATA_BITS));
 			address = (address + 1) & ADDRESS_MASK;
 		} else {
 			shiftRegister <<= 1;
@@ -139,27 +139,27 @@ void EEPROM_93C46::clockEvent(EmuTime::param time)
 		break;
 
 	case WAIT_FOR_WRITE:
-		shiftRegister = (shiftRegister << 1) | int(pinDI);
+		shiftRegister = narrow_cast<uint16_t>((shiftRegister << 1) | int(pinDI));
 		++bits;
 		if (bits == DATA_BITS) {
 			if (writeProtected) {
 				state = IN_RESET;
 				break;
 			}
-			write(address, shiftRegister, time);
+			write(address, narrow_cast<uint8_t>(shiftRegister), time);
 			state = IN_RESET;
 		}
 		break;
 
 	case WAIT_FOR_WRITE_ALL:
-		shiftRegister = (shiftRegister << 1) | int(pinDI);
+		shiftRegister = narrow_cast<uint16_t>((shiftRegister << 1) | int(pinDI));
 		++bits;
 		if (bits == DATA_BITS) {
 			if (writeProtected) {
 				state = IN_RESET;
 				break;
 			}
-			writeAll(shiftRegister, time);
+			writeAll(narrow_cast<uint8_t>(shiftRegister), time);
 			state = IN_RESET;
 		}
 		break;

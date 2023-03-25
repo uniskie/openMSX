@@ -596,7 +596,7 @@ void MB89352::writeRegister(uint8_t reg, uint8_t value)
 		// set Bus Device ID
 		value &= 7;
 		myId = value;
-		regs[REG_BDID] = 1 << value;
+		regs[REG_BDID] = uint8_t(1 << value);
 		break;
 
 		// Nothing
@@ -713,11 +713,11 @@ uint8_t MB89352::peekRegister(uint8_t reg) const
 	case REG_SSTS:
 		return getSSTS();
 	case REG_TCH:
-		return (tc >> 16) & 0xFF;
+		return narrow_cast<uint8_t>((tc >> 16) & 0xFF);
 	case REG_TCM:
-		return (tc >>  8) & 0xFF;
+		return narrow_cast<uint8_t>((tc >>  8) & 0xFF);
 	case REG_TCL:
-		return (tc >>  0) & 0xFF;
+		return narrow_cast<uint8_t>((tc >>  0) & 0xFF);
 	default:
 		return regs[reg];
 	}

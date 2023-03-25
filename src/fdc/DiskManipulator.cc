@@ -12,6 +12,11 @@
 #include "FileException.hh"
 #include "FileOperations.hh"
 #include "SectorBasedDisk.hh"
+#include "MsxChar2Unicode.hh"
+#include "MSXDevice.hh"
+#include "MSXMotherBoard.hh"
+#include "MSXPPI.hh"
+#include "Keyboard.hh"
 #include "StringOp.hh"
 #include "TclObject.hh"
 #include "narrow.hh"
@@ -50,6 +55,23 @@ string DiskManipulator::getMachinePrefix() const
 	return id.empty() ? string{} : strCat(id, "::");
 }
 
+const MsxChar2Unicode& DiskManipulator::getMsxChar2Unicode() const
+{
+	// TODO cleanup this code. It should be easier to get a hold of the
+	// 'MsxChar2Unicode' object. Probably the 'Keyboard' class is not the
+	// right location to store it.
+	try {
+		if (MSXMotherBoard* board = reactor.getMotherBoard()) {
+			if (MSXPPI* ppi = dynamic_cast<MSXPPI*>(board->findDevice("ppi"))) {
+				return ppi->getKeyboard().getMsxChar2Unicode();
+			}
+		}
+	} catch (MSXException&) {
+	}
+	static const MsxChar2Unicode defaultMsxChars("MSXVID.TXT");
+	return defaultMsxChars;
+}
+
 void DiskManipulator::registerDrive(
 	DiskContainer& drive, std::string_view prefix)
 {
@@ -58,9 +80,6 @@ void DiskManipulator::registerDrive(
 	driveSettings.drive = &drive;
 	driveSettings.driveName = strCat(prefix, drive.getContainerName());
 	driveSettings.partition = 0;
-	for (unsigned i = 0; i <= MAX_PARTITIONS; ++i) {
-		driveSettings.workingDir[i] = '/';
-	}
 	drives.push_back(driveSettings);
 }
 
@@ -69,6 +88,19 @@ void DiskManipulator::unregisterDrive(DiskContainer& drive)
 	auto it = findDriveSettings(drive);
 	assert(it != end(drives));
 	move_pop_back(drives, it);
+}
+
+std::string DiskManipulator::DriveSettings::getWorkingDir(unsigned p)
+{
+	return p < workingDir.size() ? workingDir[p] : "/";
+}
+
+void DiskManipulator::DriveSettings::setWorkingDir(unsigned p, std::string_view dir)
+{
+	if (p >= workingDir.size()) {
+		workingDir.resize(p + 1, "/");
+	}
+	workingDir[p] = dir;
 }
 
 DiskManipulator::Drives::iterator DiskManipulator::findDriveSettings(
@@ -117,7 +149,7 @@ DiskManipulator::DriveSettings& DiskManipulator::getDriveSettings(
 		if (!partition) {
 			throw CommandException("Invalid partition name: ", partitionName);
 		}
-		DiskImageUtils::checkFAT12Partition(*disk, *partition);
+		DiskImageUtils::checkSupportedPartition(*disk, *partition);
 		it->partition = *partition;
 	}
 	return *it;
@@ -131,6 +163,47 @@ DiskPartition DiskManipulator::getPartition(
 	return {*disk, driveData.partition};
 }
 
+static std::optional<MSXBootSectorType> parseBootSectorType(std::string_view s) {
+	if (s == "-dos1")   return MSXBootSectorType::DOS1;
+	if (s == "-dos2")   return MSXBootSectorType::DOS2;
+	if (s == "-nextor") return MSXBootSectorType::NEXTOR;
+	return {};
+};
+
+static size_t parseSectorSize(zstring_view tok) {
+	char* q;
+	size_t bytes = strtoull(tok.c_str(), &q, 0);
+	int scale = 1024; // default is kilobytes
+	if (*q) {
+		if ((q == tok.c_str()) || *(q + 1)) {
+			throw CommandException("Invalid size: ", tok);
+		}
+		switch (tolower(*q)) {
+			case 'b':
+				scale = 1;
+				break;
+			case 'k':
+				scale = 1024;
+				break;
+			case 'm':
+				scale = 1024 * 1024;
+				break;
+			case 's':
+				scale = SectorBasedDisk::SECTOR_SIZE;
+				break;
+			default:
+				throw CommandException("Invalid suffix: ", q);
+		}
+	}
+	size_t sectors = (bytes * scale) / SectorBasedDisk::SECTOR_SIZE;
+
+	// TEMP FIX: the smallest boot sector we create in MSXtar is for
+	// a normal single sided disk.
+	// TODO: MSXtar must be altered and this temp fix must be set to
+	// the real smallest dsk possible (= boot sector + minimal fat +
+	// minimal dir + minimal data clusters)
+	return std::max(sectors, size_t(720));
+}
 
 void DiskManipulator::execute(std::span<const TclObject> tokens, TclObject& result)
 {
@@ -141,7 +214,9 @@ void DiskManipulator::execute(std::span<const TclObject> tokens, TclObject& resu
 	string_view subCmd = tokens[1].getString();
 	if (((tokens.size() != 4)                     && (subCmd == one_of("savedsk", "mkdir"))) ||
 	    ((tokens.size() != 3)                     && (subCmd ==        "dir"             ))  ||
-	    ((tokens.size() < 3 || tokens.size() > 4) && (subCmd == one_of("format", "chdir")))  ||
+	    ((tokens.size() < 3 || tokens.size() > 4) && (subCmd ==        "chdir"           ))  ||
+	    ((tokens.size() < 3 || tokens.size() > 5) && (subCmd ==        "format"          ))  ||
+	    ((tokens.size() < 3)                      && (subCmd ==        "partition"       ))  ||
 	    ((tokens.size() < 4)                      && (subCmd == one_of("export", "import", "create")))) {
 		throw CommandException("Incorrect number of parameters");
 	}
@@ -155,14 +230,14 @@ void DiskManipulator::execute(std::span<const TclObject> tokens, TclObject& resu
 		auto& settings = getDriveSettings(tokens[2].getString());
 		// Workaround clang-13/libc++ bug
 		//std::span<const TclObject> lists(std::begin(tokens) + 4, std::end(tokens));
-		std::span<const TclObject> lists(&*(std::begin(tokens) + 4), std::end(tokens) - std::begin(tokens) + 4);
+		std::span<const TclObject> lists(&*(std::begin(tokens) + 4), std::end(tokens) - (std::begin(tokens) + 4));
 		exprt(settings, directory, lists);
 
 	} else if (subCmd == "import") {
 		auto& settings = getDriveSettings(tokens[2].getString());
 		// Workaround clang-13/libc++ bug
 		//std::span<const TclObject> lists(std::begin(tokens) + 3, std::end(tokens));
-		std::span<const TclObject> lists(&*(std::begin(tokens) + 3), std::end(tokens) - std::begin(tokens) + 3);
+		std::span<const TclObject> lists(&*(std::begin(tokens) + 3), std::end(tokens) - (std::begin(tokens) + 3));
 		result = import(settings, lists);
 
 	} else if (subCmd == "savedsk") {
@@ -173,7 +248,7 @@ void DiskManipulator::execute(std::span<const TclObject> tokens, TclObject& resu
 		auto& settings = getDriveSettings(tokens[2].getString());
 		if (tokens.size() == 3) {
 			result = tmpStrCat("Current directory: ",
-			                   settings.workingDir[settings.partition]);
+			                   settings.getWorkingDir(settings.partition));
 		} else {
 			result = chdir(settings, tokens[3].getString());
 		}
@@ -185,19 +260,11 @@ void DiskManipulator::execute(std::span<const TclObject> tokens, TclObject& resu
 	} else if (subCmd == "create") {
 		create(tokens);
 
+	} else if (subCmd == "partition") {
+		partition(tokens);
+
 	} else if (subCmd == "format") {
-		bool dos1 = false;
-		string_view drive = tokens[2].getString();
-		if (tokens.size() == 4) {
-			if (drive == "-dos1") {
-				dos1 = true;
-				drive = tokens[3].getString();
-			} else if (tokens[3] == "-dos1") {
-				dos1 = true;
-			}
-		}
-		auto& settings = getDriveSettings(drive);
-		format(settings, dos1);
+		format(tokens);
 
 	} else if (subCmd == "dir") {
 		auto& settings = getDriveSettings(tokens[2].getString());
@@ -247,12 +314,23 @@ string DiskManipulator::help(std::span<const TclObject> tokens) const
 	    "having the size as indicated. By default the sizes are expressed in kilobyte, add the\n"
 	    "postfix M for megabyte.\n"
 	    "When using the -dos1 option, the boot sector of the created image will be MSX-DOS1\n"
-	    "compatible.\n";
+	    "compatible. When using the -nextor option, the boot sector and partition table will be\n"
+		"Nextor compatible, and FAT16 volumes can be created.\n";
+	  } else if (tokens[1] == "partition") {
+	  helpText =
+	    "diskmanipulator partition <disk name> [<size/option>...]\n"
+	    "Partitions and formats the current <disk name> to the indicated sizes. By default the\n"
+	    "sizes are expressed in kilobyte, add the postfix M for megabyte.\n"
+	    "When using the -dos1 option, the boot sector of the disk will be MSX-DOS1 compatible.\n"
+	    "When using the -nextor option, the boot sector and partition table will be Nextor\n"
+		"compatible, and FAT16 volumes can be created.\n";
 	  } else if (tokens[1] == "format") {
 	  helpText =
 	    "diskmanipulator format <disk name>\n"
-	    "formats the current (partition on) <disk name> with a regular FAT12 MSX filesystem with an\n"
-	    "MSX-DOS2 boot sector, or, when the -dos1 option is specified, with an MSX-DOS1 boot sector.\n";
+	    "Formats the current (partition on) <disk name>. By default, it will create a regular\n"
+	    "FAT12 MSX file system with an MSX-DOS2 boot sector, or, when the -dos1 option is\n"
+		"specified, with an MSX-DOS1 boot sector. When the -nextor option is specified, it\n"
+		"will create a FAT12 or FAT16 file system, with a Nextor boot sector.\n";
 	  } else if (tokens[1] == "dir") {
 	  helpText =
 	    "diskmanipulator dir <disk name>\n"
@@ -264,8 +342,9 @@ string DiskManipulator::help(std::span<const TclObject> tokens) const
 	  helpText =
 	    "diskmanipulator create <fn> <sz> [<sz> ...]  : create a formatted dsk file with name <fn>\n"
 	    "                                               having the given (partition) size(s)\n"
+	    "diskmanipulator partition <dn> [<sz> ...]    : partition and format <disk name>\n"
 	    "diskmanipulator savedsk <disk name> <fn>     : save <disk name> as dsk file named as <fn>\n"
-	    "diskmanipulator format <disk name>           : format (a partition) on <disk name>\n"
+	    "diskmanipulator format <disk name> [<sz>]    : format (a partition on) <disk name>\n"
 	    "diskmanipulator chdir <disk name> <MSX dir>  : change directory on <disk name>\n"
 	    "diskmanipulator mkdir <disk name> <MSX dir>  : create directory on <disk name>\n"
 	    "diskmanipulator dir <disk name>              : long format file listing of current\n"
@@ -283,7 +362,7 @@ void DiskManipulator::tabCompletion(std::vector<string>& tokens) const
 	if (tokens.size() == 2) {
 		static constexpr std::array cmds = {
 			"import"sv, "export"sv, "savedsk"sv, "dir"sv, "create"sv,
-			"format"sv, "chdir"sv, "mkdir"sv,
+			"partition"sv, "format"sv, "chdir"sv, "mkdir"sv,
 		};
 		completeString(tokens, cmds);
 
@@ -292,8 +371,10 @@ void DiskManipulator::tabCompletion(std::vector<string>& tokens) const
 
 	} else if (tokens.size() == 3) {
 		std::vector<string> names;
-		if (tokens[1] == one_of("format", "create")) {
+		if (tokens[1] == one_of("partition", "format")) {
 			names.emplace_back("-dos1");
+			names.emplace_back("-dos2");
+			names.emplace_back("-nextor");
 		}
 		for (const auto& d : drives) {
 			const auto& name1 = d.driveName; // with prefix
@@ -302,9 +383,15 @@ void DiskManipulator::tabCompletion(std::vector<string>& tokens) const
 			// if it has partitions then we also add the partition
 			// numbers to the autocompletion
 			if (auto* disk = d.drive->getSectorAccessibleDisk()) {
-				for (unsigned i = 1; i <= MAX_PARTITIONS; ++i) {
+				for (unsigned i = 1; true; ++i) {
 					try {
-						DiskImageUtils::checkFAT12Partition(*disk, i);
+						SectorBuffer buf;
+						DiskImageUtils::getPartition(*disk, i, buf);
+					} catch (MSXException&) {
+						break;
+					}
+					try {
+						DiskImageUtils::checkSupportedPartition(*disk, i);
 						append(names,
 						       {strCat(name1, i), strCat(name2, i)});
 					} catch (MSXException&) {
@@ -318,13 +405,10 @@ void DiskManipulator::tabCompletion(std::vector<string>& tokens) const
 	} else if (tokens.size() >= 4) {
 		if (tokens[1] == one_of("savedsk", "import", "export")) {
 			completeFileName(tokens, userFileContext());
-		} else if (tokens[1] == "create") {
+		} else if (tokens[1] == one_of("create", "partition", "format")) {
 			static constexpr std::array cmds = {
-				"360"sv, "720"sv, "32M"sv, "-dos1"sv,
+				"360"sv, "720"sv, "32M"sv, "-dos1"sv, "-dos2"sv, "-nextor"sv,
 			};
-			completeString(tokens, cmds);
-		} else if (tokens[1] == "format") {
-			static constexpr std::array cmds = {"-dos1"sv};
 			completeString(tokens, cmds);
 		}
 	}
@@ -342,69 +426,32 @@ void DiskManipulator::savedsk(const DriveSettings& driveData,
 	}
 }
 
+static std::pair<MSXBootSectorType, std::vector<unsigned>> parsePartitionSizes(auto tokens)
+{
+	MSXBootSectorType bootType = MSXBootSectorType::DOS2;
+	std::vector<unsigned> sizes;
+
+	for (const auto& token_ : tokens) {
+		if (auto t = parseBootSectorType(token_.getString())) {
+			bootType = *t;
+		} else if (size_t sectors = parseSectorSize(token_.getString());
+		           sectors <= std::numeric_limits<unsigned>::max()) {
+			sizes.push_back(narrow<unsigned>(sectors));
+		} else {
+			throw CommandException("Partition size too large.");
+		}
+	}
+
+	return {bootType, sizes};
+}
+
 void DiskManipulator::create(std::span<const TclObject> tokens)
 {
-	static_vector<unsigned, MAX_PARTITIONS> sizes;
-	size_t totalSectors = 0;
-	bool dos1 = false;
+	auto [bootType, sizes] = parsePartitionSizes(view::drop(tokens, 3));
 
-	for (const auto& token : view::drop(tokens, 3)) {
-		if (token == "-dos1") {
-			dos1 = true;
-			continue;
-		}
-
-		if (sizes.size() >= MAX_PARTITIONS) {
-			throw CommandException(
-				"Maximum number of partitions is ", MAX_PARTITIONS);
-		}
-		auto tok = token.getString();
-		char* q;
-		size_t sectors = strtoull(tok.c_str(), &q, 0);
-		int scale = 1024; // default is kilobytes
-		if (*q) {
-			if ((q == tok.c_str()) || *(q + 1)) {
-				throw CommandException("Invalid size: ", tok);
-			}
-			switch (tolower(*q)) {
-				case 'b':
-					scale = 1;
-					break;
-				case 'k':
-					scale = 1024;
-					break;
-				case 'm':
-					scale = 1024 * 1024;
-					break;
-				case 's':
-					scale = SectorBasedDisk::SECTOR_SIZE;
-					break;
-				default:
-					throw CommandException("Invalid suffix: ", q);
-			}
-		}
-		sectors = (sectors * scale) / SectorBasedDisk::SECTOR_SIZE;
-		// for a 32MB disk or greater the sectors would be >= 65536
-		// since MSX use 16 bits for this, in case of sectors = 65536
-		// the truncated word will be 0 -> formatted as 320 Kb disk!
-		if (sectors > 65535) sectors = 65535; // this is the max size for fat12 :-)
-
-		// TEMP FIX: the smallest boot sector we create in MSXtar is for
-		// a normal single sided disk.
-		// TODO: MSXtar must be altered and this temp fix must be set to
-		// the real smallest dsk possible (= boot sector + minimal fat +
-		// minimal dir + minimal data clusters)
-		if (sectors < 720) sectors = 720;
-
-		sizes.push_back(narrow<unsigned>(sectors));
-		totalSectors += sectors;
-	}
-	if (sizes.empty()) {
+	size_t totalSectors = sum(sizes, [](size_t s) { return s; });
+	if (totalSectors == 0) {
 		throw CommandException("No size(s) given.");
-	}
-	if (sizes.size() > 1) {
-		// extra sector for partition table
-		++totalSectors;
 	}
 
 	// create file with correct size
@@ -419,18 +466,64 @@ void DiskManipulator::create(std::span<const TclObject> tokens)
 	// initialize (create partition tables and format partitions)
 	DSKDiskImage image(filename);
 	if (sizes.size() > 1) {
-		DiskImageUtils::partition(image, sizes);
+		unsigned partitionCount = DiskImageUtils::partition(image,
+			static_cast<std::span<const unsigned>>(sizes), bootType);
+		if (partitionCount != sizes.size()) {
+			throw CommandException("Could not create all partitions; ",
+				partitionCount, " of ", sizes.size(), " created.");
+		}
 	} else {
 		// only one partition specified, don't create partition table
-		DiskImageUtils::format(image, dos1);
+		DiskImageUtils::format(image, bootType);
 	}
 }
 
-void DiskManipulator::format(DriveSettings& driveData, bool dos1)
+void DiskManipulator::partition(std::span<const TclObject> tokens)
 {
-	auto partition = getPartition(driveData);
-	DiskImageUtils::format(partition, dos1);
-	driveData.workingDir[driveData.partition] = '/';
+	auto [bootType, sizes] = parsePartitionSizes(view::drop(tokens, 3));
+
+	// initialize (create partition tables and format partitions)
+	auto& settings = getDriveSettings(tokens[2].getString());
+	if (settings.partition > 0) {
+		throw CommandException("Disk name must not have partition number.");
+	}
+	auto* image = settings.drive->getSectorAccessibleDisk();
+	unsigned partitionCount = DiskImageUtils::partition(*image,
+		static_cast<std::span<const unsigned>>(sizes), bootType);
+	if (partitionCount != sizes.size()) {
+		throw CommandException("Could not create all partitions; ",
+			partitionCount, " of ", sizes.size(), " created.");
+	}
+}
+
+void DiskManipulator::format(std::span<const TclObject> tokens)
+{
+	MSXBootSectorType bootType = MSXBootSectorType::DOS2;
+	std::optional<string> drive;
+	std::optional<size_t> size;
+	for (const auto& token_ : view::drop(tokens, 2)) {
+		if (auto t = parseBootSectorType(token_.getString())) {
+			bootType = *t;
+		} else if (!drive) {
+			drive = token_.getString();
+		} else if (!size) {
+			size = parseSectorSize(token_.getString());
+		} else {
+			throw CommandException("Incorrect number of parameters");
+		}
+	}
+	if (drive) {
+		auto& driveData = getDriveSettings(*drive);
+		auto partition = getPartition(driveData);
+		if (size) {
+			DiskImageUtils::format(partition, bootType, *size);
+		} else {
+			DiskImageUtils::format(partition, bootType);
+		}
+		driveData.setWorkingDir(driveData.partition, "/");
+	} else {
+		throw CommandException("Incorrect number of parameters");
+	}
 }
 
 MSXtar DiskManipulator::getMSXtar(
@@ -440,13 +533,14 @@ MSXtar DiskManipulator::getMSXtar(
 		throw CommandException("Please select partition number.");
 	}
 
-	MSXtar result(disk);
+	MSXtar result(disk, getMsxChar2Unicode());
+	string cwd = driveData.getWorkingDir(driveData.partition);
 	try {
-		result.chdir(driveData.workingDir[driveData.partition]);
+		result.chdir(cwd);
 	} catch (MSXException&) {
-		driveData.workingDir[driveData.partition] = '/';
+		driveData.setWorkingDir(driveData.partition, "/");
 		throw CommandException(
-			"Directory ", driveData.workingDir[driveData.partition],
+			"Directory ", cwd,
 			" doesn't exist anymore. Went back to root "
 			"directory. Command aborted, please retry.");
 	}
@@ -470,13 +564,14 @@ string DiskManipulator::chdir(DriveSettings& driveData, string_view filename)
 		throw CommandException("chdir failed: ", e.getMessage());
 	}
 	// TODO clean-up this temp hack, used to enable relative paths
-	string& cwd = driveData.workingDir[driveData.partition];
+	string cwd = driveData.getWorkingDir(driveData.partition);
 	if (filename.starts_with('/')) {
 		cwd = filename;
 	} else {
 		if (!cwd.ends_with('/')) cwd += '/';
 		cwd.append(filename.data(), filename.size());
 	}
+	driveData.setWorkingDir(driveData.partition, cwd);
 	return "New working directory: " + cwd;
 }
 

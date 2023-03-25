@@ -78,6 +78,10 @@ VDP::VDP(const DeviceConfig& config)
 	, vdpStatusRegDebug(*this)
 	, vdpPaletteDebug  (*this)
 	, vramPointerDebug (*this)
+	, registerLatchStatusDebug(*this)
+	, vramAccessStatusDebug(*this)
+	, paletteLatchStatusDebug(*this)
+	, dataLatchDebug   (*this)
 	, frameCountInfo   (*this)
 	, cycleInFrameInfo (*this)
 	, lineInFrameInfo  (*this)
@@ -94,7 +98,9 @@ VDP::VDP(const DeviceConfig& config)
 	, tooFastCallback(
 		getCommandController(),
 		getName() + ".too_fast_vram_access_callback",
-		"Tcl proc called when the VRAM is read or written too fast")
+		"Tcl proc called when the VRAM is read or written too fast",
+		"",
+		Setting::SaveSetting::SAVE)
 	, cpu(getCPU()) // used frequently, so cache it
 	, fixedVDPIOdelayCycles(getDelayCycles(getMotherBoard().getMachineConfig()->getConfig().getChild("devices")))
 {
@@ -257,6 +263,7 @@ void VDP::resetInit()
 	dataLatch = 0;
 	cpuExtendedVram = false;
 	registerDataStored = false;
+	writeAccess = false;
 	paletteDataStored = false;
 	blinkState = false;
 	blinkCount = 0;
@@ -680,6 +687,7 @@ void VDP::writeIO(word port, byte value, EmuTime::param time_)
 				}
 			} else {
 				// Set read/write address.
+				writeAccess = value & 0x40;
 				vramPointer = (value << 8 | dataLatch) & 0x3FFF;
 				if (!(value & 0x40)) {
 					// Read ahead.
@@ -702,7 +710,7 @@ void VDP::writeIO(word port, byte value, EmuTime::param time_)
 	case 2: // Palette data write
 		if (paletteDataStored) {
 			unsigned index = controlRegs[16];
-			int grb = ((value << 8) | dataLatch) & 0x777;
+			word grb = ((value << 8) | dataLatch) & 0x777;
 			setPalette(index, grb, time);
 			controlRegs[16] = (index + 1) & 0x0F;
 			paletteDataStored = false;
@@ -1584,7 +1592,7 @@ byte VDP::RegDebug::read(unsigned address)
 	if (address < 0x20) {
 		return vdp.controlRegs[address];
 	} else if (address < 0x2F) {
-		return vdp.cmdEngine->peekCmdReg(address - 0x20);
+		return vdp.cmdEngine->peekCmdReg(narrow<byte>(address - 0x20));
 	} else {
 		return 0xFF;
 	}
@@ -1598,7 +1606,7 @@ void VDP::RegDebug::write(unsigned address, byte value, EmuTime::param time)
 	// compatibility with some existing scripts. E.g. script that queries
 	// PAL vs NTSC in a VDP agnostic way.
 	if ((address >= 8) && vdp.isMSX1VDP()) return;
-	vdp.changeRegister(address, value, time);
+	vdp.changeRegister(narrow<byte>(address), value, time);
 }
 
 
@@ -1613,7 +1621,7 @@ VDP::StatusRegDebug::StatusRegDebug(VDP& vdp_)
 byte VDP::StatusRegDebug::read(unsigned address, EmuTime::param time)
 {
 	auto& vdp = OUTER(VDP, vdpStatusRegDebug);
-	return vdp.peekStatusReg(address, time);
+	return vdp.peekStatusReg(narrow<byte>(address), time);
 }
 
 
@@ -1629,7 +1637,8 @@ byte VDP::PaletteDebug::read(unsigned address)
 {
 	auto& vdp = OUTER(VDP, vdpPaletteDebug);
 	word grb = vdp.getPalette(address / 2);
-	return (address & 1) ? (grb >> 8) : (grb & 0xff);
+	return (address & 1) ? narrow_cast<byte>(grb >> 8)
+	                     : narrow_cast<byte>(grb & 0xff);
 }
 
 void VDP::PaletteDebug::write(unsigned address, byte value, EmuTime::param time)
@@ -1643,8 +1652,8 @@ void VDP::PaletteDebug::write(unsigned address, byte value, EmuTime::param time)
 	unsigned index = address / 2;
 	word grb = vdp.getPalette(index);
 	grb = (address & 1)
-	    ? (grb & 0x0077) | ((value & 0x07) << 8)
-	    : (grb & 0x0700) |  (value & 0x77);
+	    ? word((grb & 0x0077) | ((value & 0x07) << 8))
+	    : word((grb & 0x0700) | ((value & 0x77) << 0));
 	vdp.setPalette(index, grb, time);
 }
 
@@ -1662,9 +1671,9 @@ byte VDP::VRAMPointerDebug::read(unsigned address)
 {
 	auto& vdp = OUTER(VDP, vramPointerDebug);
 	if (address & 1) {
-		return vdp.vramPointer >> 8;  // TODO add read/write mode?
+		return narrow_cast<byte>(vdp.vramPointer >> 8);  // TODO add read/write mode?
 	} else {
-		return vdp.vramPointer & 0xFF;
+		return narrow_cast<byte>(vdp.vramPointer & 0xFF);
 	}
 }
 
@@ -1679,6 +1688,62 @@ void VDP::VRAMPointerDebug::write(unsigned address, byte value, EmuTime::param /
 	}
 }
 
+// class RegisterLatchStatusDebug
+
+VDP::RegisterLatchStatusDebug::RegisterLatchStatusDebug(VDP &vdp_)
+	: SimpleDebuggable(vdp_.getMotherBoard(),
+			vdp_.getName() + " register latch status", "V99x8 register latch status (0 = expecting a value, 1 = expecting a register)", 1)
+{
+}
+
+byte VDP::RegisterLatchStatusDebug::read(unsigned /*address*/)
+{
+	auto& vdp = OUTER(VDP, registerLatchStatusDebug);
+	return byte(vdp.registerDataStored);
+}
+
+// class VramAccessStatusDebug
+
+VDP::VramAccessStatusDebug::VramAccessStatusDebug(VDP &vdp_)
+	: SimpleDebuggable(vdp_.getMotherBoard(), vdp_.getName() == "VDP" ?
+			"VRAM access status" : vdp_.getName() + " VRAM access status",
+			"VDP VRAM access status (0 = ready to read, 1 = ready to write)", 1)
+{
+}
+
+byte VDP::VramAccessStatusDebug::read(unsigned /*address*/)
+{
+	auto& vdp = OUTER(VDP, vramAccessStatusDebug);
+	return byte(vdp.writeAccess);
+}
+
+// class PaletteLatchStatusDebug
+
+VDP::PaletteLatchStatusDebug::PaletteLatchStatusDebug(VDP &vdp_)
+	: SimpleDebuggable(vdp_.getMotherBoard(),
+			vdp_.getName() + " palette latch status", "V99x8 palette latch status (0 = expecting red & blue, 1 = expecting green)", 1)
+{
+}
+
+byte VDP::PaletteLatchStatusDebug::read(unsigned /*address*/)
+{
+	auto& vdp = OUTER(VDP, paletteLatchStatusDebug);
+	return byte(vdp.paletteDataStored);
+}
+
+// class DataLatchDebug
+
+VDP::DataLatchDebug::DataLatchDebug(VDP &vdp_)
+	: SimpleDebuggable(vdp_.getMotherBoard(),
+			vdp_.getName() + " data latch value", "V99x8 data latch value (byte)", 1)
+{
+}
+
+byte VDP::DataLatchDebug::read(unsigned /*address*/)
+{
+	auto& vdp = OUTER(VDP, dataLatchDebug);
+	return vdp.dataLatch;
+}
 
 // class Info
 
@@ -1833,6 +1898,7 @@ int VDP::MsxX512PosInfo::calc(const EmuTime& time) const
 // version 7: removed cpuVramReqAddr again, fixed issue in a different way
 // version 8: removed 'userData' from Schedulable
 // version 9: update sprite-enabled-status only once per line
+// version 10: added writeAccess
 template<typename Archive>
 void VDP::serialize(Archive& ar, unsigned serVersion)
 {
@@ -1921,6 +1987,11 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 	} else {
 		assert(Archive::IS_LOADER);
 		spriteEnabled = (controlRegs[8] & 0x02) == 0;
+	}
+	if (ar.versionAtLeast(serVersion, 10)) {
+		ar.serialize("writeAccess", writeAccess);
+	} else {
+		writeAccess = !cpuVramReqIsRead; // best guess
 	}
 
 	// externalVideo does not need serializing. It is set on load by the
