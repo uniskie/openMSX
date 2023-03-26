@@ -140,6 +140,9 @@
       <TargetMachine>MachineX86</TargetMachine>
       <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /y "$(TargetDir)openMSX.*" "$(SolutionDir)..\..\..\OpenMSX\openMSX_debug.*"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Midl>
@@ -169,6 +172,9 @@
       <SubSystem>Windows</SubSystem>
       <TargetMachine>MachineX64</TargetMachine>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /y "$(TargetDir)openMSX.*" "$(SolutionDir)..\..\..\OpenMSX\openMSX_x64_debug.*"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -1344,7 +1350,6 @@
     <None Include="$(OpenMSXSrcDir)\video\scalers\Simple3xScaler.hh" />
     <None Include="$(OpenMSXSrcDir)\video\SpriteChecker.hh" />
     <None Include="$(OpenMSXSrcDir)\video\SpriteConverter.hh" />
-    <None Include="$(OpenMSXSrcDir)\video\SuperImposedFrame.hh" />
     <None Include="$(OpenMSXSrcDir)\video\VDP.hh" />
     <None Include="$(OpenMSXSrcDir)\video\VDPCmdEngine.hh" />
     <None Include="$(OpenMSXSrcDir)\video\VDPAccessSlots.hh" />
