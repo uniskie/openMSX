@@ -1,4 +1,4 @@
-/derived
+﻿/derived
 /*.diff
 /*.log
 *.swp
@@ -26,3 +26,4 @@ build_3rdpirty.bat
 build_openmsx.bat
 Developer Command Prompt for VS 2022.lnk
 setup_3rdpirty.bat
+.DS_Store
