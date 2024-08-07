@@ -1,17 +1,21 @@
 #include "Completer.hh"
+
 #include "Interpreter.hh"
 #include "InterpreterOutput.hh"
 #include "FileContext.hh"
 #include "FileOperations.hh"
 #include "foreach_file.hh"
+#include "TclObject.hh"
+
 #include "ranges.hh"
 #include "stl.hh"
 #include "strCat.hh"
 #include "stringsp.hh"
-#include "TclObject.hh"
 #include "utf8_unchecked.hh"
 #include "xrange.hh"
+
 #include <array>
+#include <memory>
 
 using std::vector;
 using std::string;
@@ -103,7 +107,7 @@ bool Completer::completeImpl(string& str, vector<string_view> matches,
 		auto b = begin(*it);
 		auto e = b + str.size();
 		utf8::unchecked::next(e); // one more utf8 char
-		string_view string2(&*b, e - b);
+		string_view string2(std::to_address(b), e - b);
 		for (/**/; it != end(matches); ++it) {
 			if (!equalHead(string2, *it, caseSensitive)) {
 				goto out; // TODO rewrite this
@@ -116,7 +120,7 @@ bool Completer::completeImpl(string& str, vector<string_view> matches,
 	out:
 	if (!expanded && output) {
 		// print all possibilities
-		for (auto& line : formatListInColumns(matches)) {
+		for (const auto& line : formatListInColumns(matches)) {
 			output->output(line);
 		}
 	}
@@ -150,9 +154,9 @@ void Completer::completeFileNameImpl(vector<string>& tokens,
 	for (const auto& p : paths) {
 		auto pLen = p.size();
 		if (!p.empty() && (p.back() != '/')) ++pLen;
-		auto fileAction = [&](const string& path) {
+		auto fileAction = [&](std::string_view path) {
 			const auto& nm = FileOperations::getConventionalPath(
-				path.substr(pLen));
+				std::string(path.substr(pLen)));
 			if (equalHead(filename, nm, true)) {
 				filenames.push_back(nm);
 			}

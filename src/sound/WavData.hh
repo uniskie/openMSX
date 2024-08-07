@@ -1,13 +1,16 @@
 #ifndef WAVDATA_HH
 #define WAVDATA_HH
 
-#include "endian.hh"
 #include "File.hh"
 #include "MemBuffer.hh"
 #include "MSXException.hh"
+
+#include "endian.hh"
 #include "one_of.hh"
 #include "xrange.hh"
+
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -17,7 +20,7 @@ namespace openmsx {
 class WavData
 {
 	struct NoFilter {
-		void setFreq(unsigned /*freq*/) {}
+		void setFreq(unsigned /*freq*/) const {}
 		uint16_t operator()(uint16_t x) const { return x; }
 	};
 
@@ -57,7 +60,7 @@ inline const T* WavData::read(std::span<const uint8_t> raw, size_t offset, size_
 	if ((offset + count * sizeof(T)) > raw.size()) {
 		throw MSXException("Read beyond end of wav file.");
 	}
-	return reinterpret_cast<const T*>(raw.data() + offset);
+	return std::bit_cast<const T*>(raw.data() + offset);
 }
 
 template<typename Filter>

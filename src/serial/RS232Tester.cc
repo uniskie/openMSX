@@ -52,12 +52,13 @@ void RS232Tester::plugHelper(Connector& connector_, EmuTime::param /*time*/)
 	}
 
 	auto& rs232Connector = checked_cast<RS232Connector&>(connector_);
-	rs232Connector.setDataBits(SerialDataInterface::DATA_8);	// 8 data bits
-	rs232Connector.setStopBits(SerialDataInterface::STOP_1);	// 1 stop bit
-	rs232Connector.setParityBit(false, SerialDataInterface::EVEN); // no parity
+	rs232Connector.setDataBits(SerialDataInterface::DataBits::D8);	// 8 data bits
+	rs232Connector.setStopBits(SerialDataInterface::StopBits::S1);	// 1 stop bit
+	rs232Connector.setParityBit(false, SerialDataInterface::Parity::EVEN); // no parity
 
 	setConnector(&connector_); // base class will do this in a moment,
 	                           // but thread already needs it
+	poller.reset();
 	thread = std::thread([this]() { run(); });
 }
 
@@ -103,11 +104,23 @@ void RS232Tester::run()
 			continue;
 		}
 		assert(isPluggedIn());
-		std::lock_guard<std::mutex> lock(mutex);
+		std::scoped_lock lock(mutex);
 		queue.push_back(buf[0]);
-		eventDistributor.distributeEvent(
-			Event::create<Rs232TesterEvent>());
+		eventDistributor.distributeEvent(Rs232TesterEvent());
 	}
+}
+
+// Control lines
+// Needed to set these lines in the correct state for a plugged device
+
+std::optional<bool> RS232Tester::getDSR(EmuTime::param /*time*/) const
+{
+	return true;
+}
+
+std::optional<bool> RS232Tester::getCTS(EmuTime::param /*time*/) const
+{
+	return true;
 }
 
 // input
@@ -115,27 +128,27 @@ void RS232Tester::signal(EmuTime::param time)
 {
 	auto* conn = checked_cast<RS232Connector*>(getConnector());
 	if (!conn->acceptsData()) {
-		std::lock_guard<std::mutex> lock(mutex);
+		std::scoped_lock lock(mutex);
 		queue.clear();
 		return;
 	}
 	if (!conn->ready()) return;
 
-	std::lock_guard<std::mutex> lock(mutex);
+	std::scoped_lock lock(mutex);
 	if (queue.empty()) return;
 	conn->recvByte(queue.pop_front(), time);
 }
 
 // EventListener
-int RS232Tester::signalEvent(const Event& /*event*/)
+bool RS232Tester::signalEvent(const Event& /*event*/)
 {
 	if (isPluggedIn()) {
 		signal(scheduler.getCurrentTime());
 	} else {
-		std::lock_guard<std::mutex> lock(mutex);
+		std::scoped_lock lock(mutex);
 		queue.clear();
 	}
-	return 0;
+	return false;
 }
 
 

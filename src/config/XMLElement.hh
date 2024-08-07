@@ -4,7 +4,9 @@
 #include "MemBuffer.hh"
 #include "monotonic_allocator.hh"
 #include "serialize_meta.hh"
+
 #include <cassert>
+#include <concepts>
 #include <cstddef>
 #include <iterator>
 //#include <memory_resource>
@@ -101,14 +103,17 @@ class XMLElement
 		const XMLElement* elem;
 
 		const XMLElement& operator*() const { return *elem; }
-		ChildIterator operator++() { elem = elem->nextSibling; return *this; }
-		[[nodiscard]] bool operator==(const ChildIterator& i) const { return elem == i.elem; }
+		ChildIterator& operator++() { elem = elem->nextSibling; return *this; }
+		ChildIterator operator++(int) { auto result = *this; elem = elem->nextSibling; return result; }
+		[[nodiscard]] bool operator==(const ChildIterator& i) const = default;
 	};
+	static_assert(std::forward_iterator<ChildIterator>);
 	struct ChildRange {
 		const XMLElement* elem;
 		[[nodiscard]] ChildIterator begin() const { return {elem->firstChild}; }
 		[[nodiscard]] ChildIterator end()   const { return {nullptr}; }
 	};
+	static_assert(std::ranges::range<ChildRange>);
 
 	struct NamedChildIterator {
 		using difference_type = ptrdiff_t;
@@ -118,8 +123,9 @@ class XMLElement
 		using iterator_category = std::forward_iterator_tag;
 
 		const XMLElement* elem;
-		const std::string_view name;
+		std::string_view name;
 
+		NamedChildIterator() : elem(nullptr) {}
 		NamedChildIterator(const XMLElement* elem_, std::string_view name_)
 			: elem(elem_), name(name_)
 		{
@@ -129,20 +135,23 @@ class XMLElement
 		}
 
 		const XMLElement* operator*() const { return elem; }
-		NamedChildIterator operator++() {
+		NamedChildIterator& operator++() {
 			do {
 				elem = elem->nextSibling;
 			} while (elem && elem->getName() != name);
 			return *this;
 		}
+		NamedChildIterator operator++(int) { auto result = *this; ++(*this); return result; }
 		[[nodiscard]] bool operator==(const NamedChildIterator& i) const { return elem == i.elem; }
 	};
+	static_assert(std::forward_iterator<NamedChildIterator>);
 	struct NamedChildRange {
 		const XMLElement* elem;
 		std::string_view name;
 		[[nodiscard]] NamedChildIterator begin() const { return {elem->firstChild, name}; }
 		[[nodiscard]] NamedChildIterator end()   const { return {nullptr, std::string_view{}}; }
 	};
+	static_assert(std::ranges::range<NamedChildRange>);
 
 	struct AttributeIterator {
 		using difference_type = ptrdiff_t;
@@ -154,17 +163,20 @@ class XMLElement
 		const XMLAttribute* attr;
 
 		const XMLAttribute& operator*() const { return *attr; }
-		AttributeIterator operator++() { attr = attr->nextAttribute; return *this; }
-		[[nodiscard]] bool operator==(const AttributeIterator& i) const { return attr == i.attr; }
+		AttributeIterator& operator++() { attr = attr->nextAttribute; return *this; }
+		AttributeIterator operator++(int) { auto result = *this; attr = attr->nextAttribute; return result; }
+		[[nodiscard]] bool operator==(const AttributeIterator& i) const = default;
 	};
+	static_assert(std::forward_iterator<AttributeIterator>);
 	struct AttributeRange {
 		const XMLElement* elem;
 		[[nodiscard]] AttributeIterator begin() const { return {elem->firstAttribute}; }
 		[[nodiscard]] AttributeIterator end()   const { return {nullptr}; }
 	};
+	static_assert(std::ranges::range<AttributeRange>);
 
 public:
-	XMLElement(const char* name_) : name(name_) {}
+	explicit XMLElement(const char* name_) : name(name_) {}
 	XMLElement(const char* name_, const char* data_) : name(name_), data(data_) {}
 
 	[[nodiscard]] std::string_view getName() const { return name; }
@@ -257,11 +269,20 @@ public:
 		return doc;
 	}
 
+	XMLDocument(const XMLDocument&) = delete;
+	XMLDocument(XMLDocument&&) = delete;
+	XMLDocument& operator=(const XMLDocument&) = delete;
+	XMLDocument& operator=(XMLDocument&&) = delete;
+
+	// Create an empty XMLDocument (root == nullptr).
+	XMLDocument() = default;
+
 	// Create an empty XMLDocument (root == nullptr).  All constructor
 	// arguments are delegated to the monotonic allocator constructor.
-	template<typename ...Args>
-	XMLDocument(Args&& ...args)
-		: allocator(std::forward<Args>(args)...) {}
+	template<typename T, typename ...Args>
+		requires(!std::same_as<XMLDocument, std::remove_cvref_t<T>>) // don't block copy-constructor
+	XMLDocument(T&& t, Args&& ...args)
+		: allocator(std::forward<T>(t), std::forward<Args>(args)...) {}
 
 	// Load/parse an xml file. Requires that the document is still empty.
 	void load(const std::string& filename, std::string_view systemID);
@@ -290,12 +311,12 @@ public:
 		}
 	}
 
-	void load(OldXMLElement& elem); // bw compat
+	void load(const OldXMLElement& elem); // bw compat
 
 	void serialize(MemInputArchive&  ar, unsigned version);
-	void serialize(MemOutputArchive& ar, unsigned version);
+	void serialize(MemOutputArchive& ar, unsigned version) const;
 	void serialize(XmlInputArchive&  ar, unsigned version);
-	void serialize(XmlOutputArchive& ar, unsigned version);
+	void serialize(XmlOutputArchive& ar, unsigned version) const;
 
 private:
 	XMLElement* loadElement(MemInputArchive& ar);

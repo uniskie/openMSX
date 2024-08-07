@@ -15,7 +15,7 @@ void pointerError(unsigned id)
 }
 
 
-static void versionError(const char* className, unsigned latestVersion, unsigned version)
+[[noreturn]] static void versionError(const char* className, unsigned latestVersion, unsigned version)
 {
 	// note: the result of type_info::name() is implementation defined
 	//       but should be ok to show in an error message
@@ -29,7 +29,7 @@ static void versionError(const char* className, unsigned latestVersion, unsigned
 unsigned loadVersionHelper(MemInputArchive& /*ar*/, const char* /*className*/,
                            unsigned /*latestVersion*/)
 {
-	UNREACHABLE; return 0;
+	UNREACHABLE;
 }
 
 unsigned loadVersionHelper(XmlInputArchive& ar, const char* className,

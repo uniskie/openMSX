@@ -2,7 +2,10 @@
 #define DISKIMAGEMANAGER_HH
 
 #include "CLIOption.hh"
+
 #include "zstring_view.hh"
+
+#include <span>
 
 namespace openmsx {
 
@@ -10,6 +13,9 @@ class CommandLineParser;
 
 class DiskImageCLI final : public CLIOption, public CLIFileType
 {
+public:
+	static std::span<const std::string_view> getExtensions();
+
 public:
 	explicit DiskImageCLI(CommandLineParser& parser);
 	void parseOption(const std::string& option,
@@ -22,7 +28,7 @@ public:
 
 private:
 	void parse(zstring_view drive, std::string_view image,
-	           std::span<std::string>& cmdLine);
+	           std::span<std::string>& cmdLine) const;
 
 private:
 	CommandLineParser& parser;

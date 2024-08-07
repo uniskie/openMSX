@@ -1,17 +1,27 @@
 #include "DiskImageCLI.hh"
+
 #include "CommandLineParser.hh"
 #include "Interpreter.hh"
-#include "TclObject.hh"
 #include "MSXException.hh"
+#include "TclObject.hh"
 
 namespace openmsx {
+
+std::span<const std::string_view> DiskImageCLI::getExtensions()
+{
+	static constexpr std::array<std::string_view, 7> extensions = {
+		"di1", "di2", "dmk", "dsk", "xsa", "fd1", "fd2"
+	};
+	return extensions;
+}
 
 DiskImageCLI::DiskImageCLI(CommandLineParser& parser_)
 	: parser(parser_)
 {
-	parser.registerOption("-diska", *this);
-	parser.registerOption("-diskb", *this);
-	parser.registerFileType({"di1", "di2", "dmk", "dsk", "xsa", "fd1", "fd2"}, *this);
+	for (const auto* disk : {"-diska", "-diskb"}) {
+		parser.registerOption(disk, *this);
+	}
+	parser.registerFileType(getExtensions(), *this);
 }
 
 void DiskImageCLI::parseOption(const std::string& option, std::span<std::string>& cmdLine)
@@ -41,7 +51,7 @@ std::string_view DiskImageCLI::fileTypeCategoryName() const
 }
 
 void DiskImageCLI::parse(zstring_view drive, std::string_view image,
-                         std::span<std::string>& cmdLine)
+                         std::span<std::string>& cmdLine) const
 {
 	if (!parser.getInterpreter().hasCommand(drive)) {
 		throw MSXException("No disk drive ", char(::toupper(drive.back())), " present to put image '", image, "' in.");

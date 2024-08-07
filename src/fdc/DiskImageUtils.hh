@@ -4,17 +4,20 @@
 #include "AlignedBuffer.hh"
 #include "endian.hh"
 #include "ranges.hh"
+#include "stl.hh"
+
 #include <array>
 #include <span>
+#include <string>
 
 namespace openmsx {
 
 class SectorAccessibleDisk;
 
-enum class MSXBootSectorType {
-	DOS1,
-	DOS2,
-	NEXTOR
+enum class MSXBootSectorType : int {
+	DOS1 = 0,
+	DOS2 = 1,
+	NEXTOR = 2,
 };
 
 struct MSXBootSector {
@@ -57,16 +60,29 @@ struct MSXBootSector {
 static_assert(sizeof(MSXBootSector) == 512);
 
 struct MSXDirEntry {
-	static constexpr uint8_t ATT_REGULAR   = 0x00; // Normal file
-	static constexpr uint8_t ATT_READONLY  = 0x01; // Read-Only file
-	static constexpr uint8_t ATT_HIDDEN    = 0x02; // Hidden file
-	static constexpr uint8_t ATT_SYSTEM    = 0x04; // System file
-	static constexpr uint8_t ATT_VOLUME    = 0x08; // filename is Volume Label
-	static constexpr uint8_t ATT_DIRECTORY = 0x10; // entry is a subdir
-	static constexpr uint8_t ATT_ARCHIVE   = 0x20; // Archive bit
+	enum class Attrib : uint8_t {
+		REGULAR   = 0x00, // Normal file
+		READONLY  = 0x01, // Read-Only file
+		HIDDEN    = 0x02, // Hidden file
+		SYSTEM    = 0x04, // System file
+		VOLUME    = 0x08, // filename is Volume Label
+		DIRECTORY = 0x10, // entry is a subdir
+		ARCHIVE   = 0x20, // Archive bit
+	};
+	struct AttribValue {
+		uint8_t value;
+
+		constexpr AttribValue() = default;
+		constexpr /*implicit*/ AttribValue(Attrib v) : value(to_underlying(v)) {}
+		constexpr explicit AttribValue(uint8_t v) : value(v) {}
+		constexpr explicit operator bool() const { return value != 0; }
+		constexpr auto operator<=>(const AttribValue&) const = default;
+		friend constexpr AttribValue operator|(AttribValue x, AttribValue y) { return AttribValue(x.value | y.value); }
+		friend constexpr AttribValue operator&(AttribValue x, AttribValue y) { return AttribValue(x.value & y.value); }
+	};
 
 	std::array<char, 8 + 3> filename;     // + 0
-	uint8_t                 attrib;       // +11
+	AttribValue             attrib;       // +11
 	std::array<uint8_t, 10> reserved;     // +12 unused
 	Endian::L16             time;         // +22
 	Endian::L16             date;         // +24
@@ -142,15 +158,15 @@ namespace DiskImageUtils {
 	 * @param buf Sector buffer for partition table.
 	 * @return Reference to partition information struct in sector buffer.
 	 */
-	Partition& getPartition(SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf);
+	Partition& getPartition(const SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf);
 
 	/** Check whether partition is of type FAT12 or FAT16.
 	 */
-	void checkSupportedPartition(SectorAccessibleDisk& disk, unsigned partition);
+	void checkSupportedPartition(const SectorAccessibleDisk& disk, unsigned partition);
 
 	/** Check whether the given disk is partitioned.
 	 */
-	[[nodiscard]] bool hasPartitionTable(SectorAccessibleDisk& disk);
+	[[nodiscard]] bool hasPartitionTable(const SectorAccessibleDisk& disk);
 
 	/** Format the given disk (= a single partition).
 	 * The formatting depends on the size of the image.
@@ -167,6 +183,14 @@ namespace DiskImageUtils {
 	 */
 	unsigned partition(SectorAccessibleDisk& disk,
 	               std::span<const unsigned> sizes, MSXBootSectorType bootType);
+
+	struct FatTimeDate {
+		uint16_t time, date;
+	};
+	FatTimeDate toTimeDate(time_t totalSeconds);
+	time_t fromTimeDate(FatTimeDate timeDate);
+
+	[[nodiscard]] std::string formatAttrib(MSXDirEntry::AttribValue attrib);
 };
 
 } // namespace openmsx

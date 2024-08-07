@@ -7,7 +7,7 @@ FloatSetting::FloatSetting(CommandController& commandController_,
                            double initialValue,
                            double minValue_, double maxValue_)
 	: Setting(commandController_, name_, description_,
-	          TclObject(initialValue), SAVE)
+	          TclObject(initialValue), Save::YES)
 	, minValue(minValue_)
 	, maxValue(maxValue_)
 {
@@ -32,6 +32,11 @@ void FloatSetting::additionalInfo(TclObject& result) const
 void FloatSetting::setDouble(double d)
 {
 	setValue(TclObject(d));
+}
+
+void FloatSetting::setFloat(float f)
+{
+	setDouble(double(f));
 }
 
 } // namespace openmsx

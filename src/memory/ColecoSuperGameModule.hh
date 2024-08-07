@@ -11,7 +11,7 @@ namespace openmsx {
 class ColecoSuperGameModule final : public MSXDevice
 {
 public:
-	ColecoSuperGameModule(const DeviceConfig& config);
+	explicit ColecoSuperGameModule(const DeviceConfig& config);
 	~ColecoSuperGameModule() override;
 
 	void reset(EmuTime::param time) override;
@@ -22,7 +22,7 @@ public:
 	[[nodiscard]] byte readMem(word address, EmuTime::param time) override;
 	void writeMem(word address, byte value, EmuTime::param time) override;
 	[[nodiscard]] const byte* getReadCacheLine(word start) const override;
-	[[nodiscard]] byte* getWriteCacheLine(word start) const override;
+	[[nodiscard]] byte* getWriteCacheLine(word start) override;
 
 	template<typename Archive>
 	void serialize(Archive& ar, unsigned version);

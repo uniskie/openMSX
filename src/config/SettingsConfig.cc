@@ -1,17 +1,20 @@
 #include "SettingsConfig.hh"
-#include "MSXException.hh"
-#include "StringOp.hh"
+
+#include "CliComm.hh"
+#include "CommandException.hh"
 #include "File.hh"
 #include "FileContext.hh"
 #include "FileException.hh"
 #include "FileOperations.hh"
-#include "MemBuffer.hh"
-#include "CliComm.hh"
-#include "HotKey.hh"
-#include "CommandException.hh"
 #include "GlobalCommandController.hh"
+#include "HotKey.hh"
+#include "MSXException.hh"
+#include "Shortcuts.hh"
 #include "TclObject.hh"
 #include "XMLOutputStream.hh"
+
+#include "MemBuffer.hh"
+#include "StringOp.hh"
 #include "outer.hh"
 #include "rapidsax.hh"
 #include "unreachable.hh"
@@ -34,14 +37,15 @@ struct SettingsParser : rapidsax::NullHandler
 		std::string_view value;
 	};
 	std::vector<Setting> settings;
-	struct Bind {
-		std::string_view key;
-		std::string_view cmd;
-		bool repeat = false;
-		bool event = false;
-	};
-	std::vector<Bind> binds;
+	std::vector<HotKey::Data> binds;
 	std::vector<std::string_view> unbinds;
+
+	struct ShortcutItem {
+		Shortcuts::ID id = Shortcuts::ID::INVALID;
+		Shortcuts::Shortcut shortcut = {};
+	};
+	std::vector<ShortcutItem> shortcutItems;
+
 	std::string_view systemID;
 
 	// parse state
@@ -54,21 +58,25 @@ struct SettingsParser : rapidsax::NullHandler
 		BINDINGS,
 		BIND,
 		UNBIND,
+		SHORTCUTS,
+		SHORTCUT,
 		END
 	} state = START;
 	Setting currentSetting;
-	Bind currentBind;
+	HotKey::Data currentBind;
 	std::string_view currentUnbind;
+	ShortcutItem currentShortcut;
 };
 
 SettingsConfig::SettingsConfig(
 		GlobalCommandController& globalCommandController,
-		HotKey& hotKey_)
+		HotKey& hotKey_, Shortcuts& shortcuts_)
 	: commandController(globalCommandController)
 	, saveSettingsCommand(commandController)
 	, loadSettingsCommand(commandController)
 	, settingsManager(globalCommandController)
 	, hotKey(hotKey_)
+	, shortcuts(shortcuts_)
 {
 }
 
@@ -116,11 +124,26 @@ void SettingsConfig::loadSetting(const FileContext& context, std::string_view fi
 	}
 
 	hotKey.loadInit();
-	for (const auto& [key, cmd, repeat, event] : parser.binds) {
-		hotKey.loadBind(key, cmd, repeat, event);
+	for (const auto& bind : parser.binds) {
+		try {
+			hotKey.loadBind(bind);
+		} catch (MSXException& e) {
+			commandController.getCliComm().printWarning(
+				"Couldn't restore key-binding: ", e.getMessage());
+		}
 	}
 	for (const auto& key : parser.unbinds) {
-		hotKey.loadUnbind(key);
+		try {
+			hotKey.loadUnbind(key);
+		} catch (MSXException& e) {
+			commandController.getCliComm().printWarning(
+				"Couldn't restore key-binding: ", e.getMessage());
+		}
+	}
+
+	shortcuts.setDefaultShortcuts();
+	for (const auto& item : parser.shortcutItems) {
+		shortcuts.setShortcut(item.id, item.shortcut);
 	}
 
 	getSettingsManager().loadSettings(*this);
@@ -155,8 +178,8 @@ void SettingsConfig::saveSetting(std::string filename)
 	if (filename.empty()) return;
 
 	struct SettingsWriter {
-		SettingsWriter(std::string filename)
-			: file(std::move(filename), File::TRUNCATE)
+		explicit SettingsWriter(std::string filename)
+			: file(std::move(filename), File::OpenMode::TRUNCATE)
 		{
 			std::string_view header =
 				"<!DOCTYPE settings SYSTEM 'settings.dtd'>\n";
@@ -179,21 +202,20 @@ void SettingsConfig::saveSetting(std::string filename)
 
 	SettingsWriter writer(std::move(filename));
 	XMLOutputStream xml(writer);
-	xml.begin("settings");
-	{
-		xml.begin("settings");
-		for (const auto& [name, value] : settingValues) {
-			xml.begin("setting");
-			xml.attribute("id", name);
-			xml.data(value);
-			xml.end("setting");
-		}
-		xml.end("settings");
-	}
-	{
+	xml.with_tag("settings", [&]{
+		xml.with_tag("settings", [&]{
+			for (const auto& [name_, value_] : settingValues) {
+				const auto& name = name_;    // clang-15 workaround
+				const auto& value = value_;  // fixed in clang-16
+				xml.with_tag("setting", [&]{
+					xml.attribute("id", name);
+					xml.data(value);
+				});
+			}
+		});
 		hotKey.saveBindings(xml);
-	}
-	xml.end("settings");
+		shortcuts.saveShortcuts(xml);
+	});
 }
 
 
@@ -287,6 +309,9 @@ void SettingsParser::start(std::string_view tag)
 		} else if (tag == "bindings") {
 			state = BINDINGS;
 			return;
+		} else if (tag == "shortcuts") {
+			state = SHORTCUTS;
+			return;
 		}
 		break;
 	case SETTINGS:
@@ -299,7 +324,7 @@ void SettingsParser::start(std::string_view tag)
 	case BINDINGS:
 		if (tag == "bind") {
 			state = BIND;
-			currentBind = Bind{};
+			currentBind = HotKey::Data{};
 			return;
 		} else if (tag == "unbind") {
 			state = UNBIND;
@@ -307,9 +332,17 @@ void SettingsParser::start(std::string_view tag)
 			return;
 		}
 		break;
+	case SHORTCUTS:
+		if (tag == "shortcut") {
+			state = SHORTCUT;
+			currentShortcut = ShortcutItem{};
+			return;
+		}
+		break;
 	case SETTING:
 	case BIND:
 	case UNBIND:
+	case SHORTCUT:
 		break;
 	case END:
 		throw MSXException("Unexpected opening tag: ", tag);
@@ -330,6 +363,21 @@ void SettingsParser::attribute(std::string_view name, std::string_view value)
 			currentSetting.name = value;
 		}
 		break;
+	case SHORTCUT:
+		if (name == "key") {
+			if (auto keyChord = parseKeyChord(value)) {
+				currentShortcut.shortcut.keyChord = *keyChord;
+			} else {
+				std::cerr << "Parse error: invalid shortcut key \"" << value << "\"\n";
+			}
+		} else if (name == "type") {
+			if (auto type = Shortcuts::parseType(value)) {
+				currentShortcut.shortcut.type = *type;
+			} else {
+				std::cerr << "Parse error: invalid shortcut type \"" << value << "\"\n";
+			}
+		}
+		break;
 	case BIND:
 		if (name == "key") {
 			currentBind.key = value;
@@ -337,6 +385,8 @@ void SettingsParser::attribute(std::string_view name, std::string_view value)
 			currentBind.repeat = StringOp::stringToBool(value);
 		} else if (name == "event") {
 			currentBind.event = StringOp::stringToBool(value);
+		} else if (name == "msx") {
+			currentBind.msx = StringOp::stringToBool(value);
 		}
 		break;
 	case UNBIND:
@@ -360,6 +410,13 @@ void SettingsParser::text(std::string_view txt)
 	case BIND:
 		currentBind.cmd = txt;
 		break;
+	case SHORTCUT:
+		if (auto value = Shortcuts::parseShortcutName(txt)) {
+			currentShortcut.id = *value;
+		} else {
+			std::cerr << "Parse error: invalid shortcut \"" << txt << "\"\n";
+		}
+		break;
 	default:
 		break; //nothing
 	}
@@ -382,6 +439,9 @@ void SettingsParser::stop()
 	case BINDINGS:
 		state = TOP;
 		break;
+	case SHORTCUTS:
+		state = TOP;
+		break;
 	case SETTING:
 		if (!currentSetting.name.empty()) {
 			settings.push_back(currentSetting);
@@ -399,6 +459,12 @@ void SettingsParser::stop()
 			unbinds.push_back(currentUnbind);
 		}
 		state = BINDINGS;
+		break;
+	case SHORTCUT:
+		if (currentShortcut.id != Shortcuts::ID::INVALID) {
+			shortcutItems.push_back(currentShortcut);
+		}
+		state = SHORTCUTS;
 		break;
 	case START:
 	case END:

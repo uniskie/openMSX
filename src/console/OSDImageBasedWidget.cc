@@ -1,8 +1,8 @@
 #include "OSDImageBasedWidget.hh"
 #include "OSDTopWidget.hh"
 #include "OSDGUI.hh"
-#include "BaseImage.hh"
 #include "Display.hh"
+#include "GLImage.hh"
 #include "TclObject.hh"
 #include "CommandException.hh"
 #include "Timer.hh"
@@ -141,14 +141,13 @@ std::optional<float> OSDImageBasedWidget::getScrollWidth() const
         const auto* parentImage = dynamic_cast<const OSDImageBasedWidget*>(getParent());
         if (!parentImage) return {};
 
-        auto* output = getDisplay().getOutputSurface();
+        const auto* output = getDisplay().getOutputSurface();
         if (!output) return {};
 
-        vec2 parentPos, parentSize;
-        parentImage->getBoundingBox(*output, parentPos, parentSize);
-        auto parentWidth = parentSize[0] / narrow<float>(getScaleFactor(*output));
+        auto [parentPos, parentSize] = parentImage->getBoundingBox(*output);
+        auto parentWidth = parentSize.x / narrow<float>(getScaleFactor(*output));
 
-        auto thisWidth = getRenderedSize()[0];
+        auto thisWidth = getRenderedSize().x;
         auto scrollWidth = thisWidth - parentWidth;
         if (scrollWidth <= 0.0f) return {};
 
@@ -198,7 +197,7 @@ gl::vec2 OSDImageBasedWidget::getPos() const
 			return smootherStep(1.0f - ((t - scrollPauseLeft - scrollTime - scrollPauseRight) / scrollTime));
 		}
 	}();
-	result[0] -= *width * relOffsetX;
+	result.x -= *width * relOffsetX;
 	return result;
 }
 
@@ -297,25 +296,11 @@ void OSDImageBasedWidget::setError(std::string message)
 	}
 }
 
-void OSDImageBasedWidget::paintSDL(OutputSurface& output)
-{
-	paint(output, false);
-}
-
-void OSDImageBasedWidget::paintGL(OutputSurface& output)
-{
-	paint(output, true);
-}
-
 void OSDImageBasedWidget::createImage(OutputSurface& output)
 {
 	if (!image && !hasError()) {
 		try {
-			if (getDisplay().getOSDGUI().isOpenGL()) {
-				image = createGL(output);
-			} else {
-				image = createSDL(output);
-			}
+			image = create(output);
 		} catch (MSXException& e) {
 			setError(std::move(e).getMessage());
 		}
@@ -338,26 +323,23 @@ vec2 OSDImageBasedWidget::getRenderedSize() const
 		} else {
 			// Couldn't be rendered, maybe an (intentionally)
 			// invisible rectangle
-			vec2 dummyPos, size;
-			getBoundingBox(*output, dummyPos, size);
-			return size;
+			return getBoundingBox(*output).size;
 		}
 	}();
 	return imageSize / float(getScaleFactor(*output));
 }
 
-void OSDImageBasedWidget::paint(OutputSurface& output, bool openGL)
+void OSDImageBasedWidget::paint(OutputSurface& output)
 {
 	// Note: Even when alpha == 0 we still create the image:
 	//    It may be needed to get the dimensions to be able to position
 	//    child widgets.
-	assert(openGL == getDisplay().getOSDGUI().isOpenGL()); (void)openGL;
 	createImage(output);
 
-	auto fadedAlpha = getFadedAlpha();
-	if ((fadedAlpha != 0) && image) {
+	if (auto fadedAlpha = getFadedAlpha();
+	    (fadedAlpha != 0) && image) {
 		ivec2 drawPos = round(getTransformedPos(output));
-		image->draw(output, drawPos, fadedAlpha);
+		image->draw(drawPos, fadedAlpha);
 	}
 	if (isRecursiveFading() || isAnimating()) {
 		getDisplay().getOSDGUI().refresh();

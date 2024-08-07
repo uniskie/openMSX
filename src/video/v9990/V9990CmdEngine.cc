@@ -1,4 +1,5 @@
 #include "V9990CmdEngine.hh"
+
 #include "V9990.hh"
 #include "V9990VRAM.hh"
 #include "V9990DisplayTiming.hh"
@@ -8,11 +9,14 @@
 #include "EnumSetting.hh"
 #include "MemBuffer.hh"
 #include "Clock.hh"
+#include "serialize.hh"
+
 #include "checked_cast.hh"
 #include "narrow.hh"
-#include "serialize.hh"
+#include "stl.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
 #include <array>
 #include <cassert>
 #include <iostream>
@@ -27,7 +31,7 @@ static constexpr EmuDuration d_(unsigned x)
 	return Clock<V9990DisplayTiming::UC_TICKS_PER_SECOND>::duration(x);
 }
 using EDStorage = EmuDurationStorageFor<d_(maxLength).length()>;
-static constexpr EDStorage d(unsigned x) { return d_(x); }
+static constexpr EDStorage d(unsigned x) { return EDStorage{d_(x)}; }
 using A  = std::array<const EDStorage, 4>;
 using A2 = std::array<const A, 3>;
 using TimingTable = std::span<const A2, 4>;
@@ -91,13 +95,13 @@ static constexpr std::array SRCH_TIMING = {
 
 	const auto& vdp = cmdEngine.getVDP();
 	auto mode = vdp.getDisplayMode();
-	unsigned idx1 = (mode == P1) ? 2 :
-	                (mode == P2) ? 3 :
+	unsigned idx1 = (mode == V9990DisplayMode::P1) ? 2 :
+	                (mode == V9990DisplayMode::P2) ? 3 :
 	                (vdp.isOverScan()) ? 0 : 1;
 	unsigned idx2 = vdp.isDisplayEnabled() ? (vdp.spritesEnabled() ? 0 : 1)
 	                                       : 2;
 	unsigned idx3 = vdp.getColorDepth();
-	return table[idx1][idx2][idx3];
+	return EmuDuration(table[idx1][idx2][idx3]);
 }
 
 
@@ -110,7 +114,11 @@ static constexpr std::array SRCH_TIMING = {
 // * A fully populated logOpLUT would take 4MB, however the vast majority of
 //   this table is (almost) never used. So we save quite some memory (and
 //   startup time) by lazily initializing this table.
-static std::array<std::array<MemBuffer<byte>, 16>, 4> logOpLUT;
+enum class Log {
+	NO_T, BPP2, BPP4, BPP8,
+	NUM
+};
+static array_with_enum_index<Log, std::array<MemBuffer<byte>, 16>> logOpLUT;
 
 // to speedup calculating logOpLUT
 static constexpr auto bitLUT = [] {
@@ -129,8 +137,6 @@ static constexpr auto bitLUT = [] {
 	}
 	return result;
 }();
-
-enum { LOG_NO_T, LOG_BPP2, LOG_BPP4, LOG_BPP8 };
 
 [[nodiscard]] static constexpr byte func01(unsigned op, unsigned src, unsigned dst)
 {
@@ -248,7 +254,7 @@ static constexpr void fillTable8(unsigned op, std::span<byte, 256 * 256> table)
 	}
 }
 
-[[nodiscard]] static std::span<const byte, 256 * 256> getLogOpImpl(unsigned mode, unsigned op)
+[[nodiscard]] static std::span<const byte, 256 * 256> getLogOpImpl(Log mode, unsigned op)
 {
 	op &= 0x0f;
 	auto& lut = logOpLUT[mode][op];
@@ -256,16 +262,17 @@ static constexpr void fillTable8(unsigned op, std::span<byte, 256 * 256> table)
 		lut.resize(256 * 256);
 		std::span<byte, 256 * 256> s{lut.data(), 256 * 256};
 		switch (mode) {
-		case LOG_NO_T:
+		using enum Log;
+		case NO_T:
 			fillTableNoT(op, s);
 			break;
-		case LOG_BPP2:
+		case BPP2:
 			fillTable2(op, s);
 			break;
-		case LOG_BPP4:
+		case BPP4:
 			fillTable4(op, s);
 			break;
-		case LOG_BPP8:
+		case BPP8:
 			fillTable8(op, s);
 			break;
 		default:
@@ -297,7 +304,7 @@ inline unsigned V9990CmdEngine::V9990P1::addressOf(
 }
 
 inline byte V9990CmdEngine::V9990P1::point(
-	V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
+	const V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
 {
 	return vram.readVRAMDirect(addressOf(x, y, pitch));
 }
@@ -316,7 +323,7 @@ inline byte V9990CmdEngine::V9990P1::shiftMask(unsigned x)
 
 inline std::span<const byte, 256 * 256> V9990CmdEngine::V9990P1::getLogOpLUT(byte op)
 {
-	return getLogOpImpl((op & 0x10) ? LOG_BPP4 : LOG_NO_T, op);
+	return getLogOpImpl((op & 0x10) ? Log::BPP4 : Log::NO_T, op);
 }
 
 inline byte V9990CmdEngine::V9990P1::logOp(
@@ -365,7 +372,7 @@ inline unsigned V9990CmdEngine::V9990P2::addressOf(
 }
 
 inline byte V9990CmdEngine::V9990P2::point(
-	V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
+	const V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
 {
 	return vram.readVRAMDirect(addressOf(x, y, pitch));
 }
@@ -384,7 +391,7 @@ inline byte V9990CmdEngine::V9990P2::shiftMask(unsigned x)
 
 inline std::span<const byte, 256 * 256> V9990CmdEngine::V9990P2::getLogOpLUT(byte op)
 {
-	return getLogOpImpl((op & 0x10) ? LOG_BPP4 : LOG_NO_T, op);
+	return getLogOpImpl((op & 0x10) ? Log::BPP4 : Log::NO_T, op);
 }
 
 inline byte V9990CmdEngine::V9990P2::logOp(
@@ -433,7 +440,7 @@ inline unsigned V9990CmdEngine::V9990Bpp2::addressOf(
 }
 
 inline byte V9990CmdEngine::V9990Bpp2::point(
-	V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
+	const V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
 {
 	return vram.readVRAMDirect(addressOf(x, y, pitch));
 }
@@ -452,7 +459,7 @@ inline byte V9990CmdEngine::V9990Bpp2::shiftMask(unsigned x)
 
 inline std::span<const byte, 256 * 256> V9990CmdEngine::V9990Bpp2::getLogOpLUT(byte op)
 {
-	return getLogOpImpl((op & 0x10) ? LOG_BPP2 : LOG_NO_T, op);
+	return getLogOpImpl((op & 0x10) ? Log::BPP2 : Log::NO_T, op);
 }
 
 inline byte V9990CmdEngine::V9990Bpp2::logOp(
@@ -501,7 +508,7 @@ inline unsigned V9990CmdEngine::V9990Bpp4::addressOf(
 }
 
 inline byte V9990CmdEngine::V9990Bpp4::point(
-	V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
+	const V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
 {
 	return vram.readVRAMDirect(addressOf(x, y, pitch));
 }
@@ -520,7 +527,7 @@ inline byte V9990CmdEngine::V9990Bpp4::shiftMask(unsigned x)
 
 inline std::span<const byte, 256 * 256> V9990CmdEngine::V9990Bpp4::getLogOpLUT(byte op)
 {
-	return getLogOpImpl((op & 0x10) ? LOG_BPP4 : LOG_NO_T, op);
+	return getLogOpImpl((op & 0x10) ? Log::BPP4 : Log::NO_T, op);
 }
 
 inline byte V9990CmdEngine::V9990Bpp4::logOp(
@@ -569,7 +576,7 @@ inline unsigned V9990CmdEngine::V9990Bpp8::addressOf(
 }
 
 inline byte V9990CmdEngine::V9990Bpp8::point(
-	V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
+	const V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
 {
 	return vram.readVRAMDirect(addressOf(x, y, pitch));
 }
@@ -587,7 +594,7 @@ inline byte V9990CmdEngine::V9990Bpp8::shiftMask(unsigned /*x*/)
 
 inline std::span<const byte, 256 * 256> V9990CmdEngine::V9990Bpp8::getLogOpLUT(byte op)
 {
-	return getLogOpImpl((op & 0x10) ? LOG_BPP8 : LOG_NO_T, op);
+	return getLogOpImpl((op & 0x10) ? Log::BPP8 : Log::NO_T, op);
 }
 
 inline byte V9990CmdEngine::V9990Bpp8::logOp(
@@ -636,7 +643,7 @@ inline unsigned V9990CmdEngine::V9990Bpp16::addressOf(
 }
 
 inline word V9990CmdEngine::V9990Bpp16::point(
-	V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
+	const V9990VRAM& vram, unsigned x, unsigned y, unsigned pitch)
 {
 	unsigned addr = addressOf(x, y, pitch);
 	return word(vram.readVRAMDirect(addr + 0x00000) +
@@ -656,7 +663,7 @@ inline word V9990CmdEngine::V9990Bpp16::shiftMask(unsigned /*x*/)
 
 inline std::span<const byte, 256 * 256> V9990CmdEngine::V9990Bpp16::getLogOpLUT(byte op)
 {
-	return getLogOpImpl(LOG_NO_T, op);
+	return getLogOpImpl(Log::NO_T, op);
 }
 
 inline word V9990CmdEngine::V9990Bpp16::logOp(
@@ -886,12 +893,13 @@ void V9990CmdEngine::setCmdReg(byte reg, byte value, EmuTime::param time)
 void V9990CmdEngine::setCommandMode()
 {
 	auto dispMode = vdp.getDisplayMode();
-	if (dispMode == P1) {
+	if (dispMode == V9990DisplayMode::P1) {
 		cmdMode = 0 << 4; // P1;
-	} else if (dispMode == P2) {
+	} else if (dispMode == V9990DisplayMode::P2) {
 		cmdMode = 1 << 4; // P2;
 	} else { // Bx
 		switch (vdp.getColorMode()) {
+			using enum V9990ColorMode;
 			default:
 				UNREACHABLE;
 			case BP2:
@@ -985,11 +993,11 @@ void V9990CmdEngine::executeLMMC<V9990CmdEngine::V9990Bpp16>(EmuTime::param limi
 			V9990Bpp16::pset(vram, DX, DY, pitch, value, WM, lut, LOG);
 			word dx = (ARG & DIX) ? word(-1) : 1;
 			DX += dx;
-			if (!--(ANX)) {
+			if (!--ANX) {
 				word dy = (ARG & DIY) ? word(-1) : 1;
 				DX -= word(NX * dx);
 				DY += dy;
-				if (!--(ANY)) {
+				if (!--ANY) {
 					cmdReady(limit);
 				} else {
 					ANX = getWrappedNX();
@@ -1012,11 +1020,11 @@ void V9990CmdEngine::executeLMMC(EmuTime::param limit)
 
 			word dx = (ARG & DIX) ? word(-1) : 1;
 			DX += dx;
-			if (!--(ANX)) {
+			if (!--ANX) {
 				word dy = (ARG & DIY) ? word(-1) : 1;
 				DX -= word(NX * dx);
 				DY += dy;
-				if (!--(ANY)) {
+				if (!--ANY) {
 					cmdReady(limit);
 				} else {
 					ANX = NX;
@@ -1049,10 +1057,10 @@ void V9990CmdEngine::executeLMMV(EmuTime::param limit)
 		Mode::psetColor(vram, DX, DY, pitch, fgCol, WM, lut, LOG);
 
 		DX += dx;
-		if (!--(ANX)) {
+		if (!--ANX) {
 			DX -= word(NX * dx);
 			DY += dy;
-			if (!--(ANY)) {
+			if (!--ANY) {
 				cmdReady(engineTime);
 				return;
 			} else {
@@ -1095,11 +1103,11 @@ void V9990CmdEngine::executeLMCM(EmuTime::param /*limit*/)
 
 			word dx = (ARG & DIX) ? word(-1) : 1;
 			SX += dx;
-			if (!--(ANX)) {
+			if (!--ANX) {
 				word dy = (ARG & DIY) ? word(-1) : 1;
 				SX -= word(NX * dx);
 				SY += dy;
-				if (!--(ANY)) {
+				if (!--ANY) {
 					endAfterRead = true;
 				} else {
 					ANX = getWrappedNX();
@@ -1145,12 +1153,12 @@ void V9990CmdEngine::executeLMMM(EmuTime::param limit)
 
 		DX += dx;
 		SX += dx;
-		if (!--(ANX)) {
+		if (!--ANX) {
 			DX -= word(NX * dx);
 			SX -= word(NX * dx);
 			DY += dy;
 			SY += dy;
-			if (!--(ANY)) {
+			if (!--ANY) {
 				cmdReady(engineTime);
 				return;
 			} else {
@@ -1187,10 +1195,10 @@ void V9990CmdEngine::executeCMMC(EmuTime::param limit)
 			Mode::psetColor(vram, DX, DY, pitch, src, WM, lut, LOG);
 
 			DX += dx;
-			if (!--(ANX)) {
+			if (!--ANX) {
 				DX -= word(NX * dx);
 				DY += dy;
-				if (!--(ANY)) {
+				if (!--ANY) {
 					cmdReady(limit);
 					return;
 				} else {
@@ -1247,10 +1255,10 @@ void V9990CmdEngine::executeCMMM(EmuTime::param limit)
 		Mode::psetColor(vram, DX, DY, pitch, color, WM, lut, LOG);
 
 		DX += dx;
-		if (!--(ANX)) {
+		if (!--ANX) {
 			DX -= word(NX * dx);
 			DY += dy;
-			if (!--(ANY)) {
+			if (!--ANY) {
 				cmdReady(engineTime);
 				return;
 			} else {
@@ -1286,10 +1294,10 @@ void V9990CmdEngine::executeBMXL<V9990CmdEngine::V9990Bpp16>(EmuTime::param limi
 		srcAddress += 2;
 		V9990Bpp16::pset(vram, DX, DY, pitch, src, WM, lut, LOG);
 		DX += dx;
-		if (!--(ANX)) {
+		if (!--ANX) {
 			DX -= word(NX * dx);
 			DY += dy;
-			if (!--(ANY)) {
+			if (!--ANY) {
 				cmdReady(engineTime);
 				return;
 			} else {
@@ -1315,10 +1323,10 @@ void V9990CmdEngine::executeBMXL(EmuTime::param limit)
 			auto d2 = Mode::shift(d, i, DX);
 			Mode::pset(vram, DX, DY, pitch, d2, WM, lut, LOG);
 			DX += dx;
-			if (!--(ANX)) {
+			if (!--ANX) {
 				DX -= word(NX * dx);
 				DY += dy;
-				if (!--(ANY)) {
+				if (!--ANY) {
 					cmdReady(engineTime);
 					return;
 				} else {
@@ -1353,10 +1361,10 @@ void V9990CmdEngine::executeBMLX<V9990CmdEngine::V9990Bpp16>(EmuTime::param limi
 		vram.writeVRAMBx(dstAddress++, narrow_cast<byte>(src & 0xFF));
 		vram.writeVRAMBx(dstAddress++, narrow_cast<byte>(src >> 8));
 		SX += dx;
-		if (!--(ANX)) {
+		if (!--ANX) {
 			SX -= word(NX * dx);
 			SY += dy;
-			if (!--(ANY)) {
+			if (!--ANY) {
 				cmdReady(engineTime);
 				return;
 			} else {
@@ -1381,10 +1389,10 @@ void V9990CmdEngine::executeBMLX(EmuTime::param limit)
 			auto src = Mode::point(vram, SX, SY, pitch);
 			d |= byte(Mode::shift(src, SX, i) & Mode::shiftMask(i));
 			SX += dx;
-			if (!--(ANX)) {
+			if (!--ANX) {
 				SX -= word(NX * dx);
 				SY += dy;
-				if (!--(ANY)) {
+				if (!--ANY) {
 					vram.writeVRAMBx(dstAddress++, d);
 					cmdReady(engineTime);
 					return;

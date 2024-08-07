@@ -11,10 +11,13 @@
 #include "Clock.hh"
 #include "DisplayMode.hh"
 #include "EnumSetting.hh"
-#include "Observer.hh"
-#include "narrow.hh"
 #include "openmsx.hh"
+
+#include "Observer.hh"
+#include "gl_vec.hh"
+#include "narrow.hh"
 #include "outer.hh"
+
 #include <memory>
 #include <array>
 
@@ -30,7 +33,7 @@ class Display;
 class RawFrame;
 class Setting;
 namespace VDPAccessSlots {
-	enum Delta : int;
+	enum class Delta : int;
 	class Calculator;
 }
 
@@ -82,6 +85,15 @@ public:
 	void writeIO(word port, byte value, EmuTime::param time) override;
 
 	void getExtraDeviceInfo(TclObject& result) const override;
+	[[nodiscard]] std::string_view getVersionString() const;
+
+	[[nodiscard]] byte peekRegister(unsigned address) const;
+	[[nodiscard]] byte peekStatusReg(byte reg, EmuTime::param time) const;
+
+	/** VDP control register has changed, work out the consequences.
+	  */
+	void changeRegister(byte reg, byte val, EmuTime::param time);
+
 
 	/** Used by Video9000 to be able to couple the VDP and V9990 output.
 	 * Can return nullptr in case of renderer=none. This value can change
@@ -234,14 +246,50 @@ public:
 		return blinkState;
 	}
 
+	/** Get address of pattern table (only for debugger) */
+	[[nodiscard]] int getPatternTableBase() const {
+		return controlRegs[4] << 11;
+	}
+	/** Get address of color table (only for debugger) */
+	[[nodiscard]] int getColorTableBase() const {
+		return (controlRegs[10] << 14) | (controlRegs[3] << 6);
+	}
+	/** Get address of name table (only for debugger) */
+	[[nodiscard]] int getNameTableBase() const {
+		return controlRegs[2] << 10;
+	}
+	/** Get address of pattern table (only for debugger) */
+	[[nodiscard]] int getSpritePatternTableBase() const {
+		return controlRegs[6] << 11;
+	}
+	/** Get address of color table (only for debugger) */
+	[[nodiscard]] int getSpriteAttributeTableBase() const {
+		return (controlRegs[11] << 15) | (controlRegs[5] << 7);
+	}
+	/** Get vram pointer (14-bit) (only for debugger) */
+	[[nodiscard]] int getVramPointer() const {
+		return vramPointer;
+	}
+
 	/** Gets a palette entry.
 	  * @param index The index [0..15] in the palette.
 	  * @return Color value in the format of the palette registers:
 	  *   bit 10..8 is green, bit 6..4 is red and bit 2..0 is blue.
 	  */
-	[[nodiscard]] inline word getPalette(unsigned index) const {
+	[[nodiscard]] inline uint16_t getPalette(unsigned index) const {
 		return palette[index];
 	}
+	[[nodiscard]] inline std::span<const uint16_t, 16> getPalette() const {
+		return palette;
+	}
+
+	/** Sets a palette entry.
+	  * @param index The index [0..15] in the palette.
+	  * @param grb value in the format of the palette registers:
+	  *   bit 10..8 is green, bit 6..4 is red and bit 2..0 is blue.
+	  * @param time Moment in time palette change occurs.
+	  */
+	void setPalette(unsigned index, word grb, EmuTime::param time);
 
 	/** Is the display enabled?
 	  * Both the regular border and forced blanking by clearing
@@ -319,6 +367,13 @@ public:
 	  */
 	[[nodiscard]] inline bool isMultiPageScrolling() const {
 		return (controlRegs[25] & 0x01) && (controlRegs[2] & 0x20);
+	}
+
+	/** Only used by debugger
+	  * @return page 0-3
+	  */
+	[[nodiscard]] int getDisplayPage() const {
+		return (controlRegs[2] >> 5) & 3;
 	}
 
 	/** Get the absolute line number of display line zero.
@@ -499,6 +554,13 @@ public:
 		return palTiming ? 313 : 262;
 	}
 
+	/** Gets the number of display lines per screen.
+	  * @return 192 or 212.
+	  */
+	[[nodiscard]] inline int getNumberOfLines() const {
+		return controlRegs[9] & 0x80 ? 212 : 192;
+	}
+
 	/** Gets the number of VDP clock ticks (21MHz) per frame.
 	  */
 	[[nodiscard]] inline int getTicksPerFrame() const {
@@ -636,8 +698,7 @@ public:
 	 * use that probe).
 	 */
 	void scheduleCmdSync(EmuTime t) {
-		auto now = getCurrentTime();
-		if (t <= now) {
+		if (auto now = getCurrentTime(); t <= now) {
 			// The largest amount of VDP cycles between 'progress'
 			// in command emulation:
 			// - worst case the LMMM takes 120+64 cycles to fully process one pixel
@@ -648,6 +709,27 @@ public:
 			t = now + VDPClock::duration(LARGEST_STALL);
 		}
 		syncCmdDone.setSyncPoint(t);
+	}
+
+	/**
+	 * Returns the position of the raster beam expressed in 'narrow' MSX
+	 * screen coordinates (like 'screen 7').
+	 *
+	 * Horizontally: pixels in the left border have a negative coordinate,
+	 * pixels in the right border have a coordinate bigger than or equal to
+	 * 512.
+	 * For MSX screen modes that are 256 pixels wide (e.g. 'screen 5')
+	 * divide the x-coordinate by 2. For text modes (aka screen 0, width
+	 * 40/80) subtract 16 from the x-coordinate (= (512-480)/2), and divide
+	 * by 2 (for width 40).
+	 *
+	 * Vertically: lines in the top border have negative coordinates, lines
+	 * in the bottom border have coordinates bigger or equal to 192 or 212.
+	 */
+	[[nodiscard]] gl::ivec2 getMSXPos(EmuTime::param time) const {
+		auto ticks = getTicksThisFrame(time);
+		return {((ticks % VDP::TICKS_PER_LINE) - getLeftSprites()) / 2,
+		         (ticks / VDP::TICKS_PER_LINE) - getLineZero()};
 	}
 
 	template<typename Archive>
@@ -709,7 +791,7 @@ private:
 	};
 
 	struct SyncBase : public Schedulable {
-		explicit SyncBase(VDP& vdp_) : Schedulable(vdp_.getScheduler()) {}
+		explicit SyncBase(const VDP& vdp_) : Schedulable(vdp_.getScheduler()) {}
 		using Schedulable::removeSyncPoint;
 		using Schedulable::setSyncPoint;
 		using Schedulable::pendingSyncPoint;
@@ -718,7 +800,7 @@ private:
 	};
 
 	struct SyncVSync final : public SyncBase {
-		explicit SyncVSync(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncVSync);
 			vdp.execVSync(time);
@@ -726,7 +808,7 @@ private:
 	} syncVSync;
 
 	struct SyncDisplayStart final : public SyncBase {
-		explicit SyncDisplayStart(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncDisplayStart);
 			vdp.execDisplayStart(time);
@@ -734,7 +816,7 @@ private:
 	} syncDisplayStart;
 
 	struct SyncVScan final : public SyncBase {
-		explicit SyncVScan(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncVScan);
 			vdp.execVScan(time);
@@ -742,7 +824,7 @@ private:
 	} syncVScan;
 
 	struct SyncHScan final : public SyncBase {
-		explicit SyncHScan(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param /*time*/) override {
 			auto& vdp = OUTER(VDP, syncHScan);
 			vdp.execHScan();
@@ -750,7 +832,7 @@ private:
 	} syncHScan;
 
 	struct SyncHorAdjust final : public SyncBase {
-		explicit SyncHorAdjust(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncHorAdjust);
 			vdp.execHorAdjust(time);
@@ -758,7 +840,7 @@ private:
 	} syncHorAdjust;
 
 	struct SyncSetMode final : public SyncBase {
-		explicit SyncSetMode(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncSetMode);
 			vdp.execSetMode(time);
@@ -766,7 +848,7 @@ private:
 	} syncSetMode;
 
 	struct SyncSetBlank final : public SyncBase {
-		explicit SyncSetBlank(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncSetBlank);
 			vdp.execSetBlank(time);
@@ -774,7 +856,7 @@ private:
 	} syncSetBlank;
 
 	struct SyncSetSprites final : public SyncBase {
-		explicit SyncSetSprites(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncSetSprites);
 			vdp.execSetSprites(time);
@@ -782,7 +864,7 @@ private:
 	} syncSetSprites;
 
 	struct SyncCpuVramAccess final : public SyncBase {
-		explicit SyncCpuVramAccess(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncCpuVramAccess);
 			vdp.execCpuVramAccess(time);
@@ -790,7 +872,7 @@ private:
 	} syncCpuVramAccess;
 
 	struct SyncCmdDone final : public SyncBase {
-		explicit SyncCmdDone(VDP& vdp) : SyncBase(vdp) {}
+		using SyncBase::SyncBase;
 		void executeUntil(EmuTime::param time) override {
 			auto& vdp = OUTER(VDP, syncCmdDone);
 			vdp.execSyncCmdDone(time);
@@ -807,13 +889,6 @@ private:
 	void execSetSprites(EmuTime::param time);
 	void execCpuVramAccess(EmuTime::param time);
 	void execSyncCmdDone(EmuTime::param time);
-
-	/** Gets the number of display lines per screen.
-	  * @return 192 or 212.
-	  */
-	[[nodiscard]] inline int getNumberOfLines() const {
-		return controlRegs[9] & 0x80 ? 212 : 192;
-	}
 
 	/** Returns the amount of vertical set-adjust 0..15.
 	  * Neutral set-adjust (that is 'set adjust(0,0)') returns the value '7'.
@@ -904,16 +979,11 @@ private:
 
 	/** Read the contents of a status register
 	  */
-	[[nodiscard]] byte peekStatusReg(byte reg, EmuTime::param time) const;
 	[[nodiscard]] byte readStatusReg(byte reg, EmuTime::param time);
-
-	/** VDP control register has changed, work out the consequences.
-	  */
-	void changeRegister(byte reg, byte val, EmuTime::param time);
 
 	/** Schedule a sync point at the start of the next line.
 	  */
-	void syncAtNextLine(SyncBase& type, EmuTime::param time);
+	void syncAtNextLine(SyncBase& type, EmuTime::param time) const;
 
 	/** Create a new renderer.
 	  */
@@ -949,14 +1019,6 @@ private:
 	  */
 	void updateDisplayMode(DisplayMode newMode, bool cmdBit, EmuTime::param time);
 
-	/** Sets a palette entry.
-	  * @param index The index [0..15] in the palette.
-	  * @param grb value in the format of the palette registers:
-	  *   bit 10..8 is green, bit 6..4 is red and bit 2..0 is blue.
-	  * @param time Moment in time palette change occurs.
-	  */
-	void setPalette(unsigned index, word grb, EmuTime::param time);
-
 	// Observer<Setting>
 	void update(const Setting& setting) noexcept override;
 
@@ -966,45 +1028,45 @@ private:
 	EnumSetting<bool>& tooFastAccess;
 
 	struct RegDebug final : SimpleDebuggable {
-		explicit RegDebug(VDP& vdp);
+		explicit RegDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address) override;
 		void write(unsigned address, byte value, EmuTime::param time) override;
 	} vdpRegDebug;
 
 	struct StatusRegDebug final : SimpleDebuggable {
-		explicit StatusRegDebug(VDP& vdp);
+		explicit StatusRegDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address, EmuTime::param time) override;
 	} vdpStatusRegDebug;
 
 	struct PaletteDebug final : SimpleDebuggable {
-		explicit PaletteDebug(VDP& vdp);
+		explicit PaletteDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address) override;
 		void write(unsigned address, byte value, EmuTime::param time) override;
 	} vdpPaletteDebug;
 
 	struct VRAMPointerDebug final : SimpleDebuggable {
-		explicit VRAMPointerDebug(VDP& vdp);
+		explicit VRAMPointerDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address) override;
 		void write(unsigned address, byte value, EmuTime::param time) override;
 	} vramPointerDebug;
 
 	struct RegisterLatchStatusDebug final : SimpleDebuggable {
-		explicit RegisterLatchStatusDebug(VDP& vdp);
+		explicit RegisterLatchStatusDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address) override;
 	} registerLatchStatusDebug;
 
 	struct VramAccessStatusDebug final : SimpleDebuggable {
-		explicit VramAccessStatusDebug(VDP& vdp);
+		explicit VramAccessStatusDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address) override;
 	} vramAccessStatusDebug;
 
 	struct PaletteLatchStatusDebug final : SimpleDebuggable {
-		explicit PaletteLatchStatusDebug(VDP& vdp);
+		explicit PaletteLatchStatusDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address) override;
 	} paletteLatchStatusDebug;
 
 	struct DataLatchDebug final : SimpleDebuggable {
-		explicit DataLatchDebug(VDP& vdp);
+		explicit DataLatchDebug(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address) override;
 	} dataLatchDebug;
 
@@ -1109,6 +1171,7 @@ private:
 	EmuTime hScanSyncTime;
 
 	TclCallback tooFastCallback;
+	TclCallback dotClockDirectionCallback;
 
 	/** VDP version.
 	  */

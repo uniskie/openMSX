@@ -1,5 +1,6 @@
 #include "GLScaler.hh"
 #include "GLContext.hh"
+#include "gl_transform.hh"
 #include "gl_vec.hh"
 #include "narrow.hh"
 #include "strCat.hh"
@@ -26,8 +27,7 @@ GLScaler::GLScaler(const std::string& progName)
 			glUniform1i(program[i].getUniformLocation("videoTex"), 1);
 		}
 		unifTexSize[i] = program[i].getUniformLocation("texSize");
-		glUniformMatrix4fv(program[i].getUniformLocation("u_mvpMatrix"),
-		                   1, GL_FALSE, &gl::context->pixelMvp[0][0]);
+		unifMvpMatrix[i] = program[i].getUniformLocation("u_mvpMatrix");
 	}
 }
 
@@ -41,10 +41,12 @@ void GLScaler::setup(bool superImpose)
 {
 	int i = superImpose ? 1 : 0;
 	program[i].activate();
+
+	glUniformMatrix4fv(unifMvpMatrix[i], 1, GL_FALSE, gl::context->pixelMvp.data());
 }
 
 void GLScaler::execute(
-	ColorTexture& src, ColorTexture* superImpose,
+	const ColorTexture& src, const ColorTexture* superImpose,
 	unsigned srcStartY, unsigned srcEndY, unsigned srcWidth,
 	unsigned dstStartY, unsigned dstEndY, unsigned dstWidth,
 	unsigned logSrcHeight, bool textureFromZero)

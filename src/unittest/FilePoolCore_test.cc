@@ -11,7 +11,7 @@
 
 using namespace openmsx;
 
-static void createFile(const std::string filename, const std::string content)
+static void createFile(const std::string& filename, const std::string& content)
 {
 	std::ofstream of(filename);
 	of << content;
@@ -39,7 +39,7 @@ TEST_CASE("FilePoolCore")
 
 	auto getDirectories = [&] {
 		FilePoolCore::Directories result;
-		result.push_back(FilePoolCore::Dir{tmp, FileType::ROM});
+		result.emplace_back(tmp, FileType::ROM);
 		return result;
 	};
 
@@ -47,7 +47,7 @@ TEST_CASE("FilePoolCore")
 		// create pool
 		FilePoolCore pool(tmp + "/cache",
 				  getDirectories,
-				  [](std::string_view) { /* report progress: nothing */});
+				  [](std::string_view, float) { /* report progress: nothing */});
 
 		// lookup, success
 		{

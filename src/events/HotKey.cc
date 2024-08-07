@@ -47,55 +47,35 @@ HotKey::HotKey(RTScheduler& rtScheduler,
 	, deactivateCmd   (commandController_)
 	, commandController(commandController_)
 	, eventDistributor(eventDistributor_)
+	, listenerHigh(*this, EventDistributor::Priority::HOTKEY_HIGH)
+	, listenerLow (*this, EventDistributor::Priority::HOTKEY_LOW)
 {
 	initDefaultBindings();
-
-	eventDistributor.registerEventListener(
-		EventType::KEY_DOWN, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::KEY_UP, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_MOTION, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_BUTTON_DOWN, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_BUTTON_UP, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_WHEEL, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::JOY_BUTTON_DOWN, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::JOY_BUTTON_UP, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::JOY_AXIS_MOTION, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::JOY_HAT, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::FOCUS, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::FILE_DROP, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::OSD_CONTROL_RELEASE, *this, EventDistributor::HOTKEY);
-	eventDistributor.registerEventListener(
-		EventType::OSD_CONTROL_PRESS, *this, EventDistributor::HOTKEY);
 }
 
-HotKey::~HotKey()
+HotKey::Listener::Listener(HotKey& hotKey_, EventDistributor::Priority priority_)
+	: hotKey(hotKey_), priority(priority_)
 {
-	eventDistributor.unregisterEventListener(EventType::OSD_CONTROL_PRESS, *this);
-	eventDistributor.unregisterEventListener(EventType::OSD_CONTROL_RELEASE, *this);
-	eventDistributor.unregisterEventListener(EventType::FILE_DROP, *this);
-	eventDistributor.unregisterEventListener(EventType::FOCUS, *this);
-	eventDistributor.unregisterEventListener(EventType::JOY_BUTTON_UP, *this);
-	eventDistributor.unregisterEventListener(EventType::JOY_BUTTON_DOWN, *this);
-	eventDistributor.unregisterEventListener(EventType::JOY_AXIS_MOTION, *this);
-	eventDistributor.unregisterEventListener(EventType::JOY_HAT, *this);
-	eventDistributor.unregisterEventListener(EventType::MOUSE_WHEEL, *this);
-	eventDistributor.unregisterEventListener(EventType::MOUSE_BUTTON_UP, *this);
-	eventDistributor.unregisterEventListener(EventType::MOUSE_BUTTON_DOWN, *this);
-	eventDistributor.unregisterEventListener(EventType::MOUSE_MOTION, *this);
-	eventDistributor.unregisterEventListener(EventType::KEY_UP, *this);
-	eventDistributor.unregisterEventListener(EventType::KEY_DOWN, *this);
+	auto& distributor = hotKey.eventDistributor;
+	using enum EventType;
+	for (auto type : {KEY_DOWN, KEY_UP,
+	                  MOUSE_MOTION, MOUSE_BUTTON_DOWN, MOUSE_BUTTON_UP, MOUSE_WHEEL,
+	                  JOY_BUTTON_DOWN, JOY_BUTTON_UP, JOY_AXIS_MOTION, JOY_HAT,
+	                  WINDOW, FILE_DROP, OSD_CONTROL_RELEASE, OSD_CONTROL_PRESS}) {
+		distributor.registerEventListener(type, *this, priority);
+	}
+}
+
+HotKey::Listener::~Listener()
+{
+	auto& distributor = hotKey.eventDistributor;
+	using enum EventType;
+	for (auto type : {OSD_CONTROL_PRESS, OSD_CONTROL_RELEASE, FILE_DROP, WINDOW,
+	                  JOY_BUTTON_UP, JOY_BUTTON_DOWN, JOY_AXIS_MOTION, JOY_HAT,
+	                  MOUSE_WHEEL, MOUSE_BUTTON_UP, MOUSE_BUTTON_DOWN, MOUSE_MOTION,
+	                  KEY_UP, KEY_DOWN}) {
+		distributor.unregisterEventListener(type, *this);
+	}
 }
 
 void HotKey::initDefaultBindings()
@@ -104,66 +84,51 @@ void HotKey::initDefaultBindings()
 
 	if constexpr (META_HOT_KEYS) {
 		// Hot key combos using Mac's Command key.
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_D, Keys::KM_META)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_d, KMOD_GUI),
 		                       "screenshot -guess-name"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_P, Keys::KM_META)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_p, KMOD_GUI),
 		                       "toggle pause"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_T, Keys::KM_META)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_t, KMOD_GUI),
 		                       "toggle fastforward"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_L, Keys::KM_META)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_l, KMOD_GUI),
 		                       "toggle console"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_U, Keys::KM_META)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_u, KMOD_GUI),
 		                       "toggle mute"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_F, Keys::KM_META)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_f, KMOD_GUI),
 		                       "toggle fullscreen"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_Q, Keys::KM_META)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_q, KMOD_GUI),
 		                       "exit"));
 	} else {
 		// Hot key combos for typical PC keyboards.
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(Keys::K_PRINT),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_PRINTSCREEN),
 		                       "screenshot -guess-name"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(Keys::K_PAUSE),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_PAUSE),
 		                       "toggle pause"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(Keys::K_F9),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_F9),
 		                       "toggle fastforward"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(Keys::K_F10),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_F10),
 		                       "toggle console"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(Keys::K_F11),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_F11),
 		                       "toggle fullscreen"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(Keys::K_F12),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_F12),
 		                       "toggle mute"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_F4, Keys::KM_ALT)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_F4, KMOD_ALT),
 		                       "exit"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_PAUSE, Keys::KM_CTRL)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_PAUSE, KMOD_CTRL),
 		                       "exit"));
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(
-		                            Keys::combine(Keys::K_RETURN, Keys::KM_ALT)),
+		bindDefault(HotKeyInfo(KeyDownEvent::create(SDLK_RETURN, KMOD_ALT),
 		                       "toggle fullscreen"));
-		// and for Android
-		bindDefault(HotKeyInfo(Event::create<KeyDownEvent>(Keys::K_BACK),
-		                       "quitmenu::quit_menu"));
 	}
 }
 
 static Event createEvent(const TclObject& obj, Interpreter& interp)
 {
 	auto event = InputEventFactory::createInputEvent(obj, interp);
-	if (getType(event) != one_of(EventType::KEY_UP, EventType::KEY_DOWN,
-	                             EventType::MOUSE_BUTTON_UP, EventType::MOUSE_BUTTON_DOWN,
-				     EventType::GROUP,
-				     EventType::JOY_BUTTON_UP, EventType::JOY_BUTTON_DOWN,
-				     EventType::JOY_AXIS_MOTION, EventType::JOY_HAT,
-				     EventType::OSD_CONTROL_PRESS, EventType::OSD_CONTROL_RELEASE,
-				     EventType::FOCUS)) {
+	using enum EventType;
+	if (getType(event) != one_of(KEY_UP, KEY_DOWN,
+	                             MOUSE_BUTTON_UP, MOUSE_BUTTON_DOWN, GROUP,
+	                             JOY_BUTTON_UP, JOY_BUTTON_DOWN, JOY_AXIS_MOTION, JOY_HAT,
+	                             OSD_CONTROL_PRESS, OSD_CONTROL_RELEASE, WINDOW)) {
 		throw CommandException("Unsupported event type");
 	}
 	return event;
@@ -181,10 +146,10 @@ void HotKey::loadInit()
 	cmdMap = defaultMap;
 }
 
-void HotKey::loadBind(std::string_view key, std::string_view cmd, bool repeat, bool event)
+void HotKey::loadBind(const Data& data)
 {
-	bind(HotKeyInfo(createEvent(key, commandController.getInterpreter()),
-			std::string(cmd), repeat, event));
+	bind(HotKeyInfo(createEvent(data.key, commandController.getInterpreter()),
+			std::string(data.cmd), data.repeat, data.event, data.msx));
 }
 
 void HotKey::loadUnbind(std::string_view key)
@@ -193,7 +158,7 @@ void HotKey::loadUnbind(std::string_view key)
 }
 
 struct EqualEvent {
-	EqualEvent(const Event& event_) : event(event_) {}
+	explicit EqualEvent(const Event& event_) : event(event_) {}
 	bool operator()(const Event& e) const {
 		return event == e;
 	}
@@ -299,7 +264,7 @@ void HotKey::activateLayer(std::string layer, bool blocking)
 	// (it's not an error if the same layer was already active, in such
 	// as case it will now appear twice in the list of active layer,
 	// and it must also be deactivated twice).
-	activeLayers.push_back({std::move(layer), blocking});
+	activeLayers.emplace_back(std::move(layer), blocking);
 }
 
 void HotKey::deactivateLayer(std::string_view layer)
@@ -314,21 +279,29 @@ void HotKey::deactivateLayer(std::string_view layer)
 }
 
 static HotKey::BindMap::const_iterator findMatch(
-	const HotKey::BindMap& map, const Event& event)
+	const HotKey::BindMap& map, const Event& event, bool msx)
 {
 	return ranges::find_if(map, [&](auto& p) {
-		return matches(p.event, event);
+		return (p.msx == msx) && matches(p.event, event);
 	});
 }
 
 void HotKey::executeRT()
 {
-	if (lastEvent) executeEvent(lastEvent);
+	if (lastEvent) {
+		executeEvent(*lastEvent, EventDistributor::Priority::HOTKEY_HIGH);
+		executeEvent(*lastEvent, EventDistributor::Priority::HOTKEY_LOW);
+	}
 }
 
-int HotKey::signalEvent(const Event& event)
+bool HotKey::Listener::signalEvent(const Event& event)
 {
-	if (lastEvent.getPtr() != event.getPtr()) {
+	return hotKey.signalEvent(event, priority);
+}
+
+bool HotKey::signalEvent(const Event& event, EventDistributor::Priority priority)
+{
+	if (lastEvent && *lastEvent != event) {
 		// If the newly received event is different from the repeating
 		// event, we stop the repeat process.
 		// Except when we're repeating a OsdControlEvent and the
@@ -337,38 +310,38 @@ int HotKey::signalEvent(const Event& event)
 		// a corresponding osd event (the osd event is send before the
 		// original event). Without this hack, key-repeat will not work
 		// for osd key bindings.
-		if (lastEvent && isRepeatStopper(lastEvent, event)) {
-			stopRepeat();
-		}
+		stopRepeat();
 	}
-	return executeEvent(event);
+	return executeEvent(event, priority);
 }
 
-int HotKey::executeEvent(const Event& event)
+bool HotKey::executeEvent(const Event& event, EventDistributor::Priority priority)
 {
+	bool msx = priority == EventDistributor::Priority::HOTKEY_LOW;
+
 	// First search in active layers (from back to front)
 	bool blocking = false;
-	for (auto& info : view::reverse(activeLayers)) {
+	for (const auto& info : view::reverse(activeLayers)) {
 		auto& cmap = layerMap[info.layer]; // ok, if this entry doesn't exist yet
-		if (auto it = findMatch(cmap, event); it != end(cmap)) {
+		if (auto it = findMatch(cmap, event, msx); it != end(cmap)) {
 			executeBinding(event, *it);
-			// Deny event to MSX listeners, also don't pass event
+			// Deny event to lower priority listeners, also don't pass event
 			// to other layers (including the default layer).
-			return EventDistributor::MSX;
+			return true;
 		}
 		blocking = info.blocking;
 		if (blocking) break; // don't try lower layers
 	}
 
 	// If the event was not yet handled, try the default layer.
-	if (auto it = findMatch(cmdMap, event); it != end(cmdMap)) {
+	if (auto it = findMatch(cmdMap, event, msx); it != end(cmdMap)) {
 		executeBinding(event, *it);
-		return EventDistributor::MSX; // deny event to MSX listeners
+		return true; // deny event to lower priority listeners
 	}
 
 	// Event is not handled, only let it pass to the MSX if there was no
 	// blocking layer active.
-	return blocking ? EventDistributor::MSX : 0;
+	return blocking;
 }
 
 void HotKey::executeBinding(const Event& event, const HotKeyInfo& info)
@@ -424,7 +397,7 @@ void HotKey::startRepeat(const Event& event)
 
 void HotKey::stopRepeat()
 {
-	lastEvent = Event{};
+	lastEvent.reset();
 	cancelRT();
 }
 
@@ -446,8 +419,11 @@ HotKey::BindCmd::BindCmd(CommandController& commandController_, HotKey& hotKey_,
 
 static string formatBinding(const HotKey::HotKeyInfo& info)
 {
-	return strCat(toString(info.event), (info.repeat ? " [repeat]" : ""),
-	              (info.passEvent ? " [event]" : ""), ":  ", info.command, '\n');
+	return strCat(toString(info.event),
+	              (info.msx ? " [msx]" : ""),
+	              (info.repeat ? " [repeat]" : ""),
+	              (info.passEvent ? " [event]" : ""),
+	              ":  ", info.command, '\n');
 }
 
 void HotKey::BindCmd::execute(std::span<const TclObject> tokens, TclObject& result)
@@ -456,11 +432,13 @@ void HotKey::BindCmd::execute(std::span<const TclObject> tokens, TclObject& resu
 	bool layers = false;
 	bool repeat = false;
 	bool passEvent = false;
+	bool msx = false;
 	std::array parserInfo = {
 		valueArg("-layer", layer),
 		flagArg("-layers", layers),
 		flagArg("-repeat", repeat),
 		flagArg("-event", passEvent),
+		flagArg("-msx", msx),
 	};
 	auto arguments = parseTclArgs(getInterpreter(), tokens.subspan<1>(), parserInfo);
 	if (defaultCmd && !layer.empty()) {
@@ -487,7 +465,7 @@ void HotKey::BindCmd::execute(std::span<const TclObject> tokens, TclObject& resu
 	case 0: {
 		// show all bounded keys (for this layer)
 		string r;
-		for (auto& p : cMap) {
+		for (const auto& p : cMap) {
 			r += formatBinding(p);
 		}
 		result = r;
@@ -511,7 +489,7 @@ void HotKey::BindCmd::execute(std::span<const TclObject> tokens, TclObject& resu
 		}
 		HotKey::HotKeyInfo info(
 			createEvent(arguments[0], getInterpreter()),
-			command, repeat, passEvent);
+			command, repeat, passEvent, msx);
 		if (defaultCmd) {
 			hotKey.bindDefault(std::move(info));
 		} else if (layer.empty()) {
@@ -529,9 +507,11 @@ string HotKey::BindCmd::help(std::span<const TclObject> /*tokens*/) const
 	return strCat(
 		cmd, "                       : show all bounded keys\n",
 		cmd, " <key>                 : show binding for this key\n",
-		cmd, " <key> [-repeat] [-event] <cmd> : bind key to command, optionally "
+		cmd, " <key> [-msx] [-repeat] [-event] <cmd> : bind key to command, optionally "
 		"repeat command while key remains pressed and also optionally "
-		"give back the event as argument (a list) to <cmd>\n"
+		"give back the event as argument (a list) to <cmd>.\n"
+		"When the '-msx' flag is given the binding only has effect "
+		"when the msx window has focus (not when the GUI has focus).\n"
 		"These 3 take an optional '-layer <layername>' option, "
 		"see activate_input_layer.\n",
 		cmd, " -layers               : show a list of layers with bound keys\n");
@@ -566,20 +546,20 @@ void HotKey::UnbindCmd::execute(std::span<const TclObject> tokens, TclObject& /*
 		throw SyntaxError();
 	}
 
-	Event event;
+	std::optional<Event> event;
 	if (arguments.size() == 1) {
 		event = createEvent(arguments[0], getInterpreter());
 	}
 
 	if (defaultCmd) {
 		assert(event);
-		hotKey.unbindDefault(event);
+		hotKey.unbindDefault(*event);
 	} else if (layer.empty()) {
 		assert(event);
-		hotKey.unbind(event);
+		hotKey.unbind(*event);
 	} else {
 		if (event) {
-			hotKey.unbindLayer(event, layer);
+			hotKey.unbindLayer(*event, layer);
 		} else {
 			hotKey.unbindFullLayer(layer);
 		}
@@ -612,7 +592,7 @@ void HotKey::ActivateCmd::execute(std::span<const TclObject> tokens, TclObject& 
 	switch (args.size()) {
 	case 0: {
 		string r;
-		for (auto& layerInfo : view::reverse(hotKey.activeLayers)) {
+		for (const auto& layerInfo : view::reverse(hotKey.activeLayers)) {
 			r += layerInfo.layer;
 			if (layerInfo.blocking) {
 				r += " -blocking";

@@ -4,6 +4,7 @@
 #include "Command.hh"
 #include "EventListener.hh"
 #include "Event.hh"
+
 #include <concepts>
 #include <vector>
 
@@ -32,18 +33,18 @@ private:
 	void executeMatches(std::predicate<Index> auto pred);
 	void executeSimpleEvents(EventType type);
 	void afterSimpleEvent(std::span<const TclObject> tokens, TclObject& result, EventType type);
-	void afterInputEvent(const Event& event,
+	void afterInputEvent(Event event,
 	                   std::span<const TclObject> tokens, TclObject& result);
 	void afterTclTime (int ms,
 	                   std::span<const TclObject> tokens, TclObject& result);
 	void afterTime    (std::span<const TclObject> tokens, TclObject& result);
 	void afterRealTime(std::span<const TclObject> tokens, TclObject& result);
 	void afterIdle    (std::span<const TclObject> tokens, TclObject& result);
-	void afterInfo    (std::span<const TclObject> tokens, TclObject& result);
+	void afterInfo    (std::span<const TclObject> tokens, TclObject& result) const;
 	void afterCancel  (std::span<const TclObject> tokens, TclObject& result);
 
 	// EventListener
-	int signalEvent(const Event& event) override;
+	bool signalEvent(const Event& event) override;
 
 private:
 	std::vector<Index> afterCmds;

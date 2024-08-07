@@ -1,22 +1,25 @@
 #include "AfterCommand.hh"
-#include "CommandController.hh"
+
 #include "CliComm.hh"
+#include "CommandController.hh"
+#include "CommandException.hh"
+#include "EmuTime.hh"
 #include "Event.hh"
-#include "Schedulable.hh"
 #include "EventDistributor.hh"
 #include "InputEventFactory.hh"
-#include "Reactor.hh"
 #include "MSXMotherBoard.hh"
 #include "ObjectPool.hh"
 #include "RTSchedulable.hh"
-#include "EmuTime.hh"
-#include "CommandException.hh"
-#include "StringOp.hh"
+#include "Reactor.hh"
+#include "Schedulable.hh"
 #include "TclObject.hh"
+
+#include "StringOp.hh"
 #include "ranges.hh"
 #include "stl.hh"
 #include "unreachable.hh"
 #include "view.hh"
+
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -125,38 +128,13 @@ AfterCommand::AfterCommand(Reactor& reactor_,
 {
 	// TODO DETACHED <-> EMU types should be cleaned up
 	//      (moved to event iso listener?)
-	eventDistributor.registerEventListener(
-		EventType::KEY_UP, *this);
-	eventDistributor.registerEventListener(
-		EventType::KEY_DOWN, *this);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_MOTION, *this);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_BUTTON_UP, *this);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_BUTTON_DOWN, *this);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_WHEEL, *this);
-	eventDistributor.registerEventListener(
-		EventType::JOY_AXIS_MOTION, *this);
-	eventDistributor.registerEventListener(
-		EventType::JOY_HAT, *this);
-	eventDistributor.registerEventListener(
-		EventType::JOY_BUTTON_UP, *this);
-	eventDistributor.registerEventListener(
-		EventType::JOY_BUTTON_DOWN, *this);
-	eventDistributor.registerEventListener(
-		EventType::FINISH_FRAME, *this);
-	eventDistributor.registerEventListener(
-		EventType::BREAK, *this);
-	eventDistributor.registerEventListener(
-		EventType::QUIT, *this);
-	eventDistributor.registerEventListener(
-		EventType::BOOT, *this);
-	eventDistributor.registerEventListener(
-		EventType::MACHINE_LOADED, *this);
-	eventDistributor.registerEventListener(
-		EventType::AFTER_TIMED, *this);
+	using enum EventType;
+	for (auto type : {KEY_UP, KEY_DOWN,
+	                  MOUSE_MOTION, MOUSE_BUTTON_UP, MOUSE_BUTTON_DOWN, MOUSE_WHEEL,
+	                  JOY_AXIS_MOTION, JOY_HAT, JOY_BUTTON_UP, JOY_BUTTON_DOWN,
+	                  FINISH_FRAME, BREAK, QUIT, BOOT, MACHINE_LOADED, AFTER_TIMED}) {
+		eventDistributor.registerEventListener(type, *this);
+	}
 }
 
 AfterCommand::~AfterCommand()
@@ -165,38 +143,13 @@ AfterCommand::~AfterCommand()
 		afterCmdPool.remove(idx);
 	}
 
-	eventDistributor.unregisterEventListener(
-		EventType::AFTER_TIMED, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::MACHINE_LOADED, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::BOOT, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::QUIT, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::BREAK, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::FINISH_FRAME, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_BUTTON_DOWN, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_BUTTON_UP, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_HAT, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_AXIS_MOTION, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::MOUSE_WHEEL, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::MOUSE_BUTTON_DOWN, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::MOUSE_BUTTON_UP, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::MOUSE_MOTION, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::KEY_DOWN, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::KEY_UP, *this);
+	using enum EventType;
+	for (auto type : {AFTER_TIMED, MACHINE_LOADED, BOOT, QUIT, BREAK, FINISH_FRAME,
+	                  JOY_BUTTON_DOWN, JOY_BUTTON_UP, JOY_HAT, JOY_AXIS_MOTION, MOUSE_WHEEL,
+	                  MOUSE_BUTTON_DOWN, MOUSE_BUTTON_UP, MOUSE_MOTION,
+	                  KEY_DOWN, KEY_UP}) {
+		eventDistributor.unregisterEventListener(type, *this);
+	}
 }
 
 void AfterCommand::execute(std::span<const TclObject> tokens, TclObject& result)
@@ -283,7 +236,7 @@ void AfterCommand::afterTclTime(
 	command.addListElements(view::drop(tokens, 2));
 	auto [idx, ptr] = afterCmdPool.emplace(
 		std::in_place_type_t<AfterRealTimeCmd>{},
-		reactor.getRTScheduler(), *this, command, ms / 1000.0);
+		reactor.getRTScheduler(), *this, command, ms * (1.0 / 1000.0));
 	result = std::get<AfterRealTimeCmd>(*ptr).getIdStr();
 	afterCmds.push_back(idx);
 }
@@ -299,12 +252,12 @@ void AfterCommand::afterSimpleEvent(std::span<const TclObject> tokens, TclObject
 }
 
 void AfterCommand::afterInputEvent(
-	const Event& event, std::span<const TclObject> tokens, TclObject& result)
+	Event event, std::span<const TclObject> tokens, TclObject& result)
 {
 	checkNumArgs(tokens, 3, "command");
 	auto [idx, ptr] = afterCmdPool.emplace(
 		std::in_place_type_t<AfterInputEventCmd>{},
-		*this, event, tokens[2]);
+		*this, std::move(event), tokens[2]);
 	result = std::get<AfterInputEventCmd>(*ptr).getIdStr();
 	afterCmds.push_back(idx);
 }
@@ -322,7 +275,7 @@ void AfterCommand::afterIdle(std::span<const TclObject> tokens, TclObject& resul
 	afterCmds.push_back(idx);
 }
 
-void AfterCommand::afterInfo(std::span<const TclObject> /*tokens*/, TclObject& result)
+void AfterCommand::afterInfo(std::span<const TclObject> /*tokens*/, TclObject& result) const
 {
 	auto printTime = [](std::ostream& os, const AfterTimedCmd& cmd) {
 		os.precision(3);
@@ -331,16 +284,16 @@ void AfterCommand::afterInfo(std::span<const TclObject> /*tokens*/, TclObject& r
 
 	std::ostringstream str;
 	for (auto idx : afterCmds) {
-		auto& var = afterCmdPool[idx];
-		std::visit([&](AfterCmd& cmd) { str << cmd.getIdStr() << ": "; }, var);
+		const auto& var = afterCmdPool[idx];
+		std::visit([&](const AfterCmd& cmd) { str << cmd.getIdStr() << ": "; }, var);
 		std::visit(overloaded {
-			[&](AfterTimeCmd&        cmd ) { str << "time "; printTime(str, cmd); },
-			[&](AfterIdleCmd&        cmd ) { str << "idle "; printTime(str, cmd); },
-			[&](AfterSimpleEventCmd& cmd ) { str << cmd.getType() << ' '; },
-			[&](AfterInputEventCmd&  cmd ) { str << toString(cmd.getEvent()) << ' '; },
-			[&](AfterRealTimeCmd& /*cmd*/) { str << "realtime "; }
+			[&](const AfterTimeCmd&        cmd ) { str << "time "; printTime(str, cmd); },
+			[&](const AfterIdleCmd&        cmd ) { str << "idle "; printTime(str, cmd); },
+			[&](const AfterSimpleEventCmd& cmd ) { str << cmd.getType() << ' '; },
+			[&](const AfterInputEventCmd&  cmd ) { str << toString(cmd.getEvent()) << ' '; },
+			[&](const AfterRealTimeCmd& /*cmd*/) { str << "realtime "; }
 		}, var);
-		std::visit([&](AfterCmd& cmd) { str << cmd.getCommand().getString() << '\n'; }, var);
+		std::visit([&](const AfterCmd& cmd) { str << cmd.getCommand().getString() << '\n'; }, var);
 	}
 	result = str.str();
 }
@@ -352,7 +305,7 @@ void AfterCommand::afterCancel(std::span<const TclObject> tokens, TclObject& /*r
 		if (auto idStr = tokens[2].getString(); idStr.starts_with("after#")) {
 			if (auto id = StringOp::stringTo<unsigned>(idStr.substr(6))) {
 				auto equalId = [id = *id](Index idx) {
-					return std::visit([&](AfterCmd& cmd) {
+					return std::visit([&](const AfterCmd& cmd) {
 						 return cmd.getId() == id;
 					}, afterCmdPool[idx]);
 				};
@@ -370,7 +323,7 @@ void AfterCommand::afterCancel(std::span<const TclObject> tokens, TclObject& /*r
 	command.addListElements(view::drop(tokens, 2));
 	std::string_view cmdStr = command.getString();
 	auto equalCmd = [&](Index idx) {
-		return std::visit([&](AfterCmd& cmd) {
+		return std::visit([&](const AfterCmd& cmd) {
 			return cmd.getCommand() == cmdStr;
 		}, afterCmdPool[idx]);
 	};
@@ -435,8 +388,8 @@ void AfterCommand::executeMatches(std::predicate<Index> auto pred)
 struct AfterSimpleEventPred {
 	bool operator()(AfterCommand::Index idx) const {
 		return std::visit(overloaded {
-			[&](AfterSimpleEventCmd& cmd) { return cmd.getTypeEnum() == type; },
-			[&](AfterCmd& /*cmd*/) { return false; }
+			[&](const AfterSimpleEventCmd& cmd) { return cmd.getTypeEnum() == type; },
+			[&](const AfterCmd& /*cmd*/) { return false; }
 		}, afterCmdPool[idx]);
 	}
 	const EventType type;
@@ -449,27 +402,27 @@ void AfterCommand::executeSimpleEvents(EventType type)
 struct AfterEmuTimePred {
 	bool operator()(AfterCommand::Index idx) const {
 		return std::visit(overloaded {
-			[&](AfterTimedCmd& cmd) { return cmd.getTime() == 0.0; },
-			[&](AfterCmd& /*cmd*/) { return false; }
+			[&](const AfterTimedCmd& cmd) { return cmd.getTime() == 0.0; },
+			[&](const AfterCmd& /*cmd*/) { return false; }
 		}, afterCmdPool[idx]);
 	}
 };
 
 struct AfterInputEventPred {
-	explicit AfterInputEventPred(Event event_)
-		: event(std::move(event_)) {}
+	explicit AfterInputEventPred(const Event& event_)
+		: event(event_) {}
 	bool operator()(AfterCommand::Index idx) const {
 		return std::visit(overloaded {
-			[&](AfterInputEventCmd& cmd) { return matches(cmd.getEvent(), event); },
-			[&](AfterCmd& /*cmd*/) { return false; }
+			[&](const AfterInputEventCmd& cmd) { return matches(cmd.getEvent(), event); },
+			[&](const AfterCmd& /*cmd*/) { return false; }
 		}, afterCmdPool[idx]);
 	}
-	Event event;
+	const Event& event;
 };
 
-int AfterCommand::signalEvent(const Event& event)
+bool AfterCommand::signalEvent(const Event& event)
 {
-	visit(overloaded{
+	std::visit(overloaded{
 		[&](const SimpleEvent&) {
 			executeSimpleEvents(getType(event));
 		},
@@ -487,12 +440,12 @@ int AfterCommand::signalEvent(const Event& event)
 			for (auto idx : afterCmds) {
 				std::visit(overloaded {
 					[](AfterIdleCmd& cmd) { cmd.reschedule(); },
-					[](AfterCmd& /*cmd*/) { /*nothing*/ }
+					[](const AfterCmd& /*cmd*/) { /*nothing*/ }
 				}, afterCmdPool[idx]);
 			}
 		}
 	}, event);
-	return 0;
+	return false;
 }
 
 
@@ -516,7 +469,7 @@ void AfterCmd::execute()
 AfterCommand::Index AfterCmd::removeSelf()
 {
 	auto equalThis = [&](AfterCommand::Index idx) {
-		return std::visit([&](AfterCmd& cmd) { return &cmd == this; },
+		return std::visit([&](const AfterCmd& cmd) { return &cmd == this; },
 			          afterCmdPool[idx]);
 	};
 	auto it = rfind_if_unguarded(afterCommand.afterCmds, equalThis);
@@ -553,8 +506,7 @@ void AfterTimedCmd::reschedule()
 void AfterTimedCmd::executeUntil(EmuTime::param /*time*/)
 {
 	time = 0.0; // execute on next event
-	afterCommand.eventDistributor.distributeEvent(
-		Event::create<AfterTimedEvent>());
+	afterCommand.eventDistributor.distributeEvent(AfterTimedEvent());
 }
 
 void AfterTimedCmd::schedulerDeleted()
@@ -598,12 +550,13 @@ AfterSimpleEventCmd::AfterSimpleEventCmd(
 std::string_view AfterSimpleEventCmd::getType() const
 {
 	switch (type) {
-		case EventType::FINISH_FRAME:   return "frame";
-		case EventType::BREAK:          return "break";
-		case EventType::BOOT:           return "boot";
-		case EventType::QUIT:           return "quit";
-		case EventType::MACHINE_LOADED: return "machine_switch";
-		default: UNREACHABLE;           return "";
+		using enum EventType;
+		case FINISH_FRAME:   return "frame";
+		case BREAK:          return "break";
+		case BOOT:           return "boot";
+		case QUIT:           return "quit";
+		case MACHINE_LOADED: return "machine_switch";
+		default: UNREACHABLE;
 	}
 }
 

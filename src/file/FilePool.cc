@@ -31,7 +31,7 @@ namespace openmsx {
 FilePool::FilePool(CommandController& controller, Reactor& reactor_)
 	: core(FileOperations::getUserDataDir() + "/.filecache",
 	       [&] { return getDirectories(); },
-	       [&](std::string_view message) { reportProgress(message); })
+	       [&](std::string_view message, float fraction) { reportProgress(message, fraction); })
 	, filePoolSetting(
 		controller, "__filepool",
 		"This is an internal setting. Don't change this directly, "
@@ -60,19 +60,30 @@ Sha1Sum FilePool::getSha1Sum(File& file)
 	return core.getSha1Sum(file);
 }
 
+std::optional<Sha1Sum> FilePool::getSha1Sum(const std::string& filename)
+{
+	try {
+		File file(filename);
+		return getSha1Sum(file);
+	} catch (MSXException&) {
+		return {};
+	}
+}
+
 [[nodiscard]] static FileType parseTypes(Interpreter& interp, const TclObject& list)
 {
-	auto result = FileType::NONE;
+	using enum FileType;
+	auto result = NONE;
 	for (auto i : xrange(list.getListLength(interp))) {
 		std::string_view elem = list.getListIndex(interp, i).getString();
 		if (elem == "system_rom") {
-			result |= FileType::SYSTEM_ROM;
+			result |= SYSTEM_ROM;
 		} else if (elem == "rom") {
-			result |= FileType::ROM;
+			result |= ROM;
 		} else if (elem == "disk") {
-			result |= FileType::DISK;
+			result |= DISK;
 		} else if (elem == "tape") {
-			result |= FileType::TAPE;
+			result |= TAPE;
 		} else {
 			throw CommandException("Unknown type: ", elem);
 		}
@@ -132,19 +143,19 @@ void FilePool::update(const Setting& setting) noexcept
 	(void)getDirectories(); // check for syntax errors
 }
 
-void FilePool::reportProgress(std::string_view message)
+void FilePool::reportProgress(std::string_view message, float fraction)
 {
 	if (quit) core.abort();
-	reactor.getCliComm().printProgress(message);
+	reactor.getCliComm().printProgress(message, fraction);
 	reactor.getDisplay().repaint();
 }
 
-int FilePool::signalEvent(const Event& event)
+bool FilePool::signalEvent(const Event& event)
 {
 	(void)event; // avoid warning for non-assert compiles
 	assert(getType(event) == EventType::QUIT);
 	quit = true;
-	return 0;
+	return false;
 }
 
 

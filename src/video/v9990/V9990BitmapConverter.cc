@@ -2,17 +2,15 @@
 #include "V9990VRAM.hh"
 #include "V9990.hh"
 #include "unreachable.hh"
-#include "build-info.hh"
-#include "components.hh"
 #include "narrow.hh"
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <concepts>
 
 namespace openmsx {
 
-template<std::unsigned_integral Pixel>
-V9990BitmapConverter<Pixel>::V9990BitmapConverter(
+V9990BitmapConverter::V9990BitmapConverter(
 		V9990& vdp_,
 		std::span<const Pixel,    64> palette64_,  std::span<const int16_t,  64> palette64_32768_,
 		std::span<const Pixel,   256> palette256_, std::span<const int16_t, 256> palette256_32768_,
@@ -22,12 +20,12 @@ V9990BitmapConverter<Pixel>::V9990BitmapConverter(
 	, palette256(palette256_), palette256_32768(palette256_32768_)
 	, palette32768(palette32768_)
 {
-	setColorMode(PP, B0); // initialize with dummy values
+	setColorMode(V9990ColorMode::PP, V9990DisplayMode::B0); // initialize with dummy values
 }
 
 template<bool YJK, bool PAL, bool SKIP, std::unsigned_integral Pixel, typename ColorLookup>
 static inline void draw_YJK_YUV_PAL(
-	ColorLookup color, V9990VRAM& vram,
+	ColorLookup color, const V9990VRAM& vram,
 	Pixel* __restrict& out, unsigned& address, int firstX = 0)
 {
 	std::array<byte, 4> data;
@@ -56,7 +54,7 @@ static inline void draw_YJK_YUV_PAL(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBYUV(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	Pixel* __restrict out = buf.data();
@@ -76,7 +74,7 @@ static void rasterBYUV(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBYUVP(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	// TODO this mode cannot be shown in B4 and higher resolution modes
@@ -98,7 +96,7 @@ static void rasterBYUVP(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBYJK(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	Pixel* __restrict out = buf.data();
@@ -118,7 +116,7 @@ static void rasterBYJK(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBYJKP(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	// TODO this mode cannot be shown in B4 and higher resolution modes
@@ -140,7 +138,7 @@ static void rasterBYJKP(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBD16(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	Pixel* __restrict out = buf.data();
@@ -170,7 +168,7 @@ static void rasterBD16(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBD8(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	Pixel* __restrict out = buf.data();
@@ -183,7 +181,7 @@ static void rasterBD8(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBP6(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	Pixel* __restrict out = buf.data();
@@ -196,7 +194,7 @@ static void rasterBP6(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBP4(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	Pixel* __restrict out = buf.data();
@@ -218,7 +216,7 @@ static void rasterBP4(
 }
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBP4HiRes(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	// Verified on real HW:
@@ -243,7 +241,7 @@ static void rasterBP4HiRes(
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBP2(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	Pixel* __restrict out = buf.data();
@@ -269,7 +267,7 @@ static void rasterBP2(
 }
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void rasterBP2HiRes(
-	ColorLookup color, V9990& vdp, V9990VRAM& vram,
+	ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
 	std::span<Pixel> buf, unsigned x, unsigned y)
 {
 	// Verified on real HW:
@@ -349,10 +347,11 @@ private:
 
 template<std::unsigned_integral Pixel, typename ColorLookup>
 static void raster(V9990ColorMode colorMode, bool highRes,
-                   ColorLookup color, V9990& vdp, V9990VRAM& vram,
+                   ColorLookup color, const V9990& vdp, const V9990VRAM& vram,
                    std::span<Pixel> out, unsigned x, unsigned y)
 {
 	switch (colorMode) {
+	using enum V9990ColorMode;
 	case BYUV:  return rasterBYUV <Pixel>(color, vdp, vram, out, x, y);
 	case BYUVP: return rasterBYUVP<Pixel>(color, vdp, vram, out, x, y);
 	case BYJK:  return rasterBYJK <Pixel>(color, vdp, vram, out, x, y);
@@ -400,7 +399,7 @@ static void raster(V9990ColorMode colorMode, bool highRes,
 class CursorInfo
 {
 public:
-	CursorInfo(V9990& vdp, V9990VRAM& vram, std::span<const int16_t, 64> palette64_32768,
+	CursorInfo(const V9990& vdp, const V9990VRAM& vram, std::span<const int16_t, 64> palette64_32768,
 	           unsigned attrAddr, unsigned patAddr,
 		   int displayY, bool drawCursor)
 	{
@@ -458,10 +457,9 @@ public:
 	bool doXor{false};
 };
 
-template<std::unsigned_integral Pixel>
-void V9990BitmapConverter<Pixel>::convertLine(
+void V9990BitmapConverter::convertLine(
 	std::span<Pixel> dst, unsigned x, unsigned y,
-	int cursorY, bool drawCursors)
+	int cursorY, bool drawCursors) const
 {
 	assert(dst.size() <= 1024);
 
@@ -511,13 +509,5 @@ void V9990BitmapConverter<Pixel>::convertLine(
 		       vdp, vram, dst, x, y);
 	}
 }
-
-// Force template instantiation
-#if HAVE_16BPP
-template class V9990BitmapConverter<uint16_t>;
-#endif
-#if HAVE_32BPP || COMPONENT_GL
-template class V9990BitmapConverter<uint32_t>;
-#endif
 
 } // namespace openmsx

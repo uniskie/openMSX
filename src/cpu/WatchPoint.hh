@@ -13,7 +13,7 @@ namespace openmsx {
 class WatchPoint : public BreakPointBase
 {
 public:
-	enum Type { READ_IO, WRITE_IO, READ_MEM, WRITE_MEM };
+	enum class Type { READ_IO, WRITE_IO, READ_MEM, WRITE_MEM };
 
 	/** Begin and end address are inclusive (IOW range = [begin, end])
 	 */

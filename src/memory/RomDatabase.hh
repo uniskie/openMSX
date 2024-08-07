@@ -1,9 +1,11 @@
 #ifndef ROMDATABASE_HH
 #define ROMDATABASE_HH
 
-#include "MemBuffer.hh"
 #include "RomInfo.hh"
+
+#include "MemBuffer.hh"
 #include "sha1.hh"
+
 #include <vector>
 
 namespace openmsx {
@@ -19,7 +21,7 @@ public:
 	};
 	using RomDB = std::vector<Entry>; // sorted on sha1
 
-	RomDatabase(CliComm& cliComm);
+	explicit RomDatabase(CliComm& cliComm);
 
 	/** Lookup an entry in the database by sha1sum.
 	 * Returns nullptr when no corresponding entry was found.

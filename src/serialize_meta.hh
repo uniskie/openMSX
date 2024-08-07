@@ -30,8 +30,8 @@ template<typename T> struct Creator
 {
 	template<typename TUPLE>
 	std::unique_ptr<T> operator()(TUPLE tuple) {
-		auto makeT = [](auto&& ...args) {
-			return std::make_unique<T>(std::forward<decltype(args)>(args)...);
+		auto makeT = []<typename... Args>(Args&& ...args) {
+			return std::make_unique<T>(std::forward<Args>(args)...);
 		};
 		return std::apply(makeT, tuple);
 	}
@@ -66,7 +66,7 @@ template<typename T> struct PolymorphicBaseClass;
 template<typename Base> struct MapConstrArgsEmpty
 {
 	using TUPLEIn = typename PolymorphicConstructorArgs<Base>::type;
-	std::tuple<> operator()(const TUPLEIn& /*t*/)
+	std::tuple<> operator()(const TUPLEIn& /*t*/) const
 	{
 		return {};
 	}
@@ -96,8 +96,8 @@ template<typename Base, typename Derived> struct MapConstrArgsCopy
  * cases, the user must define a specialization of this class.
  */
 template<typename Base, typename Derived> struct MapConstructorArguments
-	: std::conditional_t<std::is_same<std::tuple<>,
-	                     typename PolymorphicConstructorArgs<Derived>::type>::value,
+	: std::conditional_t<std::is_same_v<std::tuple<>,
+	                                    typename PolymorphicConstructorArgs<Derived>::type>,
 	      MapConstrArgsEmpty<Base>,
 	      MapConstrArgsCopy<Base, Derived>> {};
 
@@ -109,14 +109,16 @@ template<typename Base, typename Derived> struct MapConstructorArguments
  */
 template<typename Base> struct BaseClassName;
 
-void polyInitError(const char* expected, const char* actual);
+[[noreturn]] void polyInitError(const char* expected, const char* actual);
 
 template<typename Archive>
 class PolymorphicSaverRegistry
 {
 public:
 	PolymorphicSaverRegistry(const PolymorphicSaverRegistry&) = delete;
+	PolymorphicSaverRegistry(PolymorphicSaverRegistry&&) = delete;
 	PolymorphicSaverRegistry& operator=(const PolymorphicSaverRegistry&) = delete;
+	PolymorphicSaverRegistry& operator=(PolymorphicSaverRegistry&&) = delete;
 
 	static PolymorphicSaverRegistry& instance();
 
@@ -157,6 +159,9 @@ private:
 	                 const std::type_info& typeInfo);
 
 	struct Entry {
+		Entry(std::type_index i, SaveFunction s)
+			: index(i), saver(std::move(s)) {} // clang-15 workaround
+
 		std::type_index index;
 		SaveFunction saver;
 	};
@@ -169,7 +174,9 @@ class PolymorphicLoaderRegistry
 {
 public:
 	PolymorphicLoaderRegistry(const PolymorphicLoaderRegistry&) = delete;
+	PolymorphicLoaderRegistry(PolymorphicLoaderRegistry&&) = delete;
 	PolymorphicLoaderRegistry& operator=(const PolymorphicLoaderRegistry&) = delete;
+	PolymorphicLoaderRegistry& operator=(PolymorphicLoaderRegistry&&) = delete;
 
 	static PolymorphicLoaderRegistry& instance();
 
@@ -208,7 +215,9 @@ class PolymorphicInitializerRegistry
 {
 public:
 	PolymorphicInitializerRegistry(const PolymorphicInitializerRegistry&) = delete;
+	PolymorphicInitializerRegistry(PolymorphicInitializerRegistry&&) = delete;
 	PolymorphicInitializerRegistry& operator=(const PolymorphicInitializerRegistry&) = delete;
+	PolymorphicInitializerRegistry& operator=(PolymorphicInitializerRegistry&&) = delete;
 
 	static PolymorphicInitializerRegistry& instance();
 

@@ -1,11 +1,14 @@
 #include "FilePoolCore.hh"
+
 #include "File.hh"
 #include "FileException.hh"
 #include "foreach_file.hh"
+
 #include "Date.hh"
 #include "Timer.hh"
 #include "one_of.hh"
 #include "ranges.hh"
+
 #include <fstream>
 #include <optional>
 #include <tuple>
@@ -23,7 +26,7 @@ struct GetSha1 {
 
 FilePoolCore::FilePoolCore(std::string fileCache_,
                            std::function<Directories()> getDirectories_,
-                           std::function<void(std::string_view)> reportProgress_)
+                           std::function<void(std::string_view, float)> reportProgress_)
 	: fileCache(std::move(fileCache_))
 	, getDirectories(std::move(getDirectories_))
 	, reportProgress(std::move(reportProgress_))
@@ -52,7 +55,7 @@ void FilePoolCore::insert(const Sha1Sum& sum, time_t time, const std::string& fi
 	needWrite = true;
 }
 
-FilePoolCore::Sha1Index::iterator FilePoolCore::getSha1Iterator(Index idx, Entry& entry)
+FilePoolCore::Sha1Index::iterator FilePoolCore::getSha1Iterator(Index idx, const Entry& entry)
 {
 	// There can be multiple entries for the same sha1, look for the specific one.
 	for (auto [b, e] = ranges::equal_range(sha1Index, entry.sum, {}, GetSha1{pool}); b != e; ++b) {
@@ -72,7 +75,7 @@ void FilePoolCore::remove(Sha1Index::iterator it)
 	needWrite = true;
 }
 
-void FilePoolCore::remove(Index idx, Entry& entry)
+void FilePoolCore::remove(Index idx, const Entry& entry)
 {
 	remove(getSha1Iterator(idx, entry));
 }
@@ -179,7 +182,7 @@ void FilePoolCore::readSha1sums()
 	char* data_end = data + size + 1;
 	while (data != data_end) {
 		// memchr() seems better optimized than std::find_if()
-		char* it = static_cast<char*>(memchr(data, '\n', data_end - data));
+		auto* it = static_cast<char*>(memchr(data, '\n', data_end - data));
 		if (it == nullptr) it = data_end;
 		if ((it != data) && (it[-1] == '\r')) --it;
 
@@ -244,21 +247,29 @@ File FilePoolCore::getFile(FileType fileType, const Sha1Sum& sha1sum)
 
 	// not found in cache, need to scan directories
 	stop = false;
-	ScanProgress progress;
-	progress.lastTime = Timer::getTime();
-	progress.amountScanned = 0;
+	ScanProgress progress {
+		.lastTime = Timer::getTime(),
+	};
 
-	for (auto& [path, types] : getDirectories()) {
+	for (const auto& [path, types] : getDirectories()) {
 		if ((types & fileType) != FileType::NONE) {
 			result = scanDirectory(sha1sum, FileOperations::expandTilde(std::string(path)), path, progress);
-			if (result.is_open()) return result;
+			if (result.is_open()) {
+				if (progress.printed) {
+					reportProgress(tmpStrCat("Found file with sha1sum ", sha1sum.toString()), 1.0f);
+				}
+				return result;
+			}
 		}
 	}
 
+	if (progress.printed) {
+		reportProgress(tmpStrCat("Did not find file with sha1sum ", sha1sum.toString()), 1.0f);
+	}
 	return result; // not found
 }
 
-Sha1Sum FilePoolCore::calcSha1sum(File& file)
+Sha1Sum FilePoolCore::calcSha1sum(File& file) const
 {
 	// Calculate sha1 in several steps so that we can show progress
 	// information. We take a fixed step size for an efficient calculation.
@@ -273,9 +284,9 @@ Sha1Sum FilePoolCore::calcSha1sum(File& file)
 	auto lastShowedProgress = Timer::getTime();
 	bool everShowedProgress = false;
 
-	auto report = [&](size_t percentage) {
-		reportProgress(tmpStrCat("Calculating SHA1 sum for ", file.getOriginalName(),
-		                         "... ", percentage, '%'));
+	auto report = [&](float fraction) {
+		reportProgress(tmpStrCat("Calculating SHA1 sum for ", file.getOriginalName()),
+		               fraction);
 	};
 	// Loop over all-but-the last blocks. For small files this loop is skipped.
 	while (remaining > STEP_SIZE) {
@@ -285,7 +296,7 @@ Sha1Sum FilePoolCore::calcSha1sum(File& file)
 
 		auto now = Timer::getTime();
 		if ((now - lastShowedProgress) > 250'000) { // 4Hz
-			report((100 * done) / size);
+			report(float(done) / float(size));
 			lastShowedProgress = now;
 			everShowedProgress = true;
 		}
@@ -295,7 +306,7 @@ Sha1Sum FilePoolCore::calcSha1sum(File& file)
 		sha1.update({&data[done], remaining});
 	}
 	if (everShowedProgress) {
-		report(100);
+		report(1.0f);
 	}
 	return sha1.digest();
 }
@@ -378,14 +389,16 @@ File FilePoolCore::scanFile(const Sha1Sum& sha1sum, const std::string& filename,
 {
 	++progress.amountScanned;
 	// Periodically send a progress message with the current filename
-	auto now = Timer::getTime();
-	if (now > (progress.lastTime + 250'000)) { // 4Hz
+	if (auto now = Timer::getTime();
+	    now > (progress.lastTime + 250'000)) { // 4Hz
 		progress.lastTime = now;
+		progress.printed = true;
 		reportProgress(tmpStrCat(
 		        "Searching for file with sha1sum ", sha1sum.toString(),
 		        "...\nIndexing filepool ", poolPath, ": [",
 		        progress.amountScanned, "]: ",
-		        std::string_view(filename).substr(poolPath.size())));
+		        std::string_view(filename).substr(poolPath.size())),
+		        -1.0f); // unknown progress
 	}
 
 	auto time = FileOperations::getModificationDate(st);
@@ -450,12 +463,10 @@ Sha1Sum FilePoolCore::getSha1Sum(File& file)
 	const std::string& filename = file.getURL();
 
 	auto [idx, entry] = findInDatabase(filename);
-	if (idx != Index(-1)) {
-		if (entry->getTime() == time) {
-			// in database and modification time matches,
-			// assume sha1sum also matches
-			return entry->sum;
-		}
+	if ((idx != Index(-1)) && (entry->getTime() == time)) {
+		// in database and modification time matches,
+		// assume sha1sum also matches
+		return entry->sum;
 	}
 
 	// not in database or timestamp mismatch

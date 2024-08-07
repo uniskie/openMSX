@@ -25,7 +25,7 @@ class Carnivore2 final
 	, public GlobalReadClient<Carnivore2, CT_Interval<0x0000>, CT_Interval<0x4000, 0x4010>>
 {
 public:
-	Carnivore2(const DeviceConfig& config);
+	explicit Carnivore2(const DeviceConfig& config);
 	~Carnivore2() override;
 
 	void powerUp(EmuTime::param time) override;
@@ -102,7 +102,7 @@ private:
 	[[nodiscard]] unsigned getMemoryMapperAddress(word address) const;
 	[[nodiscard]] bool isMemoryMapperWriteProtected(word address) const;
 	[[nodiscard]] byte peekMemoryMapperSlot(word address) const;
-	[[nodiscard]] byte readMemoryMapperSlot(word address);
+	[[nodiscard]] byte readMemoryMapperSlot(word address) const;
 	void writeMemoryMapperSlot(word address, byte value);
 
 	// fm-pac

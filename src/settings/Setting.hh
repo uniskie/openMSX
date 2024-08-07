@@ -82,14 +82,9 @@ public:
 	/** Get the default value of this setting.
 	  * This is the initial value of the setting. Default values don't
 	  * get saved in 'settings.xml'.
+	  * This is also the value used for a Tcl 'unset' command.
 	  */
 	[[nodiscard]] virtual TclObject getDefaultValue() const = 0;
-
-	/** Get the value that will be set after a Tcl 'unset' command.
-	  * Usually this is the same as the default value. Though one
-	  * exception is 'renderer', see comments in RendererFactory.cc.
-	  */
-	[[nodiscard]] virtual TclObject getRestoreValue() const = 0;
 
 	/** Change the value of this setting to the given value.
 	  * This method will trigger Tcl traces.
@@ -113,10 +108,6 @@ public:
 	  */
 	[[nodiscard]] virtual bool needTransfer() const = 0;
 
-	/** This value will never end up in the settings.xml file
-	 */
-	virtual void setDontSaveValue(const TclObject& dontSaveValue) = 0;
-
 private:
 	      TclObject fullName;
 	const TclObject baseName;
@@ -126,27 +117,22 @@ private:
 class Setting : public BaseSetting, public Subject<Setting>
 {
 public:
-	Setting(const Setting&) = delete;
-	Setting& operator=(const Setting&) = delete;
-
-	enum SaveSetting {
-		SAVE,          //    save,    transfer
-		DONT_SAVE,     // no-save,    transfer
-		DONT_TRANSFER, // no-save, no-transfer
+	enum class Save {
+		YES,                  //    save,    transfer
+		NO,                   // no-save,    transfer
+		NO_AND_DONT_TRANSFER, // no-save, no-transfer
 	};
 
+	Setting(const Setting&) = delete;
+	Setting(Setting&&) = delete;
+	Setting& operator=(const Setting&) = delete;
+	Setting& operator=(Setting&&) = delete;
 	virtual ~Setting();
 
 	/** Gets the current value of this setting as a TclObject.
 	  */
 	[[nodiscard]] const TclObject& getValue() const final { return value; }
 	[[nodiscard]] std::optional<TclObject> getOptionalValue() const final { return value; }
-
-	/** Set restore value. See getDefaultValue() and getRestoreValue().
-	  */
-	void setRestoreValue(const TclObject& newRestoreValue) {
-		restoreValue = newRestoreValue;
-	}
 
 	/** Set value-check-callback.
 	 * The callback is called on each change of this settings value.
@@ -165,13 +151,11 @@ public:
 	void setValue(const TclObject& newValue) final;
 	[[nodiscard]] std::string_view getDescription() const final;
 	[[nodiscard]] TclObject getDefaultValue() const final { return defaultValue; }
-	[[nodiscard]] TclObject getRestoreValue() const final { return restoreValue; }
 	void setValueDirect(const TclObject& newValue) final;
 	void tabCompletion(std::vector<std::string>& tokens) const override;
 	[[nodiscard]] bool needLoadSave() const final;
 	void additionalInfo(TclObject& result) const override;
 	[[nodiscard]] bool needTransfer() const final;
-	void setDontSaveValue(const TclObject& dontSaveValue) final;
 
 	// convenience functions
 	[[nodiscard]] CommandController& getCommandController() const { return commandController; }
@@ -180,7 +164,7 @@ public:
 protected:
 	Setting(CommandController& commandController,
 	        std::string_view name, static_string_view description,
-	        const TclObject& initialValue, SaveSetting save = SAVE);
+	        const TclObject& initialValue, Save save = Save::YES);
 	void init();
 	void notifyPropertyChange() const;
 
@@ -194,9 +178,7 @@ private:
 	std::function<void(TclObject&)> checkFunc;
 	TclObject value; // TODO can we share the underlying Tcl var storage?
 	const TclObject defaultValue;
-	TclObject restoreValue;
-	std::optional<TclObject> dontSaveValue;
-	const SaveSetting save;
+	const Save save;
 };
 
 } // namespace openmsx

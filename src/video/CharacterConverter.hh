@@ -2,7 +2,8 @@
 #define CHARACTERCONVERTER_HH
 
 #include "openmsx.hh"
-#include <concepts>
+
+#include <cstdint>
 #include <span>
 
 namespace openmsx {
@@ -14,10 +15,11 @@ class DisplayMode;
 
 /** Utility class for converting VRAM contents to host pixels.
   */
-template<std::unsigned_integral Pixel>
 class CharacterConverter
 {
 public:
+	using Pixel = uint32_t;
+
 	/** Create a new bitmap scanline converter.
 	  * @param vdp The VDP of which the VRAM will be converted.
 	  * @param palFg Pointer to 16-entries array that specifies
@@ -39,7 +41,7 @@ public:
 	  *            pixels aren't touched).
 	  * @param line Display line number [0..255].
 	  */
-	void convertLine(std::span<Pixel> buf, int line);
+	void convertLine(std::span<Pixel> buf, int line) const;
 
 	/** Select the display mode to use for scanline conversion.
 	  * @param mode The new display mode.
@@ -47,19 +49,19 @@ public:
 	void setDisplayMode(DisplayMode mode);
 
 private:
-	inline void renderText1   (std::span<Pixel, 256> buf, int line);
-	inline void renderText1Q  (std::span<Pixel, 256> buf, int line);
-	inline void renderText2   (std::span<Pixel, 512> buf, int line);
-	inline void renderGraphic1(std::span<Pixel, 256> buf, int line);
-	inline void renderGraphic2(std::span<Pixel, 256> buf, int line);
-	inline void renderMulti   (std::span<Pixel, 256> buf, int line);
-	inline void renderMultiQ  (std::span<Pixel, 256> buf, int line);
-	inline void renderBogus   (std::span<Pixel, 256> buf);
-	inline void renderBlank   (std::span<Pixel, 256> buf);
+	inline void renderText1   (std::span<Pixel, 256> buf, int line) const;
+	inline void renderText1Q  (std::span<Pixel, 256> buf, int line) const;
+	inline void renderText2   (std::span<Pixel, 512> buf, int line) const;
+	inline void renderGraphic1(std::span<Pixel, 256> buf, int line) const;
+	inline void renderGraphic2(std::span<Pixel, 256> buf, int line) const;
+	inline void renderMulti   (std::span<Pixel, 256> buf, int line) const;
+	inline void renderMultiQ  (std::span<Pixel, 256> buf, int line) const;
+	inline void renderBogus   (std::span<Pixel, 256> buf) const;
+	inline void renderBlank   (std::span<Pixel, 256> buf) const;
 	inline void renderMultiHelper(Pixel* pixelPtr, int line,
-	                       unsigned mask, unsigned patternQuarter);
+	                       unsigned mask, unsigned patternQuarter) const;
 
-	[[nodiscard]] std::span<const byte, 32> getNamePtr(int line, int scroll);
+	[[nodiscard]] std::span<const byte, 32> getNamePtr(int line, int scroll) const;
 
 private:
 	VDP& vdp;

@@ -66,7 +66,7 @@ Touchpad::Touchpad(MSXEventDistributor& eventDistributor_,
 		"{ 256 0 0 } { 0 256 0 }")
 {
 	auto& interp = commandController.getInterpreter();
-	transformSetting.setChecker([this, &interp](TclObject& newValue) {
+	transformSetting.setChecker([this, &interp](const TclObject& newValue) {
 		try {
 			parseTransformMatrix(interp, newValue);
 		} catch (CommandException& e) {
@@ -188,7 +188,7 @@ void Touchpad::write(uint8_t value, EmuTime::param time)
 
 ivec2 Touchpad::transformCoords(ivec2 xy)
 {
-	if (auto* output = display.getOutputSurface()) {
+	if (const auto* output = display.getOutputSurface()) {
 		vec2 uv = vec2(xy) / vec2(output->getLogicalSize());
 		xy = ivec2(m * vec3(uv, 1.0f));
 	}
@@ -202,16 +202,16 @@ void Touchpad::signalMSXEvent(const Event& event,
 	ivec2 pos = hostPos;
 	auto b = hostButtons;
 
-	visit(overloaded{
+	std::visit(overloaded{
 		[&](const MouseMotionEvent& e) {
 			pos = transformCoords(ivec2(e.getAbsX(), e.getAbsY()));
 		},
 		[&](const MouseButtonDownEvent& e) {
 			switch (e.getButton()) {
-			case MouseButtonEvent::LEFT:
+			case SDL_BUTTON_LEFT:
 				b |= 1;
 				break;
-			case MouseButtonEvent::RIGHT:
+			case SDL_BUTTON_RIGHT:
 				b |= 2;
 				break;
 			default:
@@ -221,10 +221,10 @@ void Touchpad::signalMSXEvent(const Event& event,
 		},
 		[&](const MouseButtonUpEvent& e) {
 			switch (e.getButton()) {
-			case MouseButtonEvent::LEFT:
+			case SDL_BUTTON_LEFT:
 				b &= ~1;
 				break;
-			case MouseButtonEvent::RIGHT:
+			case SDL_BUTTON_RIGHT:
 				b &= ~2;
 				break;
 			default:
@@ -240,8 +240,8 @@ void Touchpad::signalMSXEvent(const Event& event,
 		hostButtons = b;
 		createTouchpadStateChange(
 			time,
-			narrow_cast<uint8_t>(pos[0]),
-			narrow_cast<uint8_t>(pos[1]),
+			narrow_cast<uint8_t>(pos.x),
+			narrow_cast<uint8_t>(pos.y),
 			(hostButtons & 1) != 0,
 			(hostButtons & 2) != 0);
 	}

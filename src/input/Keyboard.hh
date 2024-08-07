@@ -2,19 +2,20 @@
 #define KEYBOARD_HH
 
 #include "KeyboardSettings.hh"
-#include "UnicodeKeymap.hh"
 #include "MSXEventListener.hh"
 #include "StateChangeListener.hh"
-#include "Schedulable.hh"
-#include "RecordedCommand.hh"
-#include "SimpleDebuggable.hh"
+#include "UnicodeKeymap.hh"
+
 #include "Event.hh"
 #include "EventListener.hh"
+#include "RecordedCommand.hh"
+#include "Schedulable.hh"
+#include "SimpleDebuggable.hh"
 #include "serialize_meta.hh"
+
 #include <array>
 #include <cstdint>
 #include <deque>
-#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -32,12 +33,21 @@ class StateChange;
 class TclObject;
 class Interpreter;
 
+struct KeyCodeMsxMapping {
+	SDL_Keycode hostKeyCode;
+	KeyMatrixPosition msx;
+};
+struct ScanCodeMsxMapping {
+	SDL_Scancode hostScanCode;
+	KeyMatrixPosition msx;
+};
+
 class Keyboard final : private MSXEventListener, private StateChangeListener
                      , private Schedulable
 {
 public:
 	static constexpr int MAX_KEYSYM = 0x150;
-	enum MatrixType { MATRIX_MSX, MATRIX_SVI, MATRIX_CVJOY, MATRIX_SEGA };
+	enum class Matrix { MSX, SVI, CVJOY, SEGA, NUM };
 
 	/** Constructs a new Keyboard object.
 	 * @param motherBoard ref to the motherBoard
@@ -54,7 +64,7 @@ public:
 	         EventDistributor& eventDistributor,
 	         MSXEventDistributor& msxEventDistributor,
 	         StateChangeDistributor& stateChangeDistributor,
-	         MatrixType matrix, const DeviceConfig& config);
+	         Matrix matrix, const DeviceConfig& config);
 
 	~Keyboard();
 
@@ -65,6 +75,7 @@ public:
 	[[nodiscard]] std::span<const uint8_t, KeyMatrixPosition::NUM_ROWS> getKeys() const;
 
 	void transferHostKeyMatrix(const Keyboard& source);
+	void setFocus(bool newFocus, EmuTime::param time);
 
 	template<typename Archive>
 	void serialize(Archive& ar, unsigned version);
@@ -80,6 +91,7 @@ private:
 	// Schedulable
 	void executeUntil(EmuTime::param time) override;
 
+	void syncHostKeyMatrix(EmuTime::param time);
 	void pressKeyMatrixEvent(EmuTime::param time, KeyMatrixPosition pos);
 	void releaseKeyMatrixEvent(EmuTime::param time, KeyMatrixPosition pos);
 	void changeKeyMatrixEvent (EmuTime::param time, uint8_t row, uint8_t newValue);
@@ -88,7 +100,7 @@ private:
 	void processCodeKanaChange(EmuTime::param time, bool down);
 	void processGraphChange(EmuTime::param time, bool down);
 	void processKeypadEnterKey(EmuTime::param time, bool down);
-	void processSdlKey(EmuTime::param time, bool down, Keys::KeyCode key);
+	void processSdlKey(EmuTime::param time, SDLKey key);
 	bool processQueuedEvent(const Event& event, EmuTime::param time);
 	bool processKeyEvent(EmuTime::param time, bool down, const KeyEvent& keyEvent);
 	void updateKeyMatrix(EmuTime::param time, bool down, KeyMatrixPosition pos);
@@ -98,8 +110,8 @@ private:
 			bool down);
 	uint8_t pressAscii(unsigned unicode, bool down);
 	void pressLockKeys(uint8_t lockKeysMask, bool down);
-	bool commonKeys(unsigned unicode1, unsigned unicode2);
-	void debug(const char* format, ...);
+	[[nodiscard]] bool commonKeys(unsigned unicode1, unsigned unicode2) const;
+	void debug(const char* format, ...) const;
 
 	/** Returns a bit vector in which the bit for a modifier is set iff that
 	  * modifier is a lock key and must be toggled before the given key input
@@ -112,9 +124,10 @@ private:
 	MSXEventDistributor& msxEventDistributor;
 	StateChangeDistributor& stateChangeDistributor;
 
-	std::span<const KeyMatrixPosition, MAX_KEYSYM> keyTab;
+	std::vector<KeyCodeMsxMapping> keyCodeTab;
+	std::vector<ScanCodeMsxMapping> scanCodeTab;
 
-	const std::array<KeyMatrixPosition, UnicodeKeymap::KeyInfo::NUM_MODIFIERS>& modifierPos;
+	const array_with_enum_index<UnicodeKeymap::KeyInfo::Modifier, KeyMatrixPosition>& modifierPos;
 
 	struct KeyMatrixUpCmd final : RecordedCommand {
 		KeyMatrixUpCmd(CommandController& commandController,
@@ -168,13 +181,13 @@ private:
 	} keyTypeCmd;
 
 	struct Msxcode2UnicodeCmd final : public Command {
-		Msxcode2UnicodeCmd(CommandController& commandController);
+		explicit Msxcode2UnicodeCmd(CommandController& commandController);
 		void execute(std::span<const TclObject> tokens, TclObject& result) override;
 		[[nodiscard]] std::string help(std::span<const TclObject> tokens) const override;
 	} msxcode2UnicodeCmd;
 
 	struct Unicode2MsxcodeCmd final : public Command {
-		Unicode2MsxcodeCmd(CommandController& commandController);
+		explicit Unicode2MsxcodeCmd(CommandController& commandController);
 		void execute(std::span<const TclObject> tokens, TclObject& result) override;
 		[[nodiscard]] std::string help(std::span<const TclObject> tokens) const override;
 	} unicode2MsxcodeCmd;
@@ -187,7 +200,7 @@ private:
 
 	private:
 		// EventListener
-		int signalEvent(const Event& event) override;
+		bool signalEvent(const Event& event) override;
 
 		// Schedulable
 		void executeUntil(EmuTime::param time) override;
@@ -227,7 +240,9 @@ private:
 	} keybDebuggable;
 
 	UnicodeKeymap unicodeKeymap;
-	std::array<unsigned, MAX_KEYSYM> dynKeymap;
+	// Remembers the last unicode for a key-press-keycode. To be used later
+	// on the corresponding key-release, because those don't have unicode info.
+	std::vector<std::pair<SDL_Keycode, uint32_t>> lastUnicodeForKeycode; // sorted on SDL_keycode
 
 	/** Keyboard matrix state for 'keymatrix' command. */
 	std::array<uint8_t, KeyMatrixPosition::NUM_ROWS> cmdKeyMatrix;
@@ -262,8 +277,10 @@ private:
 	  * the emulated machine.
 	  */
 	uint8_t locksOn = 0;
+
+	bool focus = true;
 };
-SERIALIZE_CLASS_VERSION(Keyboard, 3);
+SERIALIZE_CLASS_VERSION(Keyboard, 4);
 
 } // namespace openmsx
 

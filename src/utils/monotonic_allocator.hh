@@ -16,7 +16,7 @@ class monotonic_allocator
 public:
 	monotonic_allocator() = default;
 
-	monotonic_allocator(size_t initialSize)
+	explicit monotonic_allocator(size_t initialSize)
 		: nextSize(initialSize)
 	{
 		assert(initialSize != 0);
@@ -31,7 +31,9 @@ public:
 	}
 
 	monotonic_allocator(const monotonic_allocator&) = delete;
+	monotonic_allocator(monotonic_allocator&&) = delete;
 	monotonic_allocator& operator=(const monotonic_allocator&) = delete;
+	monotonic_allocator& operator=(monotonic_allocator&&) = delete;
 
 	~monotonic_allocator()
 	{
@@ -67,7 +69,7 @@ private:
 			throw std::bad_alloc();
 		}
 
-		void** p = static_cast<void**>(newBuf);
+		auto** p = static_cast<void**>(newBuf);
 		p[0] = head;
 
 		current = static_cast<void*>(&p[1]);

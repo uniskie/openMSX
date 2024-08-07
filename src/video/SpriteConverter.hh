@@ -10,7 +10,6 @@ TODO:
 #include "DisplayMode.hh"
 #include "view.hh"
 #include "narrow.hh"
-#include <concepts>
 #include <cstdint>
 #include <span>
 
@@ -18,10 +17,11 @@ namespace openmsx {
 
 /** Utility class for converting VRAM contents to host pixels.
   */
-template<std::unsigned_integral Pixel>
 class SpriteConverter
 {
 public:
+	using Pixel = uint32_t;
+
 	// TODO: Move some methods to .cc?
 
 	/** Constructor.
@@ -66,8 +66,7 @@ public:
 	static bool clipPattern(int& x, SpriteChecker::SpritePattern& pattern,
 	                        int minX, int maxX)
 	{
-		int before = minX - x;
-		if (before > 0) {
+		if (int before = minX - x; before > 0) {
 			if (before >= 32) {
 				// 32 pixels before minX -> not visible
 				return false;
@@ -75,14 +74,13 @@ public:
 			pattern <<= before;
 			x = minX;
 		}
-		int after = maxX - x;
-		if (after < 32) {
+		if (int after = maxX - x; after < 32) {
 			// close to maxX (or past)
 			if (after <= 0) {
 				// past maxX -> not visible
 				return false;
 			}
-			auto mask = narrow_cast<int>(0x80000000);
+			auto mask = narrow_cast<int>(0x8000'0000);
 			pattern &= (mask >> (after - 1));
 		}
 		return true; // visible
@@ -95,7 +93,7 @@ public:
 	  * @param maxX Maximum X coordinate to draw (exclusive).
 	  * @param pixelPtr Pointer to memory to draw to.
 	  */
-	void drawMode1(int absLine, int minX, int maxX, std::span<Pixel> pixelPtr)
+	void drawMode1(int absLine, int minX, int maxX, std::span<Pixel> pixelPtr) const
 	{
 		// Determine sprites visible on this line.
 		auto visibleSprites = spriteChecker.getSprites(absLine);
@@ -120,7 +118,7 @@ public:
 			Pixel* p = &pixelPtr[x];
 			while (pattern) {
 				// Draw pixel if sprite has a dot.
-				if (pattern & 0x80000000) {
+				if (pattern & 0x8000'0000) {
 					*p = color;
 				}
 				// Advancing behaviour.
@@ -141,7 +139,7 @@ public:
 	  * @param pixelPtr Pointer to memory to draw to.
 	  */
 	template<unsigned MODE>
-	void drawMode2(int absLine, int minX, int maxX, std::span<Pixel> pixelPtr)
+	void drawMode2(int absLine, int minX, int maxX, std::span<Pixel> pixelPtr) const
 	{
 		// Determine sprites visible on this line.
 		auto visibleSprites = spriteChecker.getSprites(absLine);
@@ -169,7 +167,7 @@ public:
 			uint8_t c = info.colorAttrib & 0x0F;
 			if (c == 0 && transparency) continue;
 			while (pattern) {
-				if (pattern & 0x80000000) {
+				if (pattern & 0x8000'0000) {
 					uint8_t color = c;
 					// Merge in any following CC=1 sprites.
 					for (int j = i + 1; /*sentinel*/; ++j) {
@@ -178,7 +176,7 @@ public:
 						if (!(info2.colorAttrib & 0x40)) break;
 						unsigned shift2 = x - info2.x;
 						if ((shift2 < 32) &&
-						   ((info2.pattern << shift2) & 0x80000000)) {
+						   ((info2.pattern << shift2) & 0x8000'0000)) {
 							color |= info2.colorAttrib & 0x0F;
 						}
 					}

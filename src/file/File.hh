@@ -1,6 +1,7 @@
 #ifndef FILE_HH
 #define FILE_HH
 
+#include <bit>
 #include <cstdint>
 #include <ctime>
 #include <memory>
@@ -15,7 +16,7 @@ class FileBase;
 class File
 {
 public:
-	enum OpenMode {
+	enum class OpenMode {
 		NORMAL,
 		TRUNCATE,
 		CREATE,
@@ -36,9 +37,9 @@ public:
 	 * @throws FileNotFoundException if file not found
 	 * @throws FileException for other errors
 	 */
-	explicit File(std::string filename, OpenMode mode = NORMAL);
-	explicit File(const Filename& filename, OpenMode mode = NORMAL);
-	explicit File(Filename&& filename, OpenMode mode = NORMAL);
+	explicit File(std::string filename, OpenMode mode = OpenMode::NORMAL);
+	explicit File(const Filename& filename, OpenMode mode = OpenMode::NORMAL);
+	explicit File(Filename&& filename, OpenMode mode = OpenMode::NORMAL);
 
 	/** This constructor maps very closely on the fopen() libc function.
 	  * Compared to constructor above, it does not transparently
@@ -53,7 +54,7 @@ public:
 	File(File&& other) noexcept;
 
 	/* Used by MemoryBufferFile. */
-	File(std::unique_ptr<FileBase> file_);
+	explicit File(std::unique_ptr<FileBase> file_);
 
 	~File();
 
@@ -75,7 +76,7 @@ public:
 
 	template<typename T>
 	void read(std::span<T> buffer) {
-		read(std::span<uint8_t>{reinterpret_cast<uint8_t*>(buffer.data()), buffer.size_bytes()});
+		read(std::span<uint8_t>{std::bit_cast<uint8_t*>(buffer.data()), buffer.size_bytes()});
 	}
 
 	/** Write to file.
@@ -86,7 +87,7 @@ public:
 
 	template<typename T>
 	void write(std::span<T> buffer) {
-		write(std::span<const uint8_t>{reinterpret_cast<const uint8_t*>(buffer.data()), buffer.size_bytes()});
+		write(std::span<const uint8_t>{std::bit_cast<const uint8_t*>(buffer.data()), buffer.size_bytes()});
 	}
 
 	/** Map file in memory.

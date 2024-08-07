@@ -382,7 +382,7 @@ static void OPLL_DoRegWrite(opll_t *chip) {
         chip->write_fm_data = 1;
     }
     if (chip->write_a_en) {
-        if (((chip->write_data & 0xf0) == 0x00)) {
+        if ((chip->write_data & 0xf0) == 0x00) {
             chip->write_mode_address = 0x10 | (chip->write_data & 0x0f);
         } else {
             chip->write_mode_address = 0x00;
@@ -490,7 +490,7 @@ static void OPLL_PhaseGenerate(opll_t *chip) {
         chip->rm_tc_bit3 = (phase >> (3 + 9)) & 1;
         chip->rm_tc_bit5 = (phase >> (5 + 9)) & 1;
     }
-    if ((chip->rm_enable & 0x80)) {
+    if (chip->rm_enable & 0x80) {
         switch (chip->cycles) {
         case 13: {
             /* HH */
@@ -845,7 +845,7 @@ static void OPLL_Channel(opll_t *chip) {
     } else {
         uint8_t mute_r = 1;
         /* TODO: This might be incorrect */
-        if ((chip->rm_enable & 0x40)) {
+        if (chip->rm_enable & 0x40) {
             switch (chip->cycles) {
             case 16: /* HH */
             case 17: /* TOM */
@@ -1017,7 +1017,7 @@ static void OPLL_DoLFO(opll_t *chip) {
 
     /* Update counter */
     if (chip->cycles == 17) {
-        uint8_t vib_step = uint8_t(((chip->lfo_counter & 0x3ff) + 1) >> 10);
+        auto vib_step = uint8_t(((chip->lfo_counter & 0x3ff) + 1) >> 10);
         chip->lfo_am_step = uint8_t(((chip->lfo_counter & 0x3f) + 1) >> 6);
         vib_step |= (chip->testmode >> 3) & 0x01;
         chip->lfo_vib_counter += vib_step;

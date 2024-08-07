@@ -2,9 +2,11 @@
 #define INPUTEVENTGENERATOR_HH
 
 #include "BooleanSetting.hh"
-#include "EventListener.hh"
 #include "Command.hh"
-#include "Keys.hh"
+#include "EventListener.hh"
+#include "JoystickManager.hh"
+
+#include "SDLKey.hh"
 #include <SDL.h>
 
 namespace openmsx {
@@ -16,12 +18,13 @@ class GlobalSettings;
 class InputEventGenerator final : private EventListener
 {
 public:
-	InputEventGenerator(const InputEventGenerator&) = delete;
-	InputEventGenerator& operator=(const InputEventGenerator&) = delete;
-
 	InputEventGenerator(CommandController& commandController,
 	                    EventDistributor& eventDistributor,
 	                    GlobalSettings& globalSettings);
+	InputEventGenerator(const InputEventGenerator&) = delete;
+	InputEventGenerator(InputEventGenerator&&) = delete;
+	InputEventGenerator& operator=(const InputEventGenerator&) = delete;
+	InputEventGenerator& operator=(InputEventGenerator&&) = delete;
 	~InputEventGenerator();
 
 	/** Wait for event(s) and handle it.
@@ -30,30 +33,26 @@ public:
 	void wait();
 
 	/** Input Grab on or off */
-	BooleanSetting& getGrabInput() { return grabInput; }
+	[[nodiscard]] BooleanSetting& getGrabInput() { return grabInput; }
 	/** Must be called when 'grabinput' or 'fullscreen' setting changes. */
 	void updateGrab(bool grab);
 
-	/** Normally the following two functions simply delegate to
-	 * SDL_JoystickNumButtons() and SDL_JoystickGetButton(). Except on
-	 * Android, see comments in .cc for more details.
-	 */
-	[[nodiscard]] static int joystickNumButtons(SDL_Joystick* joystick);
-	[[nodiscard]] static bool joystickGetButton(SDL_Joystick* joystick, int button);
-
 	void poll();
+
+	[[nodiscard]] JoystickManager& getJoystickManager() { return joystickManager; }
 
 private:
 	void handle(const SDL_Event& evt);
 	void handleKeyDown(const SDL_KeyboardEvent& key, uint32_t unicode);
-	void handleText(const char* utf8);
-	void setGrabInput(bool grab);
+	void splitText(uint32_t timestamp, const char* utf8);
+	void setGrabInput(bool grab) const;
 
 	// EventListener
-	int signalEvent(const Event& event) override;
+	bool signalEvent(const Event& event) override;
 
 	EventDistributor& eventDistributor;
 	GlobalSettings& globalSettings;
+	JoystickManager joystickManager;
 	BooleanSetting grabInput;
 
 	struct EscapeGrabCmd final : Command {
@@ -69,20 +68,14 @@ private:
 	} escapeGrabState = ESCAPE_GRAB_WAIT_CMD;
 
 	// OsdControl
-	void setNewOsdControlButtonState(
-		unsigned newState, const Event& origEvent);
-	void triggerOsdControlEventsFromJoystickAxisMotion(
-		unsigned axis, int value, const Event& origEvent);
-	void triggerOsdControlEventsFromJoystickHat(
-		int value, const Event& origEvent);
-	void osdControlChangeButton(
-		bool up, unsigned changedButtonMask, const Event& origEvent);
-	void triggerOsdControlEventsFromJoystickButtonEvent(
-		unsigned button, bool up, const Event& origEvent);
-	void triggerOsdControlEventsFromKeyEvent(
-		Keys::KeyCode keyCode, bool up, bool repeat, const Event& origEvent);
+	void setNewOsdControlButtonState(unsigned newState);
+	void triggerOsdControlEventsFromJoystickAxisMotion(unsigned axis, int value);
+	void triggerOsdControlEventsFromJoystickHat(int value);
+	void osdControlChangeButton(bool down, unsigned changedButtonMask);
+	void triggerOsdControlEventsFromJoystickButtonEvent(unsigned button, bool down);
+	void triggerOsdControlEventsFromKeyEvent(SDLKey key, bool repeat);
 
-
+private:
 	unsigned osdControlButtonsState = unsigned(~0); // 0 is pressed, 1 is released
 
 	// only for Android

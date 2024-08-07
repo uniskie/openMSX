@@ -1,8 +1,10 @@
 #include "Autofire.hh"
+
 #include "MSXMotherBoard.hh"
 #include "Scheduler.hh"
 #include "StateChange.hh"
 #include "StateChangeDistributor.hh"
+
 #include <algorithm>
 #include <cassert>
 
@@ -53,7 +55,7 @@ Autofire::Autofire(MSXMotherBoard& motherBoard,
 	, min_ints(std::max(newMinInts, 1u))
 	, max_ints(std::max(newMaxInts, min_ints + 1))
 	, speedSetting(motherBoard.getCommandController(), nameForId(id_),
-		"controls the speed of this autofire circuit", 0, 0, 100)
+		"controls autofire speed (0 = disabled)", 0, 0, 100)
 	, clock(scheduler.getCurrentTime())
 	, id(id_)
 {
@@ -106,7 +108,7 @@ void Autofire::stopReplay(EmuTime::param time) noexcept
 	setSpeed(time); // re-sync with current value of the setting
 }
 
-bool Autofire::getSignal(EmuTime::param time)
+bool Autofire::getSignal(EmuTime::param time) const
 {
 	return (clock.getPeriod() == EmuDuration::zero())
 		? false // special value: disabled

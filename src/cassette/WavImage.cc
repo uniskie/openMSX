@@ -28,7 +28,7 @@ public:
 		return y;
 	}
 private:
-	float R;
+	float R = 0.0f;
 	float t0 = 0.0f;
 };
 
@@ -42,7 +42,9 @@ public:
 	};
 
 	WavImageCache(const WavImageCache&) = delete;
+	WavImageCache(WavImageCache&&) = delete;
 	WavImageCache& operator=(const WavImageCache&) = delete;
+	WavImageCache& operator=(WavImageCache&&) = delete;
 
 	static WavImageCache& instance();
 	const WavInfo& get(const Filename& filename, FilePool& filePool);
@@ -57,7 +59,7 @@ private:
 		unsigned refCount = 0;
 		WavInfo info;
 	};
-	std::map<std::string, Entry> cache;
+	std::map<std::string, Entry, std::less<>> cache;
 };
 
 WavImageCache::~WavImageCache()
@@ -104,7 +106,6 @@ void WavImageCache::release(const WavData* wav)
 
 // Note: type detection not implemented yet for WAV images
 WavImage::WavImage(const Filename& filename, FilePool& filePool)
-	: clock(EmuTime::zero())
 {
 	const auto& entry = WavImageCache::instance().get(filename, filePool);
 	wav = &entry.wav;

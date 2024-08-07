@@ -7,6 +7,7 @@
 #include "one_of.hh"
 #include "random.hh"
 #include "ranges.hh"
+#include "strCat.hh"
 #include "view.hh"
 #include "xrange.hh"
 #include <algorithm>
@@ -45,7 +46,7 @@ static constexpr std::array<char, 11> NEXTOR_PARTITION_TABLE_HEADER = {
 	return {};
 }
 
-bool hasPartitionTable(SectorAccessibleDisk& disk)
+bool hasPartitionTable(const SectorAccessibleDisk& disk)
 {
 	SectorBuffer buf;
 	disk.readSector(0, buf);
@@ -54,7 +55,7 @@ bool hasPartitionTable(SectorAccessibleDisk& disk)
 
 // Get partition from Nextor extended boot record (standard EBR) chain.
 static Partition& getPartitionNextorExtended(
-	SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf,
+	const SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf,
 	unsigned remaining, unsigned ebrOuterSector)
 {
 	unsigned ebrSector = ebrOuterSector;
@@ -73,7 +74,7 @@ static Partition& getPartitionNextorExtended(
 		}
 
 		// EBR link entry. Start is relative to *outermost* EBR sector.
-		auto& link = buf.ptNextor.part[1];
+		const auto& link = buf.ptNextor.part[1];
 		if (link.start == 0) {
 			break;
 		} else if (link.sys_ind != one_of(0x05, 0x0F)) {
@@ -87,7 +88,7 @@ static Partition& getPartitionNextorExtended(
 
 // Get partition from Nextor master boot record (standard MBR).
 static Partition& getPartitionNextor(
-	SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf)
+	const SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf)
 {
 	unsigned remaining = partition - 1;
 	for (auto& p : buf.ptNextor.part) {
@@ -120,7 +121,7 @@ static Partition& getPartitionSunrise(unsigned partition, SectorBuffer& buf)
 	return p;
 }
 
-Partition& getPartition(SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf)
+Partition& getPartition(const SectorAccessibleDisk& disk, unsigned partition, SectorBuffer& buf)
 {
 	// check drive has a partition table
 	// check valid partition number and return the entry
@@ -135,10 +136,10 @@ Partition& getPartition(SectorAccessibleDisk& disk, unsigned partition, SectorBu
 	}
 }
 
-void checkSupportedPartition(SectorAccessibleDisk& disk, unsigned partition)
+void checkSupportedPartition(const SectorAccessibleDisk& disk, unsigned partition)
 {
 	SectorBuffer buf;
-	Partition& p = getPartition(disk, partition, buf);
+	const Partition& p = getPartition(disk, partition, buf);
 
 	// check partition type
 	if (p.sys_ind != one_of(0x01, 0x04, 0x06, 0x0E)) {
@@ -377,7 +378,7 @@ static SetBootSectorResult setBootSector(
 		params.vol_id = vol_id;
 	} else if (bootType == MSXBootSectorType::NEXTOR && fat16) {
 		auto& params = boot.params.extended;
-		if (nbSectors <= 0x800000) {
+		if (nbSectors <= 0x80'0000) {
 			params.nrSectors = narrow<unsigned>(nbSectors);
 		} else {
 			throw CommandException("Too many sectors for FAT16 ", nbSectors);
@@ -522,7 +523,7 @@ static std::vector<unsigned> partitionNextor(SectorAccessibleDisk& disk, std::sp
 		// Add partition entry
 		auto& p = pt.part[0];
 		p.boot_ind = (i == 0) ? 0x80 : 0x00; // boot flag
-		p.sys_ind = size > 0x10000 ? 0x0E : 0x01; // FAT16B (LBA), or FAT12
+		p.sys_ind = size > 0x1'0000 ? 0x0E : 0x01; // FAT16B (LBA), or FAT12
 		p.start = 1;
 		p.size = size;
 
@@ -634,6 +635,43 @@ unsigned partition(SectorAccessibleDisk& disk, std::span<const unsigned> sizes, 
 	}
 
 	return narrow<unsigned>(clampedSizes.size());
+}
+
+FatTimeDate toTimeDate(time_t totalSeconds)
+{
+	if (const tm* mtim = localtime(&totalSeconds)) {
+		auto time = narrow<uint16_t>(
+			(std::min(mtim->tm_sec, 59) >> 1) + (mtim->tm_min << 5) +
+			(mtim->tm_hour << 11));
+		auto date = narrow<uint16_t>(
+			mtim->tm_mday + ((mtim->tm_mon + 1) << 5) +
+			(std::clamp(mtim->tm_year + 1900 - 1980, 0, 119) << 9));
+		return {time, date};
+	}
+	return {0, 0};
+}
+
+time_t fromTimeDate(FatTimeDate timeDate)
+{
+	struct tm tm{};
+	tm.tm_sec  = std::clamp(((timeDate.time >>  0) & 31) * 2, 0, 60);
+	tm.tm_min  = std::clamp(((timeDate.time >>  5) & 63), 0, 59);
+	tm.tm_hour = std::clamp(((timeDate.time >> 11) & 31), 0, 23);
+	tm.tm_mday = std::clamp((timeDate.date >> 0) & 31, 1, 31);
+	tm.tm_mon  = std::clamp(((timeDate.date >> 5) & 15) - 1, 0, 11);
+	tm.tm_year = (timeDate.date >> 9) + 1980 - 1900;
+	tm.tm_isdst = -1;
+	return mktime(&tm);
+}
+
+std::string formatAttrib(MSXDirEntry::AttribValue attrib)
+{
+	using enum MSXDirEntry::Attrib;
+	return strCat((attrib & DIRECTORY ? 'd' : '-'),
+	              (attrib & READONLY  ? 'r' : '-'),
+	              (attrib & HIDDEN    ? 'h' : '-'),
+	              (attrib & VOLUME    ? 'v' : '-'),  // TODO check if this is the output of files,l
+	              (attrib & ARCHIVE   ? 'a' : '-')); // TODO check if this is the output of files,l
 }
 
 } // namespace openmsx::DiskImageUtils

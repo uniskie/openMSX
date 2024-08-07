@@ -2,12 +2,14 @@
 #define OSDWIDGET_HH
 
 #include "TclObject.hh"
+
 #include "gl_vec.hh"
+
 #include <array>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
-#include <memory>
 
 namespace openmsx {
 
@@ -53,14 +55,13 @@ public:
 	[[nodiscard]] virtual std::string_view getType() const = 0;
 
 	void invalidateRecursive();
-	void paintSDLRecursive(OutputSurface& output);
-	void paintGLRecursive (OutputSurface& output);
+	void paintRecursive(OutputSurface& output);
 
 	[[nodiscard]] int getScaleFactor(const OutputSurface& output) const;
 	[[nodiscard]] gl::vec2 transformPos(const OutputSurface& output,
 	                                    gl::vec2 pos, gl::vec2 relPos) const;
-	void getBoundingBox(const OutputSurface& output,
-	                    gl::vec2& pos, gl::vec2& size) const;
+	struct BoundingBox { gl::vec2 pos; gl::vec2 size; };
+	[[nodiscard]] BoundingBox getBoundingBox(const OutputSurface& output) const;
 	[[nodiscard]] virtual gl::vec2 getSize(const OutputSurface& output) const = 0;
 
 	// Is visible? Or may become visible (fading-in).
@@ -70,20 +71,19 @@ public:
 
 protected:
 	OSDWidget(Display& display, TclObject name);
-	void invalidateChildren();
+	void invalidateChildren() const;
 	[[nodiscard]] bool needSuppressErrors() const;
 
 	virtual void invalidateLocal() = 0;
-	virtual void paintSDL(OutputSurface& output) = 0;
-	virtual void paintGL (OutputSurface& output) = 0;
+	virtual void paint(OutputSurface& output) = 0;
 
 private:
 	[[nodiscard]] gl::vec2 getMouseCoord() const;
 	[[nodiscard]] gl::vec2 transformReverse(const OutputSurface& output,
 	                                        gl::vec2 pos) const;
 	void setParent(OSDWidget* parent_) { parent = parent_; }
-	void resortUp  (OSDWidget* elem);
-	void resortDown(OSDWidget* elem);
+	void resortUp  (const OSDWidget* elem);
+	void resortDown(const OSDWidget* elem);
 
 private:
 	/** Direct child widgets of this widget, sorted by z-coordinate.

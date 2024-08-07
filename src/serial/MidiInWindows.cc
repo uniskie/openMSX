@@ -14,7 +14,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
+#include <Windows.h>
 #include <mmsystem.h>
 #include <memory>
 #include <sys/types.h>
@@ -37,7 +37,6 @@ void MidiInWindows::registerAll(EventDistributor& eventDistributor,
 MidiInWindows::MidiInWindows(EventDistributor& eventDistributor_,
                              Scheduler& scheduler_, unsigned num)
 	: eventDistributor(eventDistributor_), scheduler(scheduler_)
-	, devIdx(unsigned(-1))
 {
 	name = w32_midiInGetVFN(num);
 	desc = w32_midiInGetRDN(num);
@@ -56,20 +55,20 @@ MidiInWindows::~MidiInWindows()
 void MidiInWindows::plugHelper(Connector& connector_, EmuTime::param /*time*/)
 {
 	auto& midiConnector = static_cast<MidiInConnector&>(connector_);
-	midiConnector.setDataBits(SerialDataInterface::DATA_8); // 8 data bits
-	midiConnector.setStopBits(SerialDataInterface::STOP_1); // 1 stop bit
-	midiConnector.setParityBit(false, SerialDataInterface::EVEN); // no parity
+	midiConnector.setDataBits(SerialDataInterface::DataBits::D8); // 8 data bits
+	midiConnector.setStopBits(SerialDataInterface::StopBits::S1); // 1 stop bit
+	midiConnector.setParityBit(false, SerialDataInterface::Parity::EVEN); // no parity
 
 	setConnector(&connector_); // base class will do this in a moment,
 	                           // but thread already needs it
 
 	{
-		std::unique_lock<std::mutex> threadIdLock(threadIdMutex);
+		std::unique_lock threadIdLock(threadIdMutex);
 		thread = std::thread([this]() { run(); });
 		threadIdCond.wait(threadIdLock);
 	}
 	{
-		std::lock_guard<std::mutex> devIdxLock(devIdxMutex);
+		std::scoped_lock devIdxLock(devIdxMutex);
 		devIdx = w32_midiInOpen(name.c_str(), threadId);
 	}
 	devIdxCond.notify_all();
@@ -100,13 +99,12 @@ void MidiInWindows::procLongMsg(LPMIDIHDR p)
 {
 	if (p->dwBytesRecorded) {
 		{
-			std::lock_guard<std::mutex> lock(queueMutex);
+			std::scoped_lock lock(queueMutex);
 			for (auto i : xrange(p->dwBytesRecorded)) {
 				queue.push_back(p->lpData[i]);
 			}
 		}
-		eventDistributor.distributeEvent(
-			Event::create<MidiInWindowsEvent>());
+		eventDistributor.distributeEvent(MidiInWindowsEvent());
 	}
 }
 
@@ -121,13 +119,12 @@ void MidiInWindows::procShortMsg(DWORD param)
 		default:
 			num = 1; break;
 	}
-	std::lock_guard<std::mutex> lock(queueMutex);
+	std::scoped_lock lock(queueMutex);
 	while (num--) {
 		queue.push_back(param & 0xFF);
 		param >>= 8;
 	}
-	eventDistributor.distributeEvent(
-		Event::create<MidiInWindowsEvent>());
+	eventDistributor.distributeEvent(MidiInWindowsEvent());
 }
 
 void MidiInWindows::run()
@@ -135,12 +132,12 @@ void MidiInWindows::run()
 	assert(isPluggedIn());
 
 	{
-		std::lock_guard<std::mutex> threadIdLock(threadIdMutex);
+		std::scoped_lock threadIdLock(threadIdMutex);
 		threadId = GetCurrentThreadId();
 	}
 
 	{
-		std::unique_lock<std::mutex> devIdxLock(devIdxMutex);
+		std::unique_lock devIdxLock(devIdxMutex);
 		threadIdCond.notify_all();
 		devIdxCond.wait(devIdxLock);
 	}
@@ -178,7 +175,7 @@ void MidiInWindows::signal(EmuTime::param time)
 {
 	auto* conn = static_cast<MidiInConnector*>(getConnector());
 	if (!conn->acceptsData()) {
-		std::lock_guard<std::mutex> lock(queueMutex);
+		std::scoped_lock lock(queueMutex);
 		queue.clear();
 		return;
 	}
@@ -186,7 +183,7 @@ void MidiInWindows::signal(EmuTime::param time)
 
 	byte data;
 	{
-		std::lock_guard<std::mutex> lock(queueMutex);
+		std::scoped_lock lock(queueMutex);
 		if (queue.empty()) return;
 		data = queue.pop_front();
 	}
@@ -194,15 +191,15 @@ void MidiInWindows::signal(EmuTime::param time)
 }
 
 // EventListener
-int MidiInWindows::signalEvent(const Event& /*event*/)
+bool MidiInWindows::signalEvent(const Event& /*event*/)
 {
 	if (isPluggedIn()) {
 		signal(scheduler.getCurrentTime());
 	} else {
-		std::lock_guard<std::mutex> lock(queueMutex);
+		std::scoped_lock lock(queueMutex);
 		queue.clear();
 	}
-	return 0;
+	return false;
 }
 
 template<typename Archive>

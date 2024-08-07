@@ -5,16 +5,17 @@
 #include "unistdp.hh" // needed for mode_t definition when building with VC++
 #include "statp.hh"
 #include "zstring_view.hh"
-#include <sys/types.h>
+
 #include <fstream>
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <sys/types.h>
 
 namespace openmsx::FileOperations {
 
 	struct FClose {
-		void operator()(FILE* f) { fclose(f); }
+		void operator()(FILE* f) const { fclose(f); }
 	};
 	using FILE_t = std::unique_ptr<FILE, FClose>;
 
@@ -230,7 +231,14 @@ namespace openmsx::FileOperations {
 	 */
 	[[nodiscard]] const std::string& getSystemDataDir();
 
+	/**
+	 * Get system doc directory.
+	 * Win32: use "same directory as .exe" + "/doc".
+	 */
+	[[nodiscard]] const std::string& getSystemDocDir();
+
 #ifdef _WIN32
+	// using Stat = struct _stat; // doesn't work for some reason
 	typedef struct _stat Stat;
 #else
 	using Stat = struct stat;
@@ -273,9 +281,11 @@ namespace openmsx::FileOperations {
 	 * which should be searched for the next filename
 	 * @param prefix Prefix of the filename with numbers
 	 * @param extension Extension of the filename with numbers
+	 * @param addSeparator Add separator character between 'prefix' and 'number'.
 	 */
 	[[nodiscard]] std::string getNextNumberedFileName(
-		std::string_view directory, std::string_view prefix, std::string_view extension);
+		std::string_view directory, std::string_view prefix, std::string_view extension,
+		bool addSeparator = false);
 
 	/** Helper function for parsing filename arguments in Tcl commands.
 	 * - If argument is empty then getNextNumberedFileName() is used

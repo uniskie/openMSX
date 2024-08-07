@@ -2,7 +2,9 @@
 #define RANGES_HH
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
+#include <cstdint>
 #include <functional>
 #include <iterator> // for std::begin(), std::end()
 #include <numeric>
@@ -58,7 +60,7 @@ constexpr void sort(RandomAccessRange&& range, Compare comp)
 }
 
 template<typename RAIter, typename Compare = std::less<>, typename Proj>
-void sort(RAIter first, RAIter last, Compare comp, Proj proj)
+constexpr void sort(RAIter first, RAIter last, Compare comp, Proj proj)
 {
 	std::sort(first, last,
 		[&](const auto& x, const auto& y) {
@@ -67,7 +69,7 @@ void sort(RAIter first, RAIter last, Compare comp, Proj proj)
 }
 
 template<typename RandomAccessRange, typename Compare = std::less<>, typename Proj>
-void sort(RandomAccessRange&& range, Compare comp, Proj proj)
+constexpr void sort(RandomAccessRange&& range, Compare comp, Proj proj)
 {
 	sort(std::begin(range), std::end(range), comp, proj);
 }
@@ -140,8 +142,8 @@ template<typename ForwardRange, typename T, typename Compare = std::less<>, type
 	using Iter = decltype(std::begin(range));
 	using R = typename std::iterator_traits<Iter>::value_type;
 	struct Comp2 {
-		Compare comp;
-		Proj proj;
+		[[no_unique_address]] Compare comp;
+		[[no_unique_address]] Proj proj;
 
 		bool operator()(const R& x, const R& y) const {
 			return comp(std::invoke(proj, x), std::invoke(proj, y));
@@ -183,21 +185,39 @@ template<typename InputRange, typename UnaryPredicate>
 }
 
 template<typename InputRange, typename UnaryPredicate>
-[[nodiscard]] bool all_of(InputRange&& range, UnaryPredicate pred)
+[[nodiscard]] constexpr bool all_of(InputRange&& range, UnaryPredicate pred)
 {
-	return std::all_of(std::begin(range), std::end(range), pred);
+	//return std::all_of(std::begin(range), std::end(range), pred);
+	auto it = std::begin(range);
+	auto et = std::end(range); // allow 'it' and 'et' to have different types
+	for (/**/; it != et; ++it) {
+		if (!std::invoke(pred, *it)) return false;
+	}
+	return true;
 }
 
 template<typename InputRange, typename UnaryPredicate>
-[[nodiscard]] bool any_of(InputRange&& range, UnaryPredicate pred)
+[[nodiscard]] constexpr bool any_of(InputRange&& range, UnaryPredicate pred)
 {
-	return std::any_of(std::begin(range), std::end(range), pred);
+	//return std::any_of(std::begin(range), std::end(range), pred);
+	auto it = std::begin(range);
+	auto et = std::end(range); // allow 'it' and 'et' to have different types
+	for (/**/; it != et; ++it) {
+		if (std::invoke(pred, *it)) return true;
+	}
+	return false;
 }
 
 template<typename InputRange, typename UnaryPredicate>
-[[nodiscard]] bool none_of(InputRange&& range, UnaryPredicate pred)
+[[nodiscard]] constexpr bool none_of(InputRange&& range, UnaryPredicate pred)
 {
-	return std::none_of(std::begin(range), std::end(range), pred);
+	//return std::none_of(std::begin(range), std::end(range), pred);
+	auto it = std::begin(range);
+	auto et = std::end(range); // allow 'it' and 'et' to have different types
+	for (/**/; it != et; ++it) {
+		if (std::invoke(pred, *it)) return false;
+	}
+	return true;
 }
 
 template<typename ForwardRange>
@@ -229,16 +249,24 @@ template<typename RandomAccessRange, typename Compare = std::equal_to<>, typenam
 
 template<typename InputRange, typename OutputIter>
 	requires(!range<OutputIter>)
-auto copy(InputRange&& range, OutputIter out)
+constexpr auto copy(InputRange&& range, OutputIter out)
 {
 	return std::copy(std::begin(range), std::end(range), out);
 }
 
 template<sized_range Input, sized_range Output>
-auto copy(Input&& in, Output&& out)
+constexpr auto copy(Input&& in, Output&& out)
 {
 	assert(std::size(in) <= std::size(out));
-	return std::copy(std::begin(in), std::end(in), std::begin(out));
+	// Workaround: this doesn't work when copying a std::initializer_list into a std::array with libstdc++ debug-STL ???
+	//     return std::copy(std::begin(in), std::end(in), std::begin(out));
+	auto f = std::begin(in);
+	auto l = std::end(in);
+	auto o = std::begin(out);
+	while (f != l) {
+		*o++ = *f++;
+	}
+	return o;
 }
 
 template<typename InputRange, typename OutputIter, typename UnaryPredicate>
@@ -326,7 +354,14 @@ template<typename InputRange, typename T>
 template<typename InputRange, typename UnaryPredicate>
 [[nodiscard]] auto count_if(InputRange&& range, UnaryPredicate pred)
 {
-	return std::count_if(std::begin(range), std::end(range), pred);
+	auto first = std::begin(range);
+	auto last = std::end(range);
+	typename std::iter_difference_t<decltype(first)> count = 0;
+	while (first != last) {
+		if (std::invoke(pred, *first++)) ++count;
+	}
+	return count;
+	//return std::count_if(std::begin(range), std::end(range), pred);
 }
 
 template<typename InputRange1, typename InputRange2, typename OutputIter>
@@ -340,7 +375,7 @@ auto set_difference(InputRange1&& range1, InputRange2&& range2, OutputIter out)
 template<range InputRange1, range InputRange2,
          typename Pred = std::equal_to<void>,
          typename Proj1 = std::identity, typename Proj2 = std::identity>
-bool equal(InputRange1&& range1, InputRange2&& range2, Pred pred = {},
+[[nodiscard]] constexpr bool equal(InputRange1&& range1, InputRange2&& range2, Pred pred = {},
            Proj1 proj1 = {}, Proj2 proj2 = {})
 {
 	auto it1 = std::begin(range1);
@@ -358,7 +393,7 @@ bool equal(InputRange1&& range1, InputRange2&& range2, Pred pred = {},
 template<sized_range SizedRange1, sized_range SizedRange2,
          typename Pred = std::equal_to<void>,
          typename Proj1 = std::identity, typename Proj2 = std::identity>
-bool equal(SizedRange1&& range1, SizedRange2&& range2, Pred pred = {},
+[[nodiscard]] constexpr bool equal(SizedRange1&& range1, SizedRange2&& range2, Pred pred = {},
            Proj1 proj1 = {}, Proj2 proj2 = {})
 {
 	if (std::size(range1) != std::size(range2)) return false;
@@ -443,15 +478,21 @@ constexpr auto make_span(Range&& range)
 }
 
 template<typename Range>
-constexpr auto subspan(Range&& range, size_t offset, size_t count = std::dynamic_extent)
+[[nodiscard]] constexpr auto subspan(Range&& range, size_t offset, size_t count = std::dynamic_extent)
 {
 	return make_span(std::forward<Range>(range)).subspan(offset, count);
 }
 
 template<size_t Count, typename Range>
-constexpr auto subspan(Range&& range, size_t offset = 0)
+[[nodiscard]] constexpr auto subspan(Range&& range, size_t offset = 0)
 {
 	return make_span(std::forward<Range>(range)).subspan(offset).template first<Count>();
+}
+
+template<typename T, size_t Size>
+[[nodiscard]] inline auto as_byte_span(std::span<T, Size> s)
+{
+	return std::span{std::bit_cast<const uint8_t*>(s.data()), s.size_bytes()};
 }
 
 #endif

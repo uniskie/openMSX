@@ -2,20 +2,21 @@
 #define MSXEVENTDISTRIBUTOR_HH
 
 #include "EmuTime.hh"
+#include "Event.hh"
 #include <vector>
 
 namespace openmsx {
 
 class MSXEventListener;
-class Event;
 
 class MSXEventDistributor
 {
 public:
-	MSXEventDistributor(const MSXEventDistributor&) = delete;
-	MSXEventDistributor& operator=(const MSXEventDistributor&) = delete;
-
 	MSXEventDistributor() = default;
+	MSXEventDistributor(const MSXEventDistributor&) = delete;
+	MSXEventDistributor(MSXEventDistributor&&) = delete;
+	MSXEventDistributor& operator=(const MSXEventDistributor&) = delete;
+	MSXEventDistributor& operator=(MSXEventDistributor&&) = delete;
 	~MSXEventDistributor();
 
 	/**

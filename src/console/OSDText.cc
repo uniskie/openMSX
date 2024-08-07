@@ -1,24 +1,23 @@
 #include "OSDText.hh"
-#include "TTFFont.hh"
-#include "SDLImage.hh"
-#include "Display.hh"
+
 #include "CommandException.hh"
+#include "Display.hh"
 #include "FileContext.hh"
 #include "FileOperations.hh"
+#include "GLImage.hh"
+#include "TTFFont.hh"
 #include "TclObject.hh"
+
 #include "StringOp.hh"
 #include "join.hh"
 #include "narrow.hh"
 #include "stl.hh"
 #include "unreachable.hh"
 #include "utf8_core.hh"
-#include "components.hh"
+
 #include <cassert>
 #include <cmath>
 #include <memory>
-#if COMPONENT_GL
-#include "GLImage.hh"
-#endif
 
 using std::string;
 using std::string_view;
@@ -28,7 +27,7 @@ namespace openmsx {
 
 OSDText::OSDText(Display& display_, const TclObject& name_)
 	: OSDImageBasedWidget(display_, name_)
-	, fontFile("skins/Vera.ttf.gz")
+	, fontFile("skins/DejaVuSans.ttf.gz")
 {
 }
 
@@ -149,11 +148,10 @@ uint8_t OSDText::getFadedAlpha() const
 	return narrow_cast<uint8_t>(narrow_cast<float>(getRGBA(0) & 0xff) * getRecursiveFadeValue());
 }
 
-template<typename IMAGE> std::unique_ptr<BaseImage> OSDText::create(
-	OutputSurface& output)
+std::unique_ptr<GLImage> OSDText::create(OutputSurface& output)
 {
 	if (text.empty()) {
-		return std::make_unique<IMAGE>(output, ivec2(), 0);
+		return std::make_unique<GLImage>(ivec2(), 0);
 	}
 	int scale = getScaleFactor(output);
 	if (font.empty()) {
@@ -166,7 +164,7 @@ template<typename IMAGE> std::unique_ptr<BaseImage> OSDText::create(
 	}
 	try {
 		vec2 pSize = getParent()->getSize(output);
-		int maxWidth = narrow_cast<int>(lrintf(wrapw * narrow<float>(scale) + wraprelw * pSize[0]));
+		int maxWidth = narrow_cast<int>(lrintf(wrapw * narrow<float>(scale) + wraprelw * pSize.x));
 		// Width can't be negative, if it is make it zero instead.
 		// This will put each character on a different line.
 		maxWidth = std::max(0, maxWidth);
@@ -191,9 +189,9 @@ template<typename IMAGE> std::unique_ptr<BaseImage> OSDText::create(
 		                                  narrow_cast<uint8_t>(textRgba >> 16),
 		                                  narrow_cast<uint8_t>(textRgba >>  8)));
 		if (surface) {
-			return std::make_unique<IMAGE>(output, std::move(surface));
+			return std::make_unique<GLImage>(std::move(surface));
 		} else {
-			return std::make_unique<IMAGE>(output, ivec2(), 0);
+			return std::make_unique<GLImage>(ivec2(), 0);
 		}
 	} catch (MSXException& e) {
 		throw MSXException("Couldn't render text: ", e.getMessage());
@@ -281,8 +279,7 @@ size_t OSDText::split(const string& line, unsigned maxWidth,
 		return 0;
 	}
 
-	unsigned width = font.getSize(line)[0];
-	if (width <= maxWidth) {
+	if (unsigned width = font.getSize(line).x; width <= maxWidth) {
 		// whole line fits
 		return line.size();
 	}
@@ -306,7 +303,7 @@ size_t OSDText::split(const string& line, unsigned maxWidth,
 		if (removeTrailingSpaces) {
 			StringOp::trimRight(curStr, ' ');
 		}
-		unsigned width2 = font.getSize(curStr)[0];
+		unsigned width2 = font.getSize(curStr).x;
 		if (width2 <= maxWidth) {
 			// still fits, try to enlarge
 			size_t next = findSplitPoint(line, cur, max);
@@ -339,7 +336,7 @@ size_t OSDText::splitAtChar(const std::string& line, unsigned maxWidth) const
 
 struct SplitAtChar {
 	explicit SplitAtChar(const OSDText& osdText_) : osdText(osdText_) {}
-	size_t operator()(const string& line, unsigned maxWidth) {
+	[[nodiscard]] size_t operator()(const string& line, unsigned maxWidth) const {
 		return osdText.splitAtChar(line, maxWidth);
 	}
 	const OSDText& osdText;
@@ -376,21 +373,6 @@ string OSDText::getWordWrappedText(const string& txt, unsigned maxWidth) const
 		} while (!line.empty());
 	}
 	return join(wrappedLines, '\n');
-}
-
-std::unique_ptr<BaseImage> OSDText::createSDL(OutputSurface& output)
-{
-	return create<SDLImage>(output);
-}
-
-std::unique_ptr<BaseImage> OSDText::createGL(OutputSurface& output)
-{
-#if COMPONENT_GL
-	return create<GLImage>(output);
-#else
-	(void)&output;
-	return nullptr;
-#endif
 }
 
 } // namespace openmsx

@@ -5,6 +5,8 @@
 #include "ranges.hh"
 #include "stl.hh"
 #include "xrange.hh"
+#include "StringOp.hh"
+
 #include <algorithm>
 #include <list>
 #include <map>
@@ -129,15 +131,15 @@ TEST_CASE("view::reverse")
 	vector<int> out;
 	SECTION("l-value") {
 		vector<int> in = {1, 2, 3, 4};
-		for (auto& e : reverse(in)) out.push_back(e);
+		for (const auto& e : reverse(in)) out.push_back(e);
 		CHECK(out == vector<int>{4, 3, 2, 1});
 	}
 	SECTION("r-value") {
-		for (auto& e : reverse(getVector(3))) out.push_back(e);
+		for (const auto& e : reverse(getVector(3))) out.push_back(e);
 		CHECK(out == vector<int>{2, 1, 0});
 	}
 	SECTION("2 x reverse") {
-		for (auto& e : reverse(reverse(getVector(4)))) out.push_back(e);
+		for (const auto& e : reverse(reverse(getVector(4)))) out.push_back(e);
 		CHECK(out == vector<int>{0, 1, 2, 3});
 	}
 }
@@ -193,7 +195,7 @@ TEST_CASE("view::transform sizes")
 template<typename RANGE, typename T>
 static void check(const RANGE& range, const vector<T>& expected)
 {
-	CHECK(equal(range.begin(), range.end(), expected.begin(), expected.end()));
+	CHECK(ranges::equal(range, expected));
 }
 
 template<typename RANGE, typename T>
@@ -218,9 +220,10 @@ TEST_CASE("view::keys, view::values") {
 		check(values(v), vector<int>{2, 4, 6, 8});
 	}
 	SECTION("hash_map") {
-		hash_map<std::string, int> m =
-		{{"foo", 1}, {"bar", 2}, {"qux", 3},
-			{"baz", 4}, {"a",   5}, {"z",   6}};
+		hash_map<std::string, int> m = {
+			{"foo", 1}, {"bar", 2}, {"qux", 3},
+			{"baz", 4}, {"a",   5}, {"z",   6}
+		};
 		check_unordered(keys(m), vector<std::string>{
 				"foo", "bar", "qux", "baz", "a", "z"});
 		check_unordered(values(m), vector<int>{1, 2, 3, 4, 5, 6});
@@ -238,8 +241,8 @@ TEST_CASE("view::keys, view::values") {
 
 struct F {
 	int i;
-	F(int i_) : i(i_) {}
-	operator int() const { return i; }
+	/*implicit*/ F(int i_) : i(i_) {}
+	/*implicit*/ operator int() const { return i; }
 	bool isOdd() const { return i & 1; }
 };
 
@@ -281,6 +284,38 @@ TEST_CASE("view::filter") {
 	}
 }
 
+TEST_CASE("view::take") {
+	SECTION("n") {
+		vector v = {1, 2, 3, 4};
+		check(view::take(v, 0), vector<int>{});
+		check(view::take(v, 1), vector{1});
+		check(view::take(v, 2), vector{1, 2});
+		check(view::take(v, 3), vector{1, 2, 3});
+		check(view::take(v, 4), vector{1, 2, 3, 4});
+		check(view::take(v, 5), vector{1, 2, 3, 4});
+		check(view::take(v, 6), vector{1, 2, 3, 4});
+	}
+	SECTION("split_view") {
+		std::string_view str = "abc  def\t \tghi    jkl  mno  pqr";
+		auto v = view::take(StringOp::split_view<StringOp::EmptyParts::REMOVE>(str, " \t"), 3);
+
+		auto it = v.begin();
+		auto et = v.end();
+		REQUIRE(it != et);
+		CHECK(*it == "abc");
+
+		++it;
+		REQUIRE(it != et);
+		CHECK(*it == "def");
+
+		++it;
+		REQUIRE(it != et);
+		CHECK(*it == "ghi");
+
+		++it;
+		REQUIRE(it == et);
+	}
+}
 
 template<typename In1, typename In2, typename Expected>
 void test_zip(const In1& in1, const In2& in2, const Expected& expected)

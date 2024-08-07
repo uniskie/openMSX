@@ -2,6 +2,9 @@
 #define EVENTDISTRIBUTOR_HH
 
 #include "Event.hh"
+
+#include "stl.hh"
+
 #include <array>
 #include <condition_variable>
 #include <mutex>
@@ -18,13 +21,15 @@ public:
 	/** Priorities from high to low, higher priority listeners can block
 	  * events for lower priority listeners.
 	  */
-	enum Priority {
+	enum class Priority {
 		OTHER,
-		CONSOLE,
-		HOTKEY,
+		HOTKEY_HIGH, // above IMGUI
+		IMGUI,
+		HOTKEY_LOW, // below IMGUI
 		MSX,
 		LOWEST, // should only be used internally in EventDistributor
 	};
+	friend auto operator<=>(Priority x, Priority y) { return to_underlying(x) <=> to_underlying(y); }
 
 	explicit EventDistributor(Reactor& reactor);
 
@@ -36,7 +41,7 @@ public:
 	 *                 can block events for lower priority listeners.
 	 */
 	void registerEventListener(EventType type, EventListener& listener,
-	                           Priority priority = OTHER);
+	                           Priority priority = Priority::OTHER);
 
 	/**
 	 * Unregisters a previously registered event listener.

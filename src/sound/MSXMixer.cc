@@ -1,4 +1,5 @@
 #include "MSXMixer.hh"
+
 #include "Mixer.hh"
 #include "SoundDevice.hh"
 #include "MSXMotherBoard.hh"
@@ -13,7 +14,8 @@
 #include "AviRecorder.hh"
 #include "Filename.hh"
 #include "FileOperations.hh"
-#include "CliComm.hh"
+#include "MSXCliComm.hh"
+
 #include "stl.hh"
 #include "aligned.hh"
 #include "enumerate.hh"
@@ -24,7 +26,7 @@
 #include "unreachable.hh"
 #include "view.hh"
 #include "vla.hh"
-#include "xrange.hh"
+
 #include <cassert>
 #include <cmath>
 #include <memory>
@@ -48,12 +50,6 @@ MSXMixer::MSXMixer(Mixer& mixer_, MSXMotherBoard& motherBoard_,
 	, prevTime(getCurrentTime(), 44100)
 	, soundDeviceInfo(commandController.getMachineInfoCommand())
 {
-	hostSampleRate = 44100;
-	fragmentSize = 0;
-
-	muteCount = 1;
-	unmute(); // calls Mixer::registerMixer()
-
 	reschedule2();
 
 	masterVolume.attach(*this);
@@ -104,13 +100,13 @@ void MSXMixer::registerSound(SoundDevice& device, float volume,
 		channelSettings.record = std::make_unique<StringSetting>(
 			commandController, tmpStrCat(ch_name, "_record"),
 			"filename to record this channel to",
-			std::string_view{}, Setting::DONT_SAVE);
+			std::string_view{}, Setting::Save::NO);
 		channelSettings.record->attach(*this);
 
 		channelSettings.mute = std::make_unique<BooleanSetting>(
 			commandController, tmpStrCat(ch_name, "_mute"),
 			"sets mute-status of individual sound channels",
-			false, Setting::DONT_SAVE);
+			false, Setting::Save::NO);
 		channelSettings.mute->attach(*this);
 	}
 
@@ -118,7 +114,7 @@ void MSXMixer::registerSound(SoundDevice& device, float volume,
 	auto& i = infos.emplace_back(std::move(info));
 	updateVolumeParams(i);
 
-	commandController.getCliComm().update(CliComm::SOUND_DEVICE, device.getName(), "add");
+	commandController.getCliComm().update(CliComm::UpdateType::SOUND_DEVICE, device.getName(), "add");
 }
 
 void MSXMixer::unregisterSound(SoundDevice& device)
@@ -131,7 +127,7 @@ void MSXMixer::unregisterSound(SoundDevice& device)
 		s.mute->detach(*this);
 	}
 	move_pop_back(infos, it);
-	commandController.getCliComm().update(CliComm::SOUND_DEVICE, device.getName(), "remove");
+	commandController.getCliComm().update(CliComm::UpdateType::SOUND_DEVICE, device.getName(), "remove");
 }
 
 void MSXMixer::setSynchronousMode(bool synchronous)
@@ -463,19 +459,19 @@ void MSXMixer::generate(std::span<StereoFloat> output, EmuTime::param time)
 	VLA_SSE_ALIGNED(float,       monoBufExtra,   samples + 3);
 	VLA_SSE_ALIGNED(StereoFloat, stereoBufExtra, samples + 3);
 	VLA_SSE_ALIGNED(StereoFloat, tmpBufExtra,    samples + 3);
-	float* monoBufPtr   = monoBufExtra.data();
-	float* stereoBufPtr = &stereoBufExtra.data()->left;
-	float* tmpBufPtr    = &tmpBufExtra.data()->left; // can be used either for mono or stereo data
-	std::span monoBuf      = monoBufExtra  .subspan(0, samples);
-	std::span stereoBuf    = stereoBufExtra.subspan(0, samples);
-	std::span tmpBufStereo = tmpBufExtra   .subspan(0, samples); // StereoFloat
-	std::span tmpBufMono   = std::span{tmpBufPtr, samples};      // float
+	auto* monoBufPtr   = monoBufExtra.data();
+	auto* stereoBufPtr = &stereoBufExtra.data()->left;
+	auto* tmpBufPtr    = &tmpBufExtra.data()->left; // can be used either for mono or stereo data
+	auto monoBuf      = monoBufExtra  .subspan(0, samples);
+	auto stereoBuf    = stereoBufExtra.subspan(0, samples);
+	auto tmpBufStereo = tmpBufExtra   .subspan(0, samples); // StereoFloat
+	auto tmpBufMono   = std::span{tmpBufPtr, samples};      // float
 
 	constexpr unsigned HAS_MONO_FLAG = 1;
 	constexpr unsigned HAS_STEREO_FLAG = 2;
 	unsigned usedBuffers = 0;
 
-	// FIXME: The Infos should be ordered such that all the mono
+	// TODO: The Infos should be ordered such that all the mono
 	// devices are handled first
 	for (auto& info : infos) {
 		SoundDevice& device = *info.device;
@@ -731,16 +727,16 @@ void MSXMixer::update(const ThrottleManager& /*throttleManager*/) noexcept
 	// TODO Should this be removed?
 }
 
-void MSXMixer::updateVolumeParams(SoundDeviceInfo& info)
+void MSXMixer::updateVolumeParams(SoundDeviceInfo& info) const
 {
 	int mVolume = masterVolume.getInt();
 	int dVolume = info.volumeSetting->getInt();
-	float volume = info.defaultVolume * narrow<float>(mVolume) * narrow<float>(dVolume) / (100.0f * 100.0f);
+	float volume = info.defaultVolume * narrow<float>(mVolume) * narrow<float>(dVolume) * (1.0f / (100.0f * 100.0f));
 	int balance = info.balanceSetting->getInt();
 	auto [l1, r1, l2, r2] = [&] {
 		if (info.device->isStereo()) {
 			if (balance < 0) {
-				float b = (narrow<float>(balance) + 100.0f) / 100.0f;
+				float b = (narrow<float>(balance) + 100.0f) * (1.0f / 100.0f);
 				return std::tuple{
 					/*l1 =*/ volume,
 					/*r1 =*/ 0.0f,
@@ -748,7 +744,7 @@ void MSXMixer::updateVolumeParams(SoundDeviceInfo& info)
 					/*r2 =*/ volume * sqrtf(std::max(0.0f,        b))
 				};
 			} else {
-				float b = narrow<float>(balance) / 100.0f;
+				float b = narrow<float>(balance) * (1.0f / 100.0f);
 				return std::tuple{
 					/*l1 =*/ volume * sqrtf(std::max(0.0f, 1.0f - b)),
 					/*r1 =*/ volume * sqrtf(std::max(0.0f,        b)),
@@ -759,7 +755,7 @@ void MSXMixer::updateVolumeParams(SoundDeviceInfo& info)
 		} else {
 			// make sure that in case of rounding errors
 			// we don't take sqrt() of negative numbers
-			float b = (narrow<float>(balance) + 100.0f) / 200.0f;
+			float b = (narrow<float>(balance) + 100.0f) * (1.0f / 200.0f);
 			return std::tuple{
 				/*l1 =*/ volume * sqrtf(std::max(0.0f, 1.0f - b)),
 				/*r1 =*/ volume * sqrtf(std::max(0.0f,        b)),
@@ -806,11 +802,17 @@ void MSXMixer::executeUntil(EmuTime::param time)
 
 // Sound device info
 
-SoundDevice* MSXMixer::findDevice(std::string_view name) const
+const MSXMixer::SoundDeviceInfo* MSXMixer::findDeviceInfo(std::string_view name) const
 {
 	auto it = ranges::find(infos, name,
 		[](auto& i) { return i.device->getName(); });
-	return (it != end(infos)) ? it->device : nullptr;
+	return (it != end(infos)) ? std::to_address(it) : nullptr;
+}
+
+SoundDevice* MSXMixer::findDevice(std::string_view name) const
+{
+	auto* info = findDeviceInfo(name);
+	return info ? info->device : nullptr;
 }
 
 MSXMixer::SoundDeviceInfoTopic::SoundDeviceInfoTopic(
@@ -827,10 +829,10 @@ void MSXMixer::SoundDeviceInfoTopic::execute(
 	case 2:
 		result.addListElements(view::transform(
 			msxMixer.infos,
-			[](auto& info) { return info.device->getName(); }));
+			[](const auto& info) { return info.device->getName(); }));
 		break;
 	case 3: {
-		SoundDevice* device = msxMixer.findDevice(tokens[2].getString());
+		const auto* device = msxMixer.findDevice(tokens[2].getString());
 		if (!device) {
 			throw CommandException("Unknown sound device");
 		}

@@ -49,7 +49,7 @@ public:
 	explicit CommandLineParser(Reactor& reactor);
 	void registerOption(const char* str, CLIOption& cliOption,
 		ParsePhase phase = PHASE_LAST, unsigned length = 2);
-	void registerFileType(std::initializer_list<std::string_view> extensions,
+	void registerFileType(std::span<const std::string_view> extensions,
 	                      CLIFileType& cliFileType);
 	void parse(std::span<char*> argv);
 	[[nodiscard]] ParseStatus getParseStatus() const;
@@ -65,12 +65,11 @@ public:
 	[[nodiscard]] GlobalCommandController& getGlobalCommandController() const;
 	[[nodiscard]] Interpreter& getInterpreter() const;
 
-	/** Need to suppress renderer window on startup?
-	  */
-	[[nodiscard]] bool isHiddenStartup() const;
-
 private:
 	struct OptionData {
+		OptionData(std::string_view n, CLIOption* o, ParsePhase p, unsigned l)
+			: name(n), option(o), phase(p), length(l) {} // clang-15 workaround
+
 		std::string_view name;
 		CLIOption* option;
 		ParsePhase phase;

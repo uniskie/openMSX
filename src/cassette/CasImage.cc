@@ -1,13 +1,17 @@
 #include "CasImage.hh"
+
 #include "File.hh"
 #include "FilePool.hh"
 #include "Filename.hh"
 #include "CliComm.hh"
 #include "MSXException.hh"
+
 #include "narrow.hh"
 #include "ranges.hh"
 #include "stl.hh"
 #include "xrange.hh"
+
+#include <memory>
 #include <span>
 
 static constexpr std::array<uint8_t, 10> ASCII_HEADER  = { 0xEA,0xEA,0xEA,0xEA,0xEA,0xEA,0xEA,0xEA,0xEA,0xEA };
@@ -71,11 +75,13 @@ static constexpr std::array<uint8_t, 8> CAS_HEADER = { 0x1F,0xA6,0xDE,0xBA,0xCC,
 
 static void write0(std::vector<int8_t>& wave)
 {
-	::append(wave, {127, 127, -127, -127});
+	static constexpr std::array<int8_t, 4> chunk{127, 127, -127, -127};
+	::append(wave, chunk);
 }
 static void write1(std::vector<int8_t>& wave)
 {
-	::append(wave, {127, -127, 127, -127});
+	static constexpr std::array<int8_t, 4> chunk{127, -127, 127, -127};
+	::append(wave, chunk);
 }
 
 static void writeHeader(std::vector<int8_t>& wave, unsigned s)
@@ -255,9 +261,7 @@ static CasImage::Data convert(std::span<const uint8_t> cas, CassetteImage::FileT
 	while (true) {
 		auto nextHeader = std::search(prevHeader, cas.end(),
 		                              header.begin(), header.end());
-		// Workaround clang-13/libc++ bug
-		//processBlock(std::span(prevHeader, nextHeader), data.wave);
-		processBlock(std::span(&*prevHeader, nextHeader - prevHeader), data.wave);
+		processBlock(std::span(prevHeader, nextHeader), data.wave);
 		if (nextHeader == cas.end()) break;
 		prevHeader = nextHeader + header.size();
 	}

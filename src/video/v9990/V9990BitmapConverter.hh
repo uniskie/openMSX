@@ -3,7 +3,6 @@
 
 #include "V9990ModeEnum.hh"
 #include "one_of.hh"
-#include <concepts>
 #include <cstdint>
 #include <span>
 
@@ -14,10 +13,11 @@ class V9990VRAM;
 
 /** Utility class to convert VRAM content to host pixels.
   */
-template<std::unsigned_integral Pixel>
 class V9990BitmapConverter
 {
 public:
+	using Pixel = uint32_t;
+
 	V9990BitmapConverter(
 		V9990& vdp,
 		std::span<const Pixel,    64> palette64,  std::span<const int16_t,  64> palette64_32768,
@@ -27,7 +27,7 @@ public:
 	/** Convert a line of VRAM into host pixels.
 	  */
 	void convertLine(std::span<Pixel> dst, unsigned x, unsigned y,
-		         int cursorY, bool drawCursors);
+		         int cursorY, bool drawCursors) const;
 
 	/** Set a different rendering mode.
 	  */
@@ -38,6 +38,7 @@ public:
 
 private:
 	[[nodiscard]] static bool isHighRes(V9990DisplayMode display) {
+		using enum V9990DisplayMode;
 		return display == one_of(B4, B5, B6, B7);
 	}
 

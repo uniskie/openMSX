@@ -1,10 +1,12 @@
 #ifndef STATECHANGEDISTRIBUTOR_HH
 #define STATECHANGEDISTRIBUTOR_HH
 
+#include "EmuTime.hh"
 #include "ReverseManager.hh"
 #include "StateChangeListener.hh"
-#include "EmuTime.hh"
-#include <memory>
+
+#include "ScopedAssign.hh"
+
 #include <vector>
 
 namespace openmsx {
@@ -13,6 +15,10 @@ class StateChangeDistributor
 {
 public:
 	StateChangeDistributor() = default;
+	StateChangeDistributor(const StateChangeDistributor&) = delete;
+	StateChangeDistributor(StateChangeDistributor&&) = delete;
+	StateChangeDistributor& operator=(const StateChangeDistributor&) = delete;
+	StateChangeDistributor& operator=(StateChangeDistributor&&) = delete;
 	~StateChangeDistributor();
 
 	/** (Un)registers the given object to receive state change events.
@@ -48,7 +54,7 @@ public:
 	void distributeNew(EmuTime::param time, Args&& ...args) {
 		if (recorder) {
 			if (isReplaying()) {
-				if (viewOnlyMode) return;
+				if (viewOnlyMode || blockNewEventsDuringReplay) return;
 				stopReplay(time);
 			}
 			assert(!isReplaying());
@@ -60,7 +66,7 @@ public:
 		}
 	}
 
-	void distributeReplay(const StateChange& event) {
+	void distributeReplay(const StateChange& event) const {
 		assert(isReplaying());
 		distribute(event);
 	}
@@ -81,16 +87,21 @@ public:
 	void setViewOnlyMode(bool value) { viewOnlyMode = value; }
 	[[nodiscard]] bool isViewOnlyMode() const { return viewOnlyMode; }
 
+	[[nodiscard]] auto tempBlockNewEventsDuringReplay() {
+		return ScopedAssign{blockNewEventsDuringReplay, true};
+	}
+
 	[[nodiscard]] bool isReplaying() const;
 
 private:
 	[[nodiscard]] bool isRegistered(StateChangeListener* listener) const;
-	void distribute(const StateChange& event);
+	void distribute(const StateChange& event) const;
 
 private:
 	std::vector<StateChangeListener*> listeners; // unordered
 	ReverseManager* recorder = nullptr;
 	bool viewOnlyMode = false;
+	bool blockNewEventsDuringReplay = false; // used when executing callbacks during replay
 };
 
 } // namespace openmsx

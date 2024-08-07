@@ -1,8 +1,12 @@
 #include "ResampleLQ.hh"
+
 #include "ResampledSoundDevice.hh"
+
 #include "narrow.hh"
 #include "ranges.hh"
 #include "xrange.hh"
+
+#include <bit>
 #include <cassert>
 #include <memory>
 #include <vector>
@@ -62,8 +66,8 @@ bool ResampleLQ<CHANNELS>::fetchData(EmuTime::param time, unsigned& valid)
 		// grow buffer (3 extra to be able to align)
 		bufferStorage.resize(required + 3);
 		// align at 16-byte boundary
-		auto p = reinterpret_cast<uintptr_t>(bufferStorage.data());
-		aBuffer = reinterpret_cast<float*>((p + 15) & ~15);
+		auto p = std::bit_cast<uintptr_t>(bufferStorage.data());
+		aBuffer = std::bit_cast<float*>((p + 15) & ~15);
 		// calculate actual usable size (the aligned portion)
 		bufferSize = (bufferStorage.data() + bufferStorage.size()) - aBuffer;
 		assert(bufferSize >= required);
@@ -117,7 +121,7 @@ bool ResampleLQUp<CHANNELS>::generateOutputImpl(
 	// this is currently only used to upsample cassette player sound,
 	// sound quality is not so important here, so use 0-th order
 	// interpolation (instead of 1st-order).
-	auto* buffer = &aBuffer[4 - 2 * CHANNELS];
+	const auto* buffer = &aBuffer[4 - 2 * CHANNELS];
 	for (auto i : xrange(hostNum)) {
 		unsigned p = pos.toInt();
 		assert(p < valid);
@@ -153,7 +157,7 @@ bool ResampleLQDown<CHANNELS>::generateOutputImpl(
 	unsigned valid;
 	if (!this->fetchData(time, valid)) return false;
 
-	auto* buffer = &aBuffer[4 - 2 * CHANNELS];
+	const auto* buffer = &aBuffer[4 - 2 * CHANNELS];
 	for (auto i : xrange(hostNum)) {
 		unsigned p = pos.toInt();
 		assert((p + 1) < valid);

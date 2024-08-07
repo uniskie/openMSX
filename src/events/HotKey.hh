@@ -1,35 +1,46 @@
 #ifndef HOTKEY_HH
 #define HOTKEY_HH
 
-#include "RTSchedulable.hh"
-#include "EventListener.hh"
 #include "Command.hh"
 #include "Event.hh"
+#include "EventListener.hh"
+#include "EventDistributor.hh"
+#include "RTSchedulable.hh"
+
 #include "TclObject.hh"
+
 #include <map>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
-#include <string>
 
 namespace openmsx {
 
-class RTScheduler;
 class GlobalCommandController;
-class EventDistributor;
+class RTScheduler;
 
-class HotKey final : public RTSchedulable, public EventListener
+class HotKey final : public RTSchedulable
 {
 public:
+	struct Data {
+		std::string_view key;
+		std::string_view cmd;
+		bool repeat = false;
+		bool event = false;
+		bool msx = false;
+	};
+
 	struct HotKeyInfo {
 		HotKeyInfo(Event event_, std::string command_,
-		           bool repeat_ = false, bool passEvent_ = false)
+		           bool repeat_ = false, bool passEvent_ = false, bool msx_ = false)
 			: event(std::move(event_)), command(std::move(command_))
-			, repeat(repeat_)
-			, passEvent(passEvent_) {}
+			, repeat(repeat_), passEvent(passEvent_), msx(msx_) {}
 		Event event;
 		std::string command;
 		bool repeat;
 		bool passEvent; // whether to pass event with args back to command
+		bool msx; // false->global binding,  true->only active when msx window has focus
 	};
 	using BindMap = std::vector<HotKeyInfo>; // unsorted
 	using KeySet  = std::vector<Event>;   // unsorted
@@ -37,17 +48,16 @@ public:
 	HotKey(RTScheduler& rtScheduler,
 	       GlobalCommandController& commandController,
 	       EventDistributor& eventDistributor);
-	~HotKey();
 
 	void loadInit();
-	void loadBind(std::string_view key, std::string_view cmd, bool repeat, bool event);
+	void loadBind(const Data& data);
 	void loadUnbind(std::string_view key);
 
 	template<typename XmlStream>
 	void saveBindings(XmlStream& xml) const
 	{
 		xml.begin("bindings");
-		// add explicit bind's
+		// add explicit binds
 		for (const auto& k : boundKeys) {
 			xml.begin("bind");
 			xml.attribute("key", toString(k));
@@ -57,6 +67,9 @@ public:
 			}
 			if (info.passEvent) {
 				xml.attribute("event", "true");
+			}
+			if (info.msx) {
+				xml.attribute("msx", "true");
 			}
 			xml.data(info.command);
 			xml.end("bind");
@@ -70,8 +83,13 @@ public:
 		xml.end("bindings");
 	}
 
+	const auto& getGlobalBindings() const { return cmdMap; }
+
 private:
 	struct LayerInfo {
+		LayerInfo(std::string l, bool b)
+			: layer(std::move(l)), blocking(b) {} // clang-15 workaround
+
 		std::string layer;
 		bool blocking;
 	};
@@ -87,13 +105,13 @@ private:
 	void activateLayer  (std::string layer, bool blocking);
 	void deactivateLayer(std::string_view layer);
 
-	int executeEvent(const Event& event);
+	bool executeEvent(const Event& event, EventDistributor::Priority priority);
 	void executeBinding(const Event& event, const HotKeyInfo& info);
 	void startRepeat  (const Event& event);
 	void stopRepeat();
 
-	// EventListener
-	int signalEvent(const Event& event) override;
+	bool signalEvent(const Event& event, EventDistributor::Priority priority);
+
 	// RTSchedulable
 	void executeRT() override;
 
@@ -138,13 +156,25 @@ private:
 
 	BindMap cmdMap;
 	BindMap defaultMap;
-	std::map<std::string, BindMap> layerMap;
+	std::map<std::string, BindMap, std::less<>> layerMap;
 	std::vector<LayerInfo> activeLayers;
 	KeySet boundKeys;
 	KeySet unboundKeys;
 	GlobalCommandController& commandController;
 	EventDistributor& eventDistributor;
-	Event lastEvent;
+	std::optional<Event> lastEvent;
+
+	class Listener : public EventListener {
+	public:
+		Listener(HotKey& hotKey, EventDistributor::Priority priority);
+		~Listener();
+		bool signalEvent(const Event& event) override;
+	private:
+		HotKey& hotKey;
+		EventDistributor::Priority priority;
+	};
+	Listener listenerHigh;
+	Listener listenerLow;
 };
 
 } // namespace openmsx

@@ -11,23 +11,20 @@ MSXCliComm::MSXCliComm(MSXMotherBoard& motherBoard_, GlobalCliComm& cliComm_)
 {
 }
 
-void MSXCliComm::log(LogLevel level, std::string_view message)
+void MSXCliComm::log(LogLevel level, std::string_view message, float fraction)
 {
-	if (!suppressMessages)
-	{
-		cliComm.log(level, message);
+	if (!suppressMessages) {
+		cliComm.log(level, message, fraction);
 	}
 }
 
 void MSXCliComm::update(UpdateType type, std::string_view name, std::string_view value)
 {
-	assert(type < NUM_UPDATES);
 	cliComm.updateHelper(type, motherBoard.getMachineID(), name, value);
 }
 
 void MSXCliComm::updateFiltered(UpdateType type, std::string_view name, std::string_view value)
 {
-	assert(type < NUM_UPDATES);
 	if (auto [it, inserted] = prevValues[type].try_emplace(name, value);
 	    !inserted) { // was already present ..
 		if (it->second == value) {

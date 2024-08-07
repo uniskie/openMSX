@@ -167,6 +167,7 @@ $(BUILD_DIR)/$(PACKAGE_PKG_CONFIG)/Makefile: \
 		--program-prefix=$(TARGET_TRIPLE)- \
 		--prefix=$(PWD)/$(TOOLS_DIR) \
 		--libdir=$(PWD)/$(INSTALL_DIR)/lib \
+		CFLAGS="-Wno-error=int-conversion" \
 		CC= LD= AR= RANLIB= STRIP=
 
 # Configure SDL2.
@@ -204,6 +205,8 @@ $(BUILD_DIR)/$(PACKAGE_SDL2_TTF)/Makefile: \
 	cd $(@D) && $(PWD)/$(<D)/configure \
 		--disable-sdltest \
 		--disable-shared \
+		--disable-freetype-builtin \
+		--disable-harfbuzz \
 		--host=$(TARGET_TRIPLE) \
 		--prefix=$(PWD)/$(INSTALL_DIR) \
 		--libdir=$(PWD)/$(INSTALL_DIR)/lib \
@@ -273,7 +276,7 @@ $(BUILD_DIR)/$(PACKAGE_GLEW)/Makefile: \
 MAKEVAR_OVERRIDE_GLEW:=CC="$(_CC) $(_CFLAGS)" LD="$(_CC) $(_LDFLAGS)"
 # Tell GLEW to cross compile.
 ifeq ($(TRIPLE_OS),mingw32)
-MAKEVAR_OVERRIDE_GLEW+=SYSTEM=linux-mingw-w64
+MAKEVAR_OVERRIDE_GLEW+=SYSTEM=linux-mingw64
 else
 MAKEVAR_OVERRIDE_GLEW+=SYSTEM=$(TRIPLE_OS)
 endif

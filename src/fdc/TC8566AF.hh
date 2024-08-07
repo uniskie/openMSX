@@ -14,12 +14,12 @@ namespace openmsx {
 
 class Scheduler;
 class DiskDrive;
-class CliComm;
+class MSXCliComm;
 
 class TC8566AF final : public Schedulable
 {
 public:
-	TC8566AF(Scheduler& scheduler, std::span<std::unique_ptr<DiskDrive>, 4>, CliComm& cliComm,
+	TC8566AF(Scheduler& scheduler, std::span<std::unique_ptr<DiskDrive>, 4>, MSXCliComm& cliComm,
 	         EmuTime::param time);
 
 	void reset(EmuTime::param time);
@@ -37,34 +37,34 @@ public:
 	void serialize(Archive& ar, unsigned version);
 
 	// public for serialization
-	enum Command {
-		CMD_UNKNOWN,
-		CMD_READ_DATA,
-		CMD_WRITE_DATA,
-		CMD_WRITE_DELETED_DATA,
-		CMD_READ_DELETED_DATA,
-		CMD_READ_DIAGNOSTIC,
-		CMD_READ_ID,
-		CMD_FORMAT,
-		CMD_SCAN_EQUAL,
-		CMD_SCAN_LOW_OR_EQUAL,
-		CMD_SCAN_HIGH_OR_EQUAL,
-		CMD_SEEK,
-		CMD_RECALIBRATE,
-		CMD_SENSE_INTERRUPT_STATUS,
-		CMD_SPECIFY,
-		CMD_SENSE_DEVICE_STATUS,
+	enum class Command {
+		UNKNOWN,
+		READ_DATA,
+		WRITE_DATA,
+		WRITE_DELETED_DATA,
+		READ_DELETED_DATA,
+		READ_DIAGNOSTIC,
+		READ_ID,
+		FORMAT,
+		SCAN_EQUAL,
+		SCAN_LOW_OR_EQUAL,
+		SCAN_HIGH_OR_EQUAL,
+		SEEK,
+		RECALIBRATE,
+		SENSE_INTERRUPT_STATUS,
+		SPECIFY,
+		SENSE_DEVICE_STATUS,
 	};
-	enum Phase {
-		PHASE_IDLE,
-		PHASE_COMMAND,
-		PHASE_DATA_TRANSFER,
-		PHASE_RESULT,
+	enum class Phase {
+		IDLE,
+		COMMAND,
+		DATA_TRANSFER,
+		RESULT,
 	};
-	enum SeekState {
-		SEEK_IDLE,
-		SEEK_SEEK,
-		SEEK_RECALIBRATE
+	enum class Seek {
+		IDLE,
+		SEEK,
+		RECALIBRATE
 	};
 
 private:
@@ -80,7 +80,7 @@ private:
 	void commandPhaseWrite(uint8_t value, EmuTime::param time);
 	void doSeek(int n);
 	void executionPhaseWrite(uint8_t value, EmuTime::param time);
-	void resultPhase();
+	void resultPhase(bool readId = false);
 	void endCommand(EmuTime::param time);
 
 	[[nodiscard]] bool isHeadLoaded(EmuTime::param time) const;
@@ -88,7 +88,7 @@ private:
 	[[nodiscard]] EmuDuration getHeadUnloadDelay() const;
 	[[nodiscard]] EmuDuration getSeekDelay() const;
 
-	[[nodiscard]] EmuTime locateSector(EmuTime::param time);
+	[[nodiscard]] EmuTime locateSector(EmuTime::param time, bool readId);
 	void startReadWriteSector(EmuTime::param time);
 	void writeSector();
 	void initTrackHeader(EmuTime::param time);
@@ -96,7 +96,7 @@ private:
 	void setDrqRate(unsigned trackLength);
 
 private:
-	CliComm& cliComm;
+	MSXCliComm& cliComm;
 	std::array<DiskDrive*, 4> drive;
 	DynamicClock delayTime{EmuTime::zero()};
 
@@ -136,7 +136,7 @@ private:
 		EmuTime time = EmuTime::zero();
 		uint8_t currentTrack = 0;
 		uint8_t seekValue = 0;
-		SeekState state = SEEK_IDLE;
+		Seek state = Seek::IDLE;
 
 		template<typename Archive>
 		void serialize(Archive& ar, unsigned version);

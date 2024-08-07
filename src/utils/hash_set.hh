@@ -10,7 +10,9 @@
 #include "stl.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
 #include <cassert>
+#include <concepts>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -22,18 +24,11 @@
 
 namespace hash_set_impl {
 
-// Identity operation: accepts any type (by const or non-const reference) and
-// returns the exact same (reference) value.
-struct Identity {
-	template<typename T>
-	[[nodiscard]] inline T& operator()(T&& t) const { return t; }
-};
-
 struct PoolIndex {
 	unsigned idx;
 	[[nodiscard]] constexpr bool operator==(const PoolIndex&) const = default;
 };
-static constexpr PoolIndex invalidIndex{unsigned(-1)};
+inline constexpr PoolIndex invalidIndex{unsigned(-1)};
 
 // Holds the data that will be stored in the hash_set plus some extra
 // administrative data.
@@ -48,6 +43,8 @@ struct Element {
 	unsigned hash;
 	PoolIndex nextIdx;
 
+	constexpr Element() = default;
+
 	template<typename V>
 	constexpr Element(V&& value_, unsigned hash_, PoolIndex nextIdx_)
 		: value(std::forward<V>(value_))
@@ -56,9 +53,10 @@ struct Element {
 	{
 	}
 
-	template<typename... Args>
-	explicit constexpr Element(Args&&... args)
-		: value(std::forward<Args>(args)...)
+	template<typename T, typename... Args>
+		requires(!std::same_as<Element, std::remove_cvref_t<T>>) // don't block copy-constructor
+	explicit constexpr Element(T&& t, Args&&... args)
+		: value(std::forward<T>(t), std::forward<Args>(args)...)
 		// hash    left uninitialized
 		// nextIdx left uninitialized
 	{
@@ -265,7 +263,7 @@ using ExtractedType = typename std::remove_cvref_t<
 //
 // If required it's also possible to specify custom hash and equality functors.
 template<typename Value,
-         typename Extractor = hash_set_impl::Identity,
+         typename Extractor = std::identity,
          typename Hasher = std::hash<hash_set_impl::ExtractedType<Value, Extractor>>,
          typename Equal = std::equal_to<>>
 class hash_set
@@ -506,10 +504,7 @@ public:
 	void erase(iterator it)
 	{
 		auto elemIdx = it.getElementIdx();
-		if (elemIdx == invalidIndex) {
-			UNREACHABLE; // not allowed to call erase(end())
-			return;
-		}
+		assert(elemIdx != invalidIndex); // not allowed to call erase(end())
 		auto& elem = pool.get(elemIdx);
 		auto tableIdx = pool.get(elemIdx).hash & allocMask;
 		auto* prev = &table[tableIdx];
@@ -570,7 +565,6 @@ public:
 			}
 		}
 		UNREACHABLE;
-		return end(); // avoid warning
 	}
 
 	[[nodiscard]] const_iterator begin() const
@@ -583,7 +577,6 @@ public:
 			}
 		}
 		UNREACHABLE;
-		return end(); // avoid warning
 	}
 
 	[[nodiscard]] iterator end()

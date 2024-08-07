@@ -47,7 +47,7 @@ uint8_t I8254::readIO(uint16_t port, EmuTime::param time)
 		case 3: // read from control word, illegal
 			return 255; // TODO check value
 		default:
-			UNREACHABLE; return 0;
+			UNREACHABLE;
 	}
 }
 
@@ -60,7 +60,7 @@ uint8_t I8254::peekIO(uint16_t port, EmuTime::param time) const
 		case 3: // read from control word, illegal
 			return 255; // TODO check value
 		default:
-			UNREACHABLE; return 0;
+			UNREACHABLE;
 	}
 }
 
@@ -140,8 +140,8 @@ void Counter::reset(EmuTime::param time)
 	currentTime = time;
 	ltchCtrl = false;
 	ltchCntr = false;
-	readOrder  = LOW;
-	writeOrder = LOW;
+	readOrder  = ByteOrder::LOW;
+	writeOrder = ByteOrder::LOW;
 	control = 0x30; // Write BOTH / mode 0 / binary mode
 	active = false;
 	counting = true;
@@ -171,16 +171,16 @@ uint8_t Counter::readIO(EmuTime::param time)
 		ltchCntr = false;
 		return narrow_cast<uint8_t>(readData >> 8);
 	case WF_BOTH:
-		if (readOrder == LOW) {
-			readOrder = HIGH;
+		if (readOrder == ByteOrder::LOW) {
+			readOrder = ByteOrder::HIGH;
 			return narrow_cast<uint8_t>(readData & 0x00FF);
 		} else {
-			readOrder = LOW;
+			readOrder = ByteOrder::LOW;
 			ltchCntr = false;
 			return narrow_cast<uint8_t>(readData >> 8);
 		}
 	default:
-		UNREACHABLE; return 0;
+		UNREACHABLE;
 	}
 }
 
@@ -201,13 +201,13 @@ uint8_t Counter::peekIO(EmuTime::param time) const
 	case WF_HIGH:
 		return narrow_cast<uint8_t>(readData >> 8);
 	case WF_BOTH:
-		if (readOrder == LOW) {
+		if (readOrder == ByteOrder::LOW) {
 			return narrow_cast<uint8_t>(readData & 0x00FF);
 		} else {
 			return narrow_cast<uint8_t>(readData >> 8);
 		}
 	default:
-		UNREACHABLE; return 0;
+		UNREACHABLE;
 	}
 }
 
@@ -224,14 +224,14 @@ void Counter::writeIO(uint8_t value, EmuTime::param time)
 		writeLoad((counterLoad & 0x00FF) | uint16_t(value << 8), time);
 		break;
 	case WF_BOTH:
-		if (writeOrder == LOW) {
-			writeOrder = HIGH;
+		if (writeOrder == ByteOrder::LOW) {
+			writeOrder = ByteOrder::HIGH;
 			writeLatch = value;
 			if ((control & CNTR_MODE) == CNTR_M0)
 				// pause counting when in mode 0
 				counting = false;
 		} else {
-			writeOrder = LOW;
+			writeOrder = ByteOrder::LOW;
 			counting = true;
 			writeLoad(uint16_t((value << 8) | writeLatch), time);
 		}
@@ -247,16 +247,29 @@ void Counter::writeLoad(uint16_t value, EmuTime::param time)
 	if (mode == one_of(CNTR_M0, CNTR_M4)) {
 		counter = counterLoad;
 	}
-	if (!active && (mode == one_of(CNTR_M2, CNTR_M2_, CNTR_M3, CNTR_M3_))) {
+	if (!active && (mode == one_of(CNTR_M3, CNTR_M3_))) {
 		if (clock.isPeriodic()) {
 			counter = counterLoad;
-			EmuDuration::param high = clock.getTotalDuration();
+			int half = (counter + 1) / 2; // round up
+			EmuDuration tick = clock.getTotalDuration();
+			EmuDuration total = tick * counter;
+			EmuDuration high = tick * half;
+			output.setPeriodicState(total, high, time);
+		} else {
+			// TODO ??
+		}
+	}
+	if (!active && (mode == one_of(CNTR_M2, CNTR_M2_))) {
+		if (clock.isPeriodic()) {
+			counter = counterLoad;
+			EmuDuration high = clock.getTotalDuration();
 			EmuDuration total = high * counter;
 			output.setPeriodicState(total, high, time);
 		} else {
 			// TODO ??
 		}
 	}
+
 	if (mode == CNTR_M0) {
 		output.setState(false, time);
 	}
@@ -273,7 +286,7 @@ void Counter::writeControlWord(uint8_t value, EmuTime::param time)
 	} else {
 		// new control mode
 		control = value;
-		writeOrder = LOW;
+		writeOrder = ByteOrder::LOW;
 		counting = true;
 		active = false;
 		triggered = false;
@@ -309,7 +322,7 @@ void Counter::latchCounter(EmuTime::param time)
 	advance(time);
 	if (!ltchCntr) {
 		ltchCntr = true;
-		readOrder = LOW;
+		readOrder = ByteOrder::LOW;
 		latchedCounter = narrow_cast<uint16_t>(counter);
 	}
 }
@@ -365,7 +378,7 @@ void Counter::advance(EmuTime::param time)
 {
 	// TODO !!!! Set SP !!!!
 	// TODO BCD counting
-	int ticks = clock.getTicksBetween(currentTime, time);
+	unsigned ticks = clock.getTicksBetween(currentTime, time);
 	currentTime = time;
 	switch (control & CNTR_MODE) {
 	case CNTR_M0:
@@ -382,11 +395,9 @@ void Counter::advance(EmuTime::param time)
 		break;
 	case CNTR_M1:
 		counter -= ticks;
-		if (triggered) {
-			if (counter < 0) {
-				output.setState(true, time);
-				triggered = false; // not periodic
-			}
+		if (triggered && (counter < 0)) {
+			output.setState(true, time);
+			triggered = false; // not periodic
 		}
 		counter &= 0xFFFF;
 		break;
@@ -451,8 +462,8 @@ void Counter::advance(EmuTime::param time)
 
 
 static constexpr std::initializer_list<enum_string<Counter::ByteOrder>> byteOrderInfo = {
-	{ "LOW",  Counter::LOW  },
-	{ "HIGH", Counter::HIGH }
+	{ "LOW",  Counter::ByteOrder::LOW  },
+	{ "HIGH", Counter::ByteOrder::HIGH }
 };
 SERIALIZE_ENUM(Counter::ByteOrder, byteOrderInfo);
 

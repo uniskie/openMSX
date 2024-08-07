@@ -2,8 +2,10 @@
 #define YM2413BURCZYNSKI_HH
 
 #include "YM2413Core.hh"
+
 #include "FixedPoint.hh"
 #include "serialize_meta.hh"
+
 #include <array>
 #include <span>
 
@@ -11,9 +13,9 @@ namespace openmsx {
 namespace YM2413Burczynski {
 
 // sin wave entries
-static constexpr int SIN_BITS = 10;
-static constexpr size_t SIN_LEN  = 1 << SIN_BITS;
-static constexpr size_t SIN_MASK = SIN_LEN - 1;
+inline constexpr int SIN_BITS = 10;
+inline constexpr size_t SIN_LEN  = 1 << SIN_BITS;
+inline constexpr size_t SIN_MASK = SIN_LEN - 1;
 
 class Channel;
 
@@ -31,16 +33,16 @@ public:
 	/** Update phase increment counter of operator.
 	 * Also updates the EG rates if necessary.
 	 */
-	void updateGenerators(Channel& channel);
+	void updateGenerators(const Channel& channel);
 
-	[[nodiscard]] inline int calcOutput(Channel& channel, unsigned eg_cnt, bool carrier,
-	                      unsigned lfo_am, int phase);
-	[[nodiscard]] inline int calc_slot_mod(Channel& channel, unsigned eg_cnt, bool carrier,
-	                         unsigned lfo_pm, unsigned lfo_am);
-	[[nodiscard]] inline int calc_envelope(Channel& channel, unsigned eg_cnt, bool carrier);
-	[[nodiscard]] inline int calc_phase(Channel& channel, unsigned lfo_pm);
+	[[nodiscard]] int calcOutput(const Channel& channel, unsigned eg_cnt, bool carrier,
+	                             unsigned lfo_am, int phase);
+	[[nodiscard]] int calc_slot_mod(const Channel& channel, unsigned eg_cnt, bool carrier,
+	                                unsigned lfo_pm, unsigned lfo_am);
+	[[nodiscard]] int calc_envelope(const Channel& channel, unsigned eg_cnt, bool carrier);
+	[[nodiscard]] int calc_phase(const Channel& channel, unsigned lfo_pm);
 
-	enum KeyPart : uint8_t { KEY_MAIN = 1, KEY_RHYTHM = 2 };
+	enum class KeyPart : uint8_t { MAIN = 1, RHYTHM = 2 };
 	void setKeyOn(KeyPart part);
 	void setKeyOff(KeyPart part);
 	void setKeyOnOff(KeyPart part, bool enabled);
@@ -72,11 +74,11 @@ public:
 
 	/** Sets the total level: [0..63].
 	 */
-	void setTotalLevel(Channel& channel, uint8_t value);
+	void setTotalLevel(const Channel& channel, uint8_t value);
 
 	/** Sets the key scale level: 0->0 / 1->1.5 / 2->3.0 / 3->6.0 dB/OCT.
 	 */
-	void setKeyScaleLevel(Channel& channel, uint8_t value);
+	void setKeyScaleLevel(const Channel& channel, uint8_t value);
 
 	/** Sets the waveform: 0 = sinus, 1 = half sinus, half silence.
 	 */
@@ -104,17 +106,14 @@ public:
 
 	/** Called by Channel when block_fnum changes.
 	 */
-	void updateFrequency(Channel& channel);
+	void updateFrequency(const Channel& channel);
 
 	template<typename Archive>
 	void serialize(Archive& ar, unsigned version);
 
 public: // public for serialization, otherwise could be private
-	/** Envelope Generator phases
-	 * Note: These are ordered: phase constants are compared in the code.
-	 */
-	enum EnvelopeState {
-		EG_DUMP, EG_ATTACK, EG_DECAY, EG_SUSTAIN, EG_RELEASE, EG_OFF
+	enum class EnvelopeState {
+		DUMP, ATTACK, DECAY, SUSTAIN, RELEASE, OFF
 	};
 
 private:
@@ -122,10 +121,10 @@ private:
 	 */
 	void setEnvelopeState(EnvelopeState state);
 
-	inline void updateTotalLevel(Channel& channel);
-	inline void updateAttackRate(int kcodeScaled);
-	inline void updateDecayRate(int kcodeScaled);
-	inline void updateReleaseRate(int kcodeScaled);
+	void updateTotalLevel(const Channel& channel);
+	void updateAttackRate(int kcodeScaled);
+	void updateDecayRate(int kcodeScaled);
+	void updateReleaseRate(int kcodeScaled);
 
 	std::span<const unsigned, SIN_LEN> waveTable;	// waveform select
 
@@ -179,7 +178,7 @@ class Channel
 public:
 	/** Calculate the value of the current sample produced by this channel.
 	 */
-	[[nodiscard]] inline int calcOutput(unsigned eg_cnt, unsigned lfo_pm, unsigned lfo_am, int fm);
+	[[nodiscard]] int calcOutput(unsigned eg_cnt, unsigned lfo_pm, unsigned lfo_am, int fm);
 
 	/** Sets the frequency for this channel.
 	 */
@@ -248,7 +247,7 @@ private:
 	 */
 	void resetOperators();
 
-	[[nodiscard]] inline bool isRhythm() const;
+	[[nodiscard]] bool isRhythm() const;
 
 	[[nodiscard]] Channel& getChannelForReg(uint8_t reg);
 
@@ -275,8 +274,8 @@ private:
 
 	using LFOAMIndex = FixedPoint< 6>;
 	using LFOPMIndex = FixedPoint<10>;
-	LFOAMIndex lfo_am_cnt;
-	LFOPMIndex lfo_pm_cnt;
+	LFOAMIndex lfo_am_cnt{0};
+	LFOPMIndex lfo_pm_cnt{0};
 
 	/** Instrument settings:
 	 *  0     - user instrument

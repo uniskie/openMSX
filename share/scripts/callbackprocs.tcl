@@ -83,6 +83,11 @@ proc debug_too_fast_vram_access {} {
 #set VDP.too_fast_vram_access_callback debug_too_fast_vram_access
 #set VDP.too_fast_vram_access_callback warn_too_fast_vram_access
 
+proc default_dot_clock_direction_callback {} {
+	message "The running MSX software has set bit 0 of VDP register 9 (dot clock direction) to one. In an ordinary MSX, the screen would go black and the CPU would stop running." warning
+}
+#set VDP.dot_clock_direction_callback default_dot_clock_direction_callback
+
 proc sensorkidportstatuscallback {port value} {
 	message "Sensor Kid port $port has been [expr {$value ? "enabled" : "disabled"}]" info
 }
@@ -115,6 +120,3 @@ proc default_V9990_invalid_register_write_callback {reg value} {
 }
 #set v9990_invalid_register_read_callback  default_V9990_invalid_register_read_callback
 #set v9990_invalid_register_write_callback default_V9990_invalid_register_write_callback
-
-# show message (also) as OSD message
-interp alias {} default_message_callback {} osd::display_message

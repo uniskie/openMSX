@@ -19,7 +19,7 @@ template<typename E> std::ostream& operator<<(std::ostream& os, EnumTypeName<E>)
 //   os << EnumValueName{myEnumValue} << '\n';
 template<typename E> struct EnumValueName
 {
-	EnumValueName(E e_) : e(e_) {}
+	explicit EnumValueName(E e_) : e(e_) {}
 	E e;
 };
 // You _must_ overload 'operator<<' for all enum types for which you want this to work.
@@ -87,6 +87,11 @@ template<bool ENABLED, typename ENUM>
 class ProfileCounters
 {
 public:
+	ProfileCounters(const ProfileCounters&) = delete;
+	ProfileCounters(ProfileCounters&&) = delete;
+	ProfileCounters& operator=(const ProfileCounters&) = delete;
+	ProfileCounters& operator=(ProfileCounters&&) = delete;
+
 	// Print counters on destruction.
 	~ProfileCounters() {
 		std::cout << "-- Profile counters: " << EnumTypeName<ENUM>() << " -- " << static_cast<void*>(this) << '\n';

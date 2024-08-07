@@ -1,4 +1,5 @@
 #include "Interpreter.hh"
+
 #include "Command.hh"
 #include "TclObject.hh"
 #include "CommandException.hh"
@@ -8,15 +9,18 @@
 #include "InterpreterOutput.hh"
 #include "MSXCPUInterface.hh"
 #include "FileOperations.hh"
+
 #include "narrow.hh"
 #include "ranges.hh"
 #include "stl.hh"
 #include "unreachable.hh"
+
+#include <bit>
+#include <cstdint>
 #include <iostream>
 #include <span>
 #include <utility>
 #include <vector>
-#include <cstdint>
 //#include <tk.h>
 
 namespace openmsx {
@@ -69,7 +73,7 @@ Tcl_ChannelType Interpreter::channelType = {
 	nullptr,		 // Tcl_DriverTruncateProc
 };
 
-void Interpreter::init(const char* programName)
+void Interpreter::init(const char* programName) const
 {
 	Tcl_FindExecutable(programName);
 }
@@ -172,14 +176,14 @@ int Interpreter::commandProc(ClientData clientData, Tcl_Interp* interp,
 	try {
 		auto& command = *static_cast<Command*>(clientData);
 		std::span<const TclObject> tokens(
-			reinterpret_cast<TclObject*>(const_cast<Tcl_Obj**>(objv)),
+			std::bit_cast<TclObject*>(const_cast<Tcl_Obj**>(objv)),
 			objc);
 		int res = TCL_OK;
 		TclObject result;
 		try {
 			if (!command.isAllowedInEmptyMachine()) {
-				if (auto* controller =
-					dynamic_cast<MSXCommandController*>(
+				if (const auto* controller =
+					dynamic_cast<const MSXCommandController*>(
 						&command.getCommandController())) {
 					if (!controller->getMSXMotherBoard().getMachineConfig()) {
 						throw CommandException(
@@ -196,7 +200,6 @@ int Interpreter::commandProc(ClientData clientData, Tcl_Interp* interp,
 		return res;
 	} catch (...) {
 		UNREACHABLE; // we cannot let exceptions pass through Tcl
-		return TCL_ERROR;
 	}
 }
 
@@ -216,8 +219,7 @@ bool Interpreter::isComplete(zstring_view command) const
 
 TclObject Interpreter::execute(zstring_view command)
 {
-	int success = Tcl_Eval(interp, command.c_str());
-	if (success != TCL_OK) {
+	if (Tcl_Eval(interp, command.c_str()) != TCL_OK) {
 		throw CommandException(Tcl_GetStringResult(interp));
 	}
 	return TclObject(Tcl_GetObjResult(interp));
@@ -225,8 +227,7 @@ TclObject Interpreter::execute(zstring_view command)
 
 TclObject Interpreter::executeFile(zstring_view filename)
 {
-	int success = Tcl_EvalFile(interp, filename.c_str());
-	if (success != TCL_OK) {
+	if (Tcl_EvalFile(interp, filename.c_str()) != TCL_OK) {
 		throw CommandException(Tcl_GetStringResult(interp));
 	}
 	return TclObject(Tcl_GetObjResult(interp));
@@ -256,13 +257,23 @@ void Interpreter::setVariable(const TclObject& name, const TclObject& value)
 	}
 }
 
+void Interpreter::setVariable(const TclObject& arrayName, const TclObject& arrayIndex, const TclObject& value)
+{
+	if (!Tcl_ObjSetVar2(interp, arrayName.getTclObjectNonConst(), arrayIndex.getTclObjectNonConst(),
+		            value.getTclObjectNonConst(),
+		            TCL_GLOBAL_ONLY | TCL_LEAVE_ERR_MSG)) {
+		throw CommandException(Tcl_GetStringResult(interp));
+	}
+}
+
 void Interpreter::unsetVariable(const char* name)
 {
 	Tcl_UnsetVar(interp, name, TCL_GLOBAL_ONLY);
 }
 
-static TclObject getSafeValue(BaseSetting& setting)
+static TclObject getSafeValue(const BaseSetting& setting)
 {
+	// TODO use c++23 std::optional<T>::or_else()
 	if (auto val = setting.getOptionalValue()) {
 		return *val;
 	}
@@ -317,7 +328,7 @@ void Interpreter::registerSetting(BaseSetting& variable)
 	traces.emplace_back(Trace{traceID, &variable}); // still in sorted order
 	Tcl_TraceVar(interp, name.getString().data(), // 0-terminated
 	             TCL_TRACE_READS | TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
-	             traceProc, reinterpret_cast<ClientData>(traceID));
+	             traceProc, std::bit_cast<ClientData>(traceID));
 }
 
 void Interpreter::unregisterSetting(BaseSetting& variable)
@@ -329,7 +340,7 @@ void Interpreter::unregisterSetting(BaseSetting& variable)
 	const char* name = variable.getFullName().data(); // 0-terminated
 	Tcl_UntraceVar(interp, name,
 	               TCL_TRACE_READS | TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
-	               traceProc, reinterpret_cast<ClientData>(traceID));
+	               traceProc, std::bit_cast<ClientData>(traceID));
 	unsetVariable(name);
 }
 
@@ -381,7 +392,7 @@ char* Interpreter::traceProc(ClientData clientData, Tcl_Interp* interp,
 		// a map. If the Setting was deleted, we won't find it anymore
 		// in the map and return.
 
-		auto traceID = reinterpret_cast<uintptr_t>(clientData);
+		auto traceID = std::bit_cast<uintptr_t>(clientData);
 		auto* variable = getTraceSetting(traceID);
 		if (!variable) return nullptr;
 
@@ -418,7 +429,7 @@ char* Interpreter::traceProc(ClientData clientData, Tcl_Interp* interp,
 				// that goes via Tcl and the Tcl variable
 				// doesn't exist at this point
 				variable->setValueDirect(TclObject(
-					variable->getRestoreValue()));
+					variable->getDefaultValue()));
 			} catch (MSXException&) {
 				// for some reason default value is not valid ATM,
 				// keep current value (happened for videosource
@@ -429,7 +440,7 @@ char* Interpreter::traceProc(ClientData clientData, Tcl_Interp* interp,
 			Tcl_TraceVar(interp, part1, TCL_TRACE_READS |
 			                TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
 			             traceProc,
-			             reinterpret_cast<ClientData>(traceID));
+			             std::bit_cast<ClientData>(traceID));
 		}
 	} catch (...) {
 		UNREACHABLE; // we cannot let exceptions pass through Tcl
@@ -447,7 +458,7 @@ void Interpreter::deleteNamespace(const std::string& name)
 	execute(tmpStrCat("namespace delete ", name));
 }
 
-void Interpreter::poll()
+void Interpreter::poll() const
 {
 	//Tcl_ServiceAll();
 	Tcl_DoOneEvent(TCL_DONT_WAIT);
@@ -458,10 +469,26 @@ TclParser Interpreter::parse(std::string_view command)
 	return {interp, command};
 }
 
+bool Interpreter::validCommand(std::string_view command)
+{
+	Tcl_Parse parseInfo;
+	int result = Tcl_ParseCommand(interp, command.data(), narrow<int>(command.size()), 0, &parseInfo);
+	Tcl_FreeParse(&parseInfo);
+	return result == TCL_OK;
+}
+
+bool Interpreter::validExpression(std::string_view expression)
+{
+	Tcl_Parse parseInfo;
+	int result = Tcl_ParseExpr(interp, expression.data(), narrow<int>(expression.size()), &parseInfo);
+	Tcl_FreeParse(&parseInfo);
+	return result == TCL_OK;
+}
+
 void Interpreter::wrongNumArgs(unsigned argc, std::span<const TclObject> tokens, const char* message)
 {
 	assert(argc <= tokens.size());
-	Tcl_WrongNumArgs(interp, narrow<int>(argc), reinterpret_cast<Tcl_Obj* const*>(tokens.data()), message);
+	Tcl_WrongNumArgs(interp, narrow<int>(argc), std::bit_cast<Tcl_Obj* const*>(tokens.data()), message);
 	// not efficient, but anyway on an error path
 	throw CommandException(Tcl_GetStringResult(interp));
 }

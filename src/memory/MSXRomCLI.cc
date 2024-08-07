@@ -1,26 +1,35 @@
 #include "MSXRomCLI.hh"
+
 #include "CommandLineParser.hh"
 #include "HardwareConfig.hh"
 #include "MSXMotherBoard.hh"
 #include "MSXException.hh"
+
 #include "one_of.hh"
+
 #include <cassert>
 
 using std::string;
 
 namespace openmsx {
 
+std::span<const std::string_view> MSXRomCLI::getExtensions()
+{
+	static constexpr std::array<std::string_view, 5> extensions = {
+		"ri", "rom", "mx1", "mx2", "sg"
+	};
+	return extensions;
+}
+
 MSXRomCLI::MSXRomCLI(CommandLineParser& cmdLineParser_)
 	: cmdLineParser(cmdLineParser_)
 {
 	cmdLineParser.registerOption("-ips", ipsOption);
 	cmdLineParser.registerOption("-romtype", romTypeOption);
-	cmdLineParser.registerOption("-cart", *this);
-	cmdLineParser.registerOption("-carta", *this);
-	cmdLineParser.registerOption("-cartb", *this);
-	cmdLineParser.registerOption("-cartc", *this);
-	cmdLineParser.registerOption("-cartd", *this);
-	cmdLineParser.registerFileType({"ri", "rom", "mx1", "mx2"}, *this);
+	for (const auto* cart : {"-cart", "-carta", "-cartb", "-cartc", "-cartd"}) {
+		cmdLineParser.registerOption(cart, *this);
+	}
+	cmdLineParser.registerFileType(getExtensions(), *this);
 }
 
 void MSXRomCLI::parseOption(const string& option, std::span<string>& cmdLine)
@@ -56,7 +65,7 @@ std::string_view MSXRomCLI::fileTypeCategoryName() const
 }
 
 void MSXRomCLI::parse(const string& arg, const string& slotName,
-                      std::span<string>& cmdLine)
+                      std::span<string>& cmdLine) const
 {
 	// parse extra options  -ips  and  -romtype
 	std::vector<TclObject> options;

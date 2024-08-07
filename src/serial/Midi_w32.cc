@@ -27,12 +27,16 @@
 #ifdef _WIN32
 
 #include "Midi_w32.hh"
+
 #include "MSXException.hh"
+
 #include "MemBuffer.hh"
 #include "cstdiop.hh"
 #include "one_of.hh"
 #include "xrange.hh"
 
+#include <array>
+#include <bit>
 #include <cstring>
 #include <cstdlib>
 #include <sstream>
@@ -47,15 +51,15 @@ namespace openmsx {
  */
 // MIDI SYSTEM MESSAGES max length is not defined...
 // TODO: support variable length.
-#define OPENMSX_W32_MIDI_SYSMES_MAXLEN 4096
+static constexpr size_t OPENMSX_W32_MIDI_SYSMES_MAXLEN = 4096;
 
 
 struct vfn_midi {
 	unsigned idx;
 	unsigned devid;
 	HMIDI    handle;
-	char     vfname[MAXPATHLEN + 1];
-	char     devname[MAXPNAMELEN];
+	std::array<char, MAXPATHLEN + 1> vfname;
+	std::array<char, MAXPNAMELEN> devname;
 };
 
 struct outbuf {
@@ -70,10 +74,10 @@ static MemBuffer<int> state_out;
 static MemBuffer<outbuf> buf_out;
 
 static MIDIHDR inhdr;
-static char inlongmes[OPENMSX_W32_MIDI_SYSMES_MAXLEN];
+static std::array<char, OPENMSX_W32_MIDI_SYSMES_MAXLEN> inlongmes;
 
 
-static void w32_midiDevNameConv(char *dst, char *src)
+static void w32_midiDevNameConv(char *dst, const char *src)
 {
 	size_t len = strlen(src);
 	size_t i = 0;
@@ -94,7 +98,7 @@ static void w32_midiDevNameConv(char *dst, char *src)
 static int w32_midiOutFindDev(unsigned *idx, unsigned *dev, const char *vfn)
 {
 	for (auto i : xrange(vfnt_midiout_num)) {
-		if (!strcmp(vfnt_midiout[i].vfname, vfn)) {
+		if (!strcmp(vfnt_midiout[i].vfname.data(), vfn)) {
 			*idx = i;
 			*dev = vfnt_midiout[i].devid;
 			return 0;
@@ -119,23 +123,24 @@ int w32_midiOutInit()
 	vfnt_midiout.resize(num + 1);
 
 	// MIDI_MAPPER is #define's as ((UINT)-1)
-	UINT OPENMSX_MIDI_MAPPER = static_cast<UINT>(-1);
+	auto OPENMSX_MIDI_MAPPER = static_cast<UINT>(-1);
 	MIDIOUTCAPSA cap;
 	if (midiOutGetDevCapsA(OPENMSX_MIDI_MAPPER, &cap, sizeof(cap)) != MMSYSERR_NOERROR) {
 		return 2;
 	}
 	vfnt_midiout[0].devid = OPENMSX_MIDI_MAPPER;
-	w32_midiDevNameConv(vfnt_midiout[0].devname, cap.szPname);
-	strncpy(vfnt_midiout[0].vfname, "midi-out", MAXPATHLEN + 1);
-	vfnt_midiout_num ++;
+	w32_midiDevNameConv(vfnt_midiout[0].devname.data(), cap.szPname);
+	strncpy(vfnt_midiout[0].vfname.data(), "midi-out", MAXPATHLEN);
+	vfnt_midiout[0].vfname[MAXPATHLEN] = '\0';
+	vfnt_midiout_num++;
 
 	for (auto i : xrange(num)) {
 		if (midiOutGetDevCapsA(i, &cap, sizeof(cap)) != MMSYSERR_NOERROR) {
 			return 0; // atleast MIDI-MAPPER is available...
 		}
 		vfnt_midiout[i + 1].devid = i;
-		w32_midiDevNameConv(vfnt_midiout[i + 1].devname, cap.szPname);
-		snprintf(vfnt_midiout[i + 1].vfname, MAXPATHLEN + 1, "midi-out-%u", i);
+		w32_midiDevNameConv(vfnt_midiout[i + 1].devname.data(), cap.szPname);
+		snprintf(vfnt_midiout[i + 1].vfname.data(), MAXPATHLEN + 1, "midi-out-%u", i);
 		vfnt_midiout_num++;
 	}
 	return 0;
@@ -155,13 +160,13 @@ unsigned w32_midiOutGetVFNsNum()
 std::string w32_midiOutGetVFN(unsigned nmb)
 {
 	assert(nmb < vfnt_midiout_num);
-	return vfnt_midiout[nmb].vfname;
+	return vfnt_midiout[nmb].vfname.data();
 }
 
 std::string w32_midiOutGetRDN(unsigned nmb)
 {
 	assert(nmb < vfnt_midiout_num);
-	return vfnt_midiout[nmb].devname;
+	return vfnt_midiout[nmb].devname.data();
 }
 
 
@@ -171,7 +176,7 @@ unsigned w32_midiOutOpen(const char *vfn)
 	if (w32_midiOutFindDev(&idx, &devid,vfn)) {
 		return unsigned(-1);
 	}
-	if (midiOutOpen(reinterpret_cast<HMIDIOUT*>(&vfnt_midiout[idx].handle), devid, 0, 0 ,0) != MMSYSERR_NOERROR) {
+	if (midiOutOpen(std::bit_cast<HMIDIOUT*>(&vfnt_midiout[idx].handle), devid, 0, 0 ,0) != MMSYSERR_NOERROR) {
 		return unsigned(-1);
 	}
 	return idx;
@@ -216,7 +221,7 @@ int w32_midiOutMsg(size_t size, const uint8_t* data, unsigned idx)
 {
 	if (size == 0) return 0;
 
-	HMIDIOUT hMidiOut = reinterpret_cast<HMIDIOUT>(vfnt_midiout[idx].handle);
+	auto hMidiOut = reinterpret_cast<HMIDIOUT>(vfnt_midiout[idx].handle);
 	if (data[0] == one_of(0xF0, 0xF7)) { // SysEx
 		if (size > OPENMSX_W32_MIDI_SYSMES_MAXLEN) {
 			return -1;
@@ -243,7 +248,7 @@ int w32_midiOutMsg(size_t size, const uint8_t* data, unsigned idx)
 static int w32_midiInFindDev(unsigned *idx, unsigned *dev, const char *vfn)
 {
 	for (auto i : xrange(vfnt_midiin_num)) {
-		if (!strcmp(vfnt_midiin[i].vfname, vfn)) {
+		if (!strcmp(vfnt_midiin[i].vfname.data(), vfn)) {
 			*idx = i;
 			*dev = vfnt_midiin[i].devid;
 			return 0;
@@ -266,8 +271,8 @@ int w32_midiInInit()
 			return 1;
 		}
 		vfnt_midiin[i].devid = i;
-		w32_midiDevNameConv(vfnt_midiin[i].devname, cap.szPname);
-		snprintf(vfnt_midiin[i].vfname, MAXPATHLEN + 1, "midi-in-%u", i);
+		w32_midiDevNameConv(vfnt_midiin[i].devname.data(), cap.szPname);
+		snprintf(vfnt_midiin[i].vfname.data(), MAXPATHLEN + 1, "midi-in-%u", i);
 		vfnt_midiin_num++;
 	}
 	return 0;
@@ -287,13 +292,13 @@ unsigned w32_midiInGetVFNsNum()
 std::string w32_midiInGetVFN(unsigned nmb)
 {
 	assert(nmb < vfnt_midiin_num);
-	return vfnt_midiin[nmb].vfname;
+	return vfnt_midiin[nmb].vfname.data();
 }
 
 std::string w32_midiInGetRDN(unsigned nmb)
 {
 	assert(nmb < vfnt_midiin_num);
-	return vfnt_midiin[nmb].devname;
+	return vfnt_midiin[nmb].devname.data();
 }
 
 unsigned w32_midiInOpen(const char *vfn, DWORD thrdid)
@@ -302,17 +307,17 @@ unsigned w32_midiInOpen(const char *vfn, DWORD thrdid)
 	if (w32_midiInFindDev(&idx, &devid, vfn)) {
 		return unsigned(-1);
 	}
-	if (midiInOpen(reinterpret_cast<HMIDIIN*>(&vfnt_midiin[idx].handle), devid, thrdid, 0, CALLBACK_THREAD) != MMSYSERR_NOERROR) {
+	if (midiInOpen(std::bit_cast<HMIDIIN*>(&vfnt_midiin[idx].handle), devid, thrdid, 0, CALLBACK_THREAD) != MMSYSERR_NOERROR) {
 		return unsigned(-1);
 	}
 	memset(&inhdr, 0, sizeof(inhdr));
-	inhdr.lpData = inlongmes;
+	inhdr.lpData = inlongmes.data();
 	inhdr.dwBufferLength = OPENMSX_W32_MIDI_SYSMES_MAXLEN;
 	if (midiInPrepareHeader(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle),
-		                static_cast<LPMIDIHDR>(&inhdr), sizeof(inhdr)) != MMSYSERR_NOERROR) {
+		                &inhdr, sizeof(inhdr)) != MMSYSERR_NOERROR) {
 		return unsigned(-1);
 	}
-	if (midiInAddBuffer(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle), static_cast<LPMIDIHDR>(&inhdr), sizeof(inhdr)) != MMSYSERR_NOERROR) {
+	if (midiInAddBuffer(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle), &inhdr, sizeof(inhdr)) != MMSYSERR_NOERROR) {
 		return unsigned(-1);
 	}
 	if (midiInStart(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle)) != MMSYSERR_NOERROR) {
@@ -326,7 +331,7 @@ int w32_midiInClose(unsigned idx)
 	midiInStop(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle));
 	midiInReset(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle));
 	midiInUnprepareHeader(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle),
-	                      static_cast<LPMIDIHDR>(&inhdr), sizeof(inhdr));
+	                      &inhdr, sizeof(inhdr));
 	if (midiInClose(reinterpret_cast<HMIDIIN>(vfnt_midiin[idx].handle)) == MMSYSERR_NOERROR) {
 		return 0;
 	} else {

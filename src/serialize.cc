@@ -1,19 +1,20 @@
 #include "serialize.hh"
+
 #include "Base64.hh"
 #include "HexDump.hh"
 #include "XMLElement.hh"
-#include "ConfigException.hh"
 #include "XMLException.hh"
 #include "DeltaBlock.hh"
 #include "MemBuffer.hh"
 #include "FileOperations.hh"
-#include "StringOp.hh"
 #include "Version.hh"
 #include "Date.hh"
 #include "narrow.hh"
 #include "one_of.hh"
 #include "stl.hh"
 #include "build-info.hh"
+
+#include <bit>
 #include "cstdiop.hh" // for dup()
 #include <cstdint>
 #include <cstring>
@@ -63,13 +64,13 @@ unsigned OutputArchiveBase2::generateID2(
 
 unsigned OutputArchiveBase2::getID1(const void* p)
 {
-	auto* v = lookup(polyIdMap, p);
+	const auto* v = lookup(polyIdMap, p);
 	return v ? *v : 0;
 }
 unsigned OutputArchiveBase2::getID2(
 	const void* p, const std::type_info& typeInfo)
 {
-	auto* v = lookup(idMap, std::pair(p, std::type_index(typeInfo)));
+	const auto* v = lookup(idMap, std::pair(p, std::type_index(typeInfo)));
 	return v ? *v : 0;
 }
 
@@ -94,7 +95,7 @@ void OutputArchiveBase<Derived>::serialize_blob(
 		auto dstLen = uLongf(len + len / 1000 + 12 + 1); // worst-case
 		MemBuffer<uint8_t> buf(dstLen);
 		if (compress2(buf.data(), &dstLen,
-		              reinterpret_cast<const Bytef*>(data.data()),
+		              std::bit_cast<const Bytef*>(data.data()),
 		              uLong(len), 9)
 		    != Z_OK) {
 			throw MSXException("Error while compressing blob.");
@@ -147,8 +148,8 @@ void InputArchiveBase<Derived>::serialize_blob(
 	if (encoding == "gz-base64") {
 		auto [buf, bufSize] = Base64::decode(tmp);
 		auto dstLen = uLongf(data.size()); // TODO check for overflow?
-		if ((uncompress(reinterpret_cast<Bytef*>(data.data()), &dstLen,
-		                reinterpret_cast<const Bytef*>(buf.data()), uLong(bufSize))
+		if ((uncompress(std::bit_cast<Bytef*>(data.data()), &dstLen,
+		                std::bit_cast<const Bytef*>(buf.data()), uLong(bufSize))
 		     != Z_OK) ||
 		    (dstLen != data.size())) {
 			throw MSXException("Error while decompressing blob.");
@@ -193,7 +194,7 @@ void MemInputArchive::load(std::string& s)
 	load(length);
 	s.resize(length);
 	if (length) {
-		get(s.data(), length);
+		buffer.read(s.data(), length);
 	}
 }
 
@@ -203,7 +204,7 @@ string_view MemInputArchive::loadStr()
 	load(length);
 	const uint8_t* p = buffer.getCurrentPos();
 	buffer.skip(length);
-	return {reinterpret_cast<const char*>(p), length};
+	return {std::bit_cast<const char*>(p), length};
 }
 
 ////
@@ -398,25 +399,25 @@ XmlInputArchive::XmlInputArchive(const string& filename)
 	elems.emplace_back(root, root->getFirstChild());
 }
 
-string_view XmlInputArchive::loadStr()
+string_view XmlInputArchive::loadStr() const
 {
 	if (currentElement()->hasChildren()) {
 		throw XMLException("No child tags expected for primitive type");
 	}
 	return currentElement()->getData();
 }
-void XmlInputArchive::load(string& t)
+void XmlInputArchive::load(string& t) const
 {
 	t = loadStr();
 }
-void XmlInputArchive::loadChar(char& c)
+void XmlInputArchive::loadChar(char& c) const
 {
 	std::string str;
 	load(str);
 	std::istringstream is(str);
 	is >> c;
 }
-void XmlInputArchive::load(bool& b)
+void XmlInputArchive::load(bool& b) const
 {
 	string_view s = loadStr();
 	if (s == one_of("true", "1")) {
@@ -468,12 +469,12 @@ template<std::integral T> static inline void fastAtoi(string_view str, T& t)
 		assert(!neg); (void)neg;
 	}
 }
-void XmlInputArchive::load(int& i)
+void XmlInputArchive::load(int& i) const
 {
 	string_view str = loadStr();
 	fastAtoi(str, i);
 }
-void XmlInputArchive::load(unsigned& u)
+void XmlInputArchive::load(unsigned& u) const
 {
 	string_view str = loadStr();
 	try {
@@ -488,24 +489,24 @@ void XmlInputArchive::load(unsigned& u)
 		u = narrow_cast<unsigned>(i);
 	}
 }
-void XmlInputArchive::load(unsigned long long& ull)
+void XmlInputArchive::load(unsigned long long& ull) const
 {
 	string_view str = loadStr();
 	fastAtoi(str, ull);
 }
-void XmlInputArchive::load(unsigned char& b)
+void XmlInputArchive::load(unsigned char& b) const
 {
 	unsigned u;
 	load(u);
 	b = narrow_cast<unsigned char>(u);
 }
-void XmlInputArchive::load(signed char& c)
+void XmlInputArchive::load(signed char& c) const
 {
 	int i;
 	load(i);
 	c = narrow_cast<signed char>(i);
 }
-void XmlInputArchive::load(char& c)
+void XmlInputArchive::load(char& c) const
 {
 	int i;
 	load(i);
@@ -517,8 +518,8 @@ void XmlInputArchive::beginTag(const char* tag)
 	const auto* child = currentElement()->findChild(tag, elems.back().second);
 	if (!child) {
 		string path;
-		for (auto& e : elems) {
-			strAppend(path, e.first->getName(), '/');
+		for (const auto& [e, _] : elems) {
+			strAppend(path, e->getName(), '/');
 		}
 		throw XMLException("No child tag \"", tag,
 		                   "\" found at location \"", path, '\"');
@@ -537,7 +538,7 @@ void XmlInputArchive::endTag(const char* tag)
 	elems.pop_back();
 }
 
-void XmlInputArchive::attribute(const char* name, string& t)
+void XmlInputArchive::attribute(const char* name, string& t) const
 {
 	const auto* attr = currentElement()->findAttribute(name);
 	if (!attr) {
@@ -545,11 +546,11 @@ void XmlInputArchive::attribute(const char* name, string& t)
 	}
 	t = attr->getValue();
 }
-void XmlInputArchive::attribute(const char* name, int& i)
+void XmlInputArchive::attribute(const char* name, int& i) const
 {
 	attributeImpl(name, i);
 }
-void XmlInputArchive::attribute(const char* name, unsigned& u)
+void XmlInputArchive::attribute(const char* name, unsigned& u) const
 {
 	attributeImpl(name, u);
 }

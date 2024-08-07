@@ -3,7 +3,6 @@
 
 #include "RenderSettings.hh"
 #include "Command.hh"
-#include "CommandConsole.hh"
 #include "InfoTopic.hh"
 #include "OSDGUI.hh"
 #include "EventListener.hh"
@@ -32,6 +31,10 @@ class Display final : public EventListener, private Observer<Setting>
                     , private LayerListener, private RTSchedulable
 {
 public:
+	static constexpr std::string_view SCREENSHOT_DIR = "screenshots";
+	static constexpr std::string_view SCREENSHOT_EXTENSION = ".png";
+
+public:
 	using Layers = std::vector<Layer*>;
 
 	explicit Display(Reactor& reactor);
@@ -43,7 +46,6 @@ public:
 	[[nodiscard]] CliComm& getCliComm() const;
 	[[nodiscard]] RenderSettings& getRenderSettings() { return renderSettings; }
 	[[nodiscard]] OSDGUI& getOSDGUI() { return osdGui; }
-	[[nodiscard]] CommandConsole& getCommandConsole() { return commandConsole; }
 
 	/** Redraw the display.
 	  * The repaintImpl() methods are for internal and VideoSystem/VisibleSurface use only.
@@ -66,11 +68,24 @@ public:
 
 	[[nodiscard]] std::string getWindowTitle();
 
+	/** Get/set x,y coordinates of top-left window corner.
+	    Either the actual, or the last known coordinates. */
+	[[nodiscard]] gl::ivec2 getWindowPosition();
+	void setWindowPosition(gl::ivec2 pos);
+	// should only be called from VisibleSurface
+	void storeWindowPosition(gl::ivec2 pos);
+	[[nodiscard]] gl::ivec2 retrieveWindowPosition();
+
+	[[nodiscard]] gl::ivec2 getWindowSize() const;
+
+	// Get the latest fps value
+	[[nodiscard]] float getFps() const;
+
 private:
 	void resetVideoSystem();
 
 	// EventListener interface
-	int signalEvent(const Event& event) override;
+	bool signalEvent(const Event& event) override;
 
 	// RTSchedulable
 	void executeRT() override;
@@ -119,10 +134,9 @@ private:
 
 	Reactor& reactor;
 	RenderSettings renderSettings;
-	CommandConsole commandConsole;
 
 	// the current renderer
-	RenderSettings::RendererID currentRenderer = RenderSettings::UNINITIALIZED;
+	RenderSettings::RendererID currentRenderer = RenderSettings::RendererID::UNINITIALIZED;
 
 	bool renderFrozen = false;
 	bool switchInProgress = false;

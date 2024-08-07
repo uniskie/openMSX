@@ -1,50 +1,57 @@
 #include "Reactor.hh"
+
+#include "AfterCommand.hh"
+#include "AviRecorder.hh"
+#include "BooleanSetting.hh"
+#include "Command.hh"
+#include "CommandException.hh"
 #include "CommandLineParser.hh"
-#include "RTScheduler.hh"
-#include "EventDistributor.hh"
-#include "GlobalCommandController.hh"
-#include "InputEventGenerator.hh"
-#include "Event.hh"
+#include "DiskChanger.hh"
 #include "DiskFactory.hh"
 #include "DiskManipulator.hh"
-#include "DiskChanger.hh"
-#include "FilePool.hh"
-#include "UserSettings.hh"
-#include "RomDatabase.hh"
-#include "RomInfo.hh"
-#include "TclCallbackMessages.hh"
-#include "MSXMotherBoard.hh"
-#include "StateChangeDistributor.hh"
-#include "Command.hh"
-#include "AfterCommand.hh"
-#include "MessageCommand.hh"
-#include "CommandException.hh"
-#include "GlobalCliComm.hh"
-#include "InfoTopic.hh"
 #include "Display.hh"
-#include "VideoSystem.hh"
-#include "Mixer.hh"
-#include "AviRecorder.hh"
-#include "GlobalSettings.hh"
-#include "BooleanSetting.hh"
 #include "EnumSetting.hh"
-#include "TclObject.hh"
-#include "HardwareConfig.hh"
-#include "XMLElement.hh"
-#include "XMLException.hh"
+#include "Event.hh"
+#include "EventDistributor.hh"
 #include "FileContext.hh"
 #include "FileException.hh"
+#include "FilePool.hh"
+#include "GlobalCliComm.hh"
+#include "GlobalCommandController.hh"
+#include "GlobalSettings.hh"
+#include "HardwareConfig.hh"
+#include "ImGuiManager.hh"
+#include "InfoTopic.hh"
+#include "InputEventGenerator.hh"
+#include "Keyboard.hh"
+#include "MSXMotherBoard.hh"
+#include "MessageCommand.hh"
+#include "Mixer.hh"
+#include "MsxChar2Unicode.hh"
+#include "RTScheduler.hh"
+#include "RomDatabase.hh"
+#include "RomInfo.hh"
+#include "StateChangeDistributor.hh"
+#include "SymbolManager.hh"
+#include "TclCallbackMessages.hh"
+#include "TclObject.hh"
+#include "UserSettings.hh"
+#include "VideoSystem.hh"
+#include "XMLElement.hh"
+#include "XMLException.hh"
+
 #include "FileOperations.hh"
 #include "foreach_file.hh"
 #include "Thread.hh"
 #include "Timer.hh"
+
 #include "narrow.hh"
 #include "ranges.hh"
 #include "serialize.hh"
 #include "stl.hh"
-#include "StringOp.hh"
 #include "unreachable.hh"
 #include "build-info.hh"
+
 #include <array>
 #include <cassert>
 #include <memory>
@@ -198,7 +205,7 @@ private:
 	const uint64_t reference;
 };
 
-class SoftwareInfoTopic final : InfoTopic
+class SoftwareInfoTopic final : public InfoTopic
 {
 public:
 	SoftwareInfoTopic(InfoCommand& openMSXInfoCommand, Reactor& reactor);
@@ -214,6 +221,7 @@ Reactor::Reactor() = default;
 
 void Reactor::init()
 {
+	shortcuts = make_unique<Shortcuts>();
 	rtScheduler = make_unique<RTScheduler>();
 	eventDistributor = make_unique<EventDistributor>(*this);
 	globalCliComm = make_unique<GlobalCliComm>();
@@ -223,8 +231,10 @@ void Reactor::init()
 		*globalCommandController);
 	inputEventGenerator = make_unique<InputEventGenerator>(
 		*globalCommandController, *eventDistributor, *globalSettings);
-	diskFactory = make_unique<DiskFactory>(
-		*this);
+	symbolManager = make_unique<SymbolManager>(
+		*globalCommandController);
+	imGuiManager = make_unique<ImGuiManager>(*this);
+	diskFactory = make_unique<DiskFactory>(*this);
 	diskManipulator = make_unique<DiskManipulator>(
 		*globalCommandController, *this);
 	virtualDrive = make_unique<DiskChanger>(
@@ -276,7 +286,7 @@ void Reactor::init()
 
 	eventDistributor->registerEventListener(EventType::QUIT, *this);
 #if PLATFORM_ANDROID
-	eventDistributor->registerEventListener(EventType::FOCUS, *this);
+	eventDistributor->registerEventListener(EventType::WINDOW, *this);
 #endif
 	isInit = true;
 }
@@ -288,7 +298,7 @@ Reactor::~Reactor()
 
 	eventDistributor->unregisterEventListener(EventType::QUIT, *this);
 #if PLATFORM_ANDROID
-	eventDistributor->unregisterEventListener(EventType::FOCUS, *this);
+	eventDistributor->unregisterEventListener(EventType::WINDOW, *this);
 #endif
 
 	getGlobalSettings().getPauseSetting().detach(*this);
@@ -330,6 +340,11 @@ InfoCommand& Reactor::getOpenMSXInfoCommand()
 	return globalCommandController->getOpenMSXInfoCommand();
 }
 
+const HotKey& Reactor::getHotKey() const
+{
+	return globalCommandController->getHotKey();
+}
+
 vector<string> Reactor::getHwConfigs(string_view type)
 {
 	vector<string> result;
@@ -355,6 +370,25 @@ vector<string> Reactor::getHwConfigs(string_view type)
 	result.erase(ranges::unique(result), end(result));
 	return result;
 }
+
+const MsxChar2Unicode& Reactor::getMsxChar2Unicode() const
+{
+	// TODO cleanup this code. It should be easier to get a hold of the
+	// 'MsxChar2Unicode' object. Probably the 'Keyboard' class is not the
+	// right location to store it.
+	try {
+		if (MSXMotherBoard* board = getMotherBoard()) {
+			if (const auto* keyb = board->getKeyboard()) {
+				return keyb->getMsxChar2Unicode();
+			}
+		}
+	} catch (MSXException&) {
+		// ignore
+	}
+	static const MsxChar2Unicode defaultMsxChars("MSXVID.TXT");
+	return defaultMsxChars;
+}
+
 
 void Reactor::createMachineSetting()
 {
@@ -455,12 +489,11 @@ void Reactor::switchBoard(Board newBoard)
 		// Don't hold the lock for longer than the actual switch.
 		// In the past we had a potential for deadlocks here, because
 		// (indirectly) the code below still acquires other locks.
-		std::lock_guard<std::mutex> lock(mbMutex);
+		std::scoped_lock lock(mbMutex);
 		activeBoard = newBoard;
 	}
-	eventDistributor->distributeEvent(
-		Event::create<MachineLoadedEvent>());
-	globalCliComm->update(CliComm::HARDWARE, getMachineID(), "select");
+	eventDistributor->distributeEvent(MachineLoadedEvent());
+	globalCliComm->update(CliComm::UpdateType::HARDWARE, getMachineID(), "select");
 	if (activeBoard) {
 		activeBoard->activate(true);
 	}
@@ -493,14 +526,14 @@ void Reactor::enterMainLoop()
 			activeBoard->exitCPULoopSync();
 		}
 	} else {
-		std::lock_guard<std::mutex> lock(mbMutex);
+		std::scoped_lock lock(mbMutex);
 		if (activeBoard) {
 			activeBoard->exitCPULoopAsync();
 		}
 	}
 }
 
-void Reactor::run(CommandLineParser& parser)
+void Reactor::runStartupScripts(const CommandLineParser& parser)
 {
 	auto& commandController = *globalCommandController;
 
@@ -539,52 +572,49 @@ void Reactor::run(CommandLineParser& parser)
 	// ...and re-emit any postponed message callbacks now that the scripts
 	// are loaded
 	tclCallbackMessages->redoPostponedCallbacks();
+}
 
-	// Run
-	if (parser.getParseStatus() == CommandLineParser::RUN) {
-		// don't use Tcl to power up the machine, we cannot pass
-		// exceptions through Tcl and ADVRAM might throw in its
-		// powerUp() method. Solution is to implement dependencies
-		// between devices so ADVRAM can check the error condition
-		// in its constructor
-		//commandController.executeCommand("set power on");
-		if (activeBoard) {
-			activeBoard->powerUp();
-		}
-	}
-
-	while (doOneIteration()) {
-		// nothing
+void Reactor::powerOn()
+{
+	// don't use Tcl to power up the machine, we cannot pass
+	// exceptions through Tcl and ADVRAM might throw in its
+	// powerUp() method. Solution is to implement dependencies
+	// between devices so ADVRAM can check the error condition
+	// in its constructor
+	//commandController.executeCommand("set power on");
+	if (activeBoard) {
+		activeBoard->powerUp();
 	}
 }
 
-bool Reactor::doOneIteration()
+void Reactor::run()
 {
-	eventDistributor->deliverEvents();
-	bool blocked = (blockedCounter > 0) || !activeBoard;
-	if (!blocked) {
-		// copy shared_ptr to keep Board alive (e.g. in case of Tcl
-		// callbacks)
-		auto copy = activeBoard;
-		blocked = !copy->execute();
+	while (running) {
+		eventDistributor->deliverEvents();
+		bool blocked = (blockedCounter > 0) || !activeBoard;
+		if (!blocked) {
+			// copy shared_ptr to keep Board alive (e.g. in case of Tcl
+			// callbacks)
+			auto copy = activeBoard;
+			blocked = !copy->execute();
+		}
+		if (blocked) {
+			// At first sight a better alternative is to use the
+			// SDL_WaitEvent() function. Though when inspecting
+			// the implementation of that function, it turns out
+			// to also use a sleep/poll loop, with even shorter
+			// sleep periods as we use here. Maybe in future
+			// SDL implementations this will be improved.
+			eventDistributor->sleep(20 * 1000);
+		}
 	}
-	if (blocked) {
-		// At first sight a better alternative is to use the
-		// SDL_WaitEvent() function. Though when inspecting
-		// the implementation of that function, it turns out
-		// to also use a sleep/poll loop, with even shorter
-		// sleep periods as we use here. Maybe in future
-		// SDL implementations this will be improved.
-		eventDistributor->sleep(20 * 1000);
-	}
-	return running;
 }
 
 void Reactor::unpause()
 {
 	if (paused) {
 		paused = false;
-		globalCliComm->update(CliComm::STATUS, "paused", "false");
+		globalCliComm->update(CliComm::UpdateType::STATUS, "paused", "false");
 		unblock();
 	}
 }
@@ -593,7 +623,7 @@ void Reactor::pause()
 {
 	if (!paused) {
 		paused = true;
-		globalCliComm->update(CliComm::STATUS, "paused", "true");
+		globalCliComm->update(CliComm::UpdateType::STATUS, "paused", "true");
 		block();
 	}
 }
@@ -616,7 +646,7 @@ void Reactor::unblock()
 // Observer<Setting>
 void Reactor::update(const Setting& setting) noexcept
 {
-	auto& pauseSetting = getGlobalSettings().getPauseSetting();
+	const auto& pauseSetting = getGlobalSettings().getPauseSetting();
 	if (&setting == &pauseSetting) {
 		if (pauseSetting.getBoolean()) {
 			pause();
@@ -627,29 +657,31 @@ void Reactor::update(const Setting& setting) noexcept
 }
 
 // EventListener
-int Reactor::signalEvent(const Event& event)
+bool Reactor::signalEvent(const Event& event)
 {
-	visit(overloaded{
+	std::visit(overloaded{
 		[&](const QuitEvent& /*e*/) {
 			enterMainLoop();
 			running = false;
 		},
-		[&](const FocusEvent& e) {
+		[&](const WindowEvent& e) {
 			(void)e;
 #if PLATFORM_ANDROID
-			// Android SDL port sends a (un)focus event when an app is put in background
-			// by the OS for whatever reason (like an incoming phone call) and all screen
-			// resources are taken away from the app.
-			// In such case the app is supposed to behave as a good citizen
-			// and minimize its resource usage and related battery drain.
-			// The SDL Android port already takes care of halting the Java
-			// part of the sound processing. The Display class makes sure that it wont try
-			// to render anything to the (temporary missing) graphics resources but the
-			// main emulation should also be temporary stopped, in order to minimize CPU usage
-			if (e.getGain()) {
-				unblock();
-			} else {
-				block();
+			if (e.isMainWindow()) {
+				// Android SDL port sends a (un)focus event when an app is put in background
+				// by the OS for whatever reason (like an incoming phone call) and all screen
+				// resources are taken away from the app.
+				// In such case the app is supposed to behave as a good citizen
+				// and minimize its resource usage and related battery drain.
+				// The SDL Android port already takes care of halting the Java
+				// part of the sound processing. The Display class makes sure that it wont try
+				// to render anything to the (temporary missing) graphics resources but the
+				// main emulation should also be temporary stopped, in order to minimize CPU usage
+				if (e.getSdlWindowEvent().type == SDL_WINDOWEVENT_FOCUS_GAINED) {
+					unblock();
+				} else if (e.getSdlWindowEvent().type == SDL_WINDOWEVENT_FOCUS_LOST) {
+					block();
+				}
 			}
 #endif
 		},
@@ -657,7 +689,7 @@ int Reactor::signalEvent(const Event& event)
 			UNREACHABLE; // we didn't subscribe to this event...
 		}
 	}, event);
-	return 0;
+	return false;
 }
 
 
@@ -681,7 +713,7 @@ void ExitCommand::execute(std::span<const TclObject> tokens, TclObject& /*result
 		exitCode = tokens[1].getInt(getInterpreter());
 		break;
 	}
-	distributor.distributeEvent(Event::create<QuitEvent>());
+	distributor.distributeEvent(QuitEvent());
 }
 
 string ExitCommand::help(std::span<const TclObject> /*tokens*/) const
@@ -890,25 +922,11 @@ StoreMachineCommand::StoreMachineCommand(
 
 void StoreMachineCommand::execute(std::span<const TclObject> tokens, TclObject& result)
 {
-	checkNumArgs(tokens, Between{1, 3}, Prefix{1}, "?id? ?filename?");
-	string filename;
-	string_view machineID;
-	switch (tokens.size()) {
-	case 1:
-		machineID = reactor.getMachineID();
-		filename = FileOperations::getNextNumberedFileName("savestates", "openmsxstate", ".xml.gz");
-		break;
-	case 2:
-		machineID = tokens[1].getString();
-		filename = FileOperations::getNextNumberedFileName("savestates", "openmsxstate", ".xml.gz");
-		break;
-	case 3:
-		machineID = tokens[1].getString();
-		filename = tokens[2].getString();
-		break;
-	}
+	checkNumArgs(tokens, 3, Prefix{1}, "id filename");
+	const auto& machineID = tokens[1].getString();
+	const auto& filename = tokens[2].getString();
 
-	auto& board = *reactor.getMachine(machineID);
+	const auto& board = *reactor.getMachine(machineID);
 
 	XmlOutputArchive out(filename);
 	out.serialize("machine", board);
@@ -919,8 +937,6 @@ void StoreMachineCommand::execute(std::span<const TclObject> tokens, TclObject& 
 string StoreMachineCommand::help(std::span<const TclObject> /*tokens*/) const
 {
 	return
-		"store_machine                       Save state of current machine to file \"openmsxNNNN.xml.gz\"\n"
-		"store_machine machineID             Save state of machine \"machineID\" to file \"openmsxNNNN.xml.gz\"\n"
 		"store_machine machineID <filename>  Save state of machine \"machineID\" to indicated file\n"
 		"\n"
 		"This is a low-level command, the 'savestate' script is easier to use.";
@@ -944,35 +960,11 @@ RestoreMachineCommand::RestoreMachineCommand(
 void RestoreMachineCommand::execute(std::span<const TclObject> tokens,
                                     TclObject& result)
 {
-	checkNumArgs(tokens, Between{1, 2}, Prefix{1}, "?filename?");
+	checkNumArgs(tokens, 2, Prefix{1}, "filename");
 	auto newBoard = reactor.createEmptyMotherBoard();
 
-	string filename;
-	switch (tokens.size()) {
-	case 1: {
-		// load last saved entry
-		string lastEntry;
-		time_t lastTime = 0;
-		foreach_file(
-			FileOperations::getUserOpenMSXDir() + "/savestates",
-			[&](const string& path, const FileOperations::Stat& st) {
-				time_t modTime = st.st_mtime;
-				if (modTime > lastTime) {
-					filename = path;
-					lastTime = modTime;
-				}
-			});
-		if (filename.empty()) {
-			throw CommandException("Can't find last saved state.");
-		}
-		break;
-	}
-	case 2:
-		filename = FileOperations::expandTilde(string(tokens[1].getString()));
-		break;
-	}
+	const auto filename = FileOperations::expandTilde(string(tokens[1].getString()));
 
-	//std::cerr << "Loading " << filename << '\n';
 	try {
 		XmlInputArchive in(filename);
 		in.serialize("machine", *newBoard);
@@ -1002,7 +994,6 @@ string RestoreMachineCommand::help(std::span<const TclObject> /*tokens*/) const
 
 void RestoreMachineCommand::tabCompletion(vector<string>& tokens) const
 {
-	// TODO: add the default files (state files in user's savestates dir)
 	completeFileName(tokens, userFileContext());
 }
 
@@ -1114,7 +1105,7 @@ void RealTimeInfo::execute(std::span<const TclObject> /*tokens*/,
                            TclObject& result) const
 {
 	auto delta = Timer::getTime() - reference;
-	result = narrow_cast<double>(delta) / 1000000.0;
+	result = narrow_cast<double>(delta) * (1.0 / 1000000.0);
 }
 
 string RealTimeInfo::help(std::span<const TclObject> /*tokens*/) const
@@ -1139,7 +1130,7 @@ void SoftwareInfoTopic::execute(
 	}
 
 	Sha1Sum sha1sum(tokens[2].getString());
-	auto& romDatabase = reactor.getSoftwareDatabase();
+	const auto& romDatabase = reactor.getSoftwareDatabase();
 	const RomInfo* romInfo = romDatabase.fetchRomInfo(sha1sum);
 	if (!romInfo) {
 		// no match found

@@ -93,6 +93,12 @@ void strAppend(std::string& result, Ts&& ...ts);
 //    s = strCat("The result is ", std::string(30 - item.size(), ' '), item);
 ////strCatImpl::ConcatSpaces spaces(size_t t);
 
+struct Digits {
+	size_t n;
+};
+enum class HexCase {
+	lower, upper
+};
 
 // --- Implementation details ---
 
@@ -113,7 +119,7 @@ template<typename T> struct ConcatUnit;
 // Helper for types which are formatted via a temporary string object
 struct ConcatViaString
 {
-	ConcatViaString(std::string s_)
+	explicit ConcatViaString(std::string s_)
 		: s(std::move(s_))
 	{
 	}
@@ -152,7 +158,7 @@ struct ConcatToString : ConcatViaString
 template<typename T>
 struct ConcatUnit : ConcatViaString
 {
-	ConcatUnit(const T& t)
+	explicit ConcatUnit(const T& t)
 		: ConcatViaString([&](){
 			std::ostringstream os;
 			os << t;
@@ -167,7 +173,7 @@ struct ConcatUnit : ConcatViaString
 //   store the string view (copies the view, not the string)
 template<> struct ConcatUnit<std::string_view>
 {
-	ConcatUnit(const std::string_view v_)
+	explicit ConcatUnit(const std::string_view v_)
 		: v(v_)
 	{
 	}
@@ -192,7 +198,7 @@ private:
 //   store single char (length is constant 1)
 template<> struct ConcatUnit<char>
 {
-	ConcatUnit(char c_)
+	explicit ConcatUnit(char c_)
 		: c(c_)
 	{
 	}
@@ -217,7 +223,7 @@ private:
 //   store bool (length is constant 1)
 template<> struct ConcatUnit<bool>
 {
-	ConcatUnit(bool b_)
+	explicit ConcatUnit(bool b_)
 		: b(b_)
 	{
 	}
@@ -276,7 +282,7 @@ template<std::integral T> struct ConcatIntegral
 	static constexpr bool IS_SIGNED = std::numeric_limits<T>::is_signed;
 	static constexpr size_t BUF_SIZE = 1 + std::numeric_limits<T>::digits10 + IS_SIGNED;
 
-	ConcatIntegral(T t)
+	explicit ConcatIntegral(T t)
 	{
 		auto p = this->end();
 		std::unsigned_integral auto a = absHelper(t);
@@ -303,6 +309,13 @@ template<std::integral T> struct ConcatIntegral
 		return dst + sz;
 	}
 
+	[[nodiscard]] char* copyTail(char* dst, size_t n) const
+	{
+		assert(n <= sz);
+		ranges::copy(std::span{buf.data() + BUF_SIZE - n, n}, dst);
+		return dst + n;
+	}
+
 	[[nodiscard]] operator std::string() const
 	{
 		return std::string(data(), this->size());
@@ -321,9 +334,80 @@ private:
 // Format an integral as a hexadecimal value with a fixed number of characters.
 // This fixed width means it either adds leading zeros or truncates the result
 // (it keeps the rightmost digits).
-template<size_t N, std::integral T> struct ConcatFixedWidthHexIntegral
+template<HexCase Case, std::integral T> struct ConcatVariableWidthHexIntegral
 {
-	ConcatFixedWidthHexIntegral(T t_)
+	ConcatVariableWidthHexIntegral(Digits n_, T t_)
+		: n(n_.n), t(t_)
+	{
+	}
+
+	[[nodiscard]] size_t size() const
+	{
+		return n;
+	}
+
+	[[nodiscard]] char* copy(char* dst) const
+	{
+		char* p = dst + n;
+		auto u = static_cast<FastUnsigned<T>>(t);
+
+		static constexpr char A = (Case == HexCase::lower) ? 'a' : 'A';
+		repeat(n, [&] {
+			auto d = u & 15;
+			*--p = (d < 10) ? static_cast<char>(d + '0')
+			                : static_cast<char>(d - 10 + A);
+			u >>= 4;
+		});
+
+		return dst + n;
+	}
+
+private:
+	size_t n;
+	T t;
+};
+
+// Format an integral as a hexadecimal value with a fixed number of characters.
+// This fixed width means it either adds leading zeros or truncates the result
+// (it keeps the rightmost digits).
+template<size_t N, HexCase Case, std::integral T> struct ConcatFixedWidthHexIntegral
+{
+	explicit ConcatFixedWidthHexIntegral(T t_)
+		: t(t_)
+	{
+	}
+
+	[[nodiscard]] size_t size() const
+	{
+		return N;
+	}
+
+	[[nodiscard]] char* copy(char* dst) const
+	{
+		char* p = dst + N;
+		auto u = static_cast<FastUnsigned<T>>(t);
+
+		static constexpr char A = (Case == HexCase::lower) ? 'a' : 'A';
+		repeat(N, [&] {
+			auto d = u & 15;
+			*--p = (d < 10) ? static_cast<char>(d + '0')
+			                : static_cast<char>(d - 10 + A);
+			u >>= 4;
+		});
+
+		return dst + N;
+	}
+
+private:
+	T t;
+};
+
+// Format an integral as a binary value with a fixed number of characters.
+// This fixed width means it either adds leading zeros or truncates the result
+// (it keeps the rightmost digits).
+template<size_t N, std::integral T> struct ConcatFixedWidthBinIntegral
+{
+	explicit ConcatFixedWidthBinIntegral(T t_)
 		: t(t_)
 	{
 	}
@@ -339,10 +423,8 @@ template<size_t N, std::integral T> struct ConcatFixedWidthHexIntegral
 		auto u = static_cast<FastUnsigned<T>>(t);
 
 		repeat(N, [&] {
-			auto d = u & 15;
-			*--p = (d < 10) ? static_cast<char>(d + '0')
-			                : static_cast<char>(d - 10 + 'a');
-			u >>= 4;
+			*--p = static_cast<char>((u & 1) + '0');
+			u >>= 1;
 		});
 
 		return dst + N;
@@ -356,7 +438,7 @@ private:
 // Prints a number of spaces (without constructing a temporary string).
 struct ConcatSpaces
 {
-	ConcatSpaces(size_t n_)
+	explicit ConcatSpaces(size_t n_)
 		: n(n_)
 	{
 	}
@@ -374,6 +456,38 @@ struct ConcatSpaces
 
 private:
 	size_t n;
+};
+
+
+// Format an integral as a decimal value with a fixed number of characters.
+// This fixed width means it either adds leading spaces or truncates the result
+// (it keeps the rightmost digits).
+template<size_t N, std::integral T> struct ConcatFixedWidthDecIntegral
+{
+	explicit ConcatFixedWidthDecIntegral(T t)
+		: helper(t)
+	{
+	}
+
+	[[nodiscard]] size_t size() const
+	{
+		return N;
+	}
+
+	[[nodiscard]] char* copy(char* dst) const
+	{
+		auto n2 = helper.size();
+		if (N <= n2) {
+			return helper.copyTail(dst, N);
+		} else {
+			ConcatSpaces spaces(N - n2);
+			auto* p = spaces.copy(dst);
+			return helper.copy(p);
+		}
+	}
+
+private:
+	ConcatIntegral<T> helper;
 };
 
 
@@ -486,8 +600,26 @@ template<typename T>
 }
 #endif
 
+template<HexCase Case, std::integral T>
+[[nodiscard]] inline auto makeConcatUnit(const ConcatVariableWidthHexIntegral<Case, T>& t)
+{
+	return t;
+}
+
+template<size_t N, HexCase Case, std::integral T>
+[[nodiscard]] inline auto makeConcatUnit(const ConcatFixedWidthHexIntegral<N, Case, T>& t)
+{
+	return t;
+}
+
 template<size_t N, std::integral T>
-[[nodiscard]] inline auto makeConcatUnit(const ConcatFixedWidthHexIntegral<N, T>& t)
+[[nodiscard]] inline auto makeConcatUnit(const ConcatFixedWidthBinIntegral<N, T>& t)
+{
+	return t;
+}
+
+template<size_t N, std::integral T>
+[[nodiscard]] inline auto makeConcatUnit(const ConcatFixedWidthDecIntegral<N, T>& t)
 {
 	return t;
 }
@@ -599,13 +731,13 @@ template<typename... Ts>
 [[nodiscard]] inline std::string strCat(char               x, const std::string& y) { return x + y; }
 [[nodiscard]] inline std::string strCat(const std::string& x, const char*        y) { return x + y; }
 [[nodiscard]] inline std::string strCat(const std::string& x, char               y) { return x + y; }
-[[nodiscard]] inline std::string strCat(std::string&&      x, const std::string& y) { return x + y; }
-[[nodiscard]] inline std::string strCat(const std::string& x, std::string&&      y) { return x + y; }
-[[nodiscard]] inline std::string strCat(std::string&&      x, std::string&&      y) { return x + y; }
-[[nodiscard]] inline std::string strCat(const char*        x, std::string&&      y) { return x + y; }
-[[nodiscard]] inline std::string strCat(char               x, std::string&&      y) { return x + y; }
-[[nodiscard]] inline std::string strCat(std::string&&      x, const char*        y) { return x + y; }
-[[nodiscard]] inline std::string strCat(std::string&&      x, char               y) { return x + y; }
+[[nodiscard]] inline std::string strCat(std::string&&      x, const std::string& y) { return std::move(x) + y; }
+[[nodiscard]] inline std::string strCat(const std::string& x, std::string&&      y) { return x + std::move(y); }
+[[nodiscard]] inline std::string strCat(std::string&&      x, std::string&&      y) { return std::move(x) + std::move(y); }
+[[nodiscard]] inline std::string strCat(const char*        x, std::string&&      y) { return x + std::move(y); }
+[[nodiscard]] inline std::string strCat(char               x, std::string&&      y) { return x + std::move(y); }
+[[nodiscard]] inline std::string strCat(std::string&&      x, const char*        y) { return std::move(x) + y; }
+[[nodiscard]] inline std::string strCat(std::string&&      x, char               y) { return std::move(x) + y; }
 
 template<typename... Ts> [[nodiscard]] TemporaryString tmpStrCat(Ts&&... ts)
 {
@@ -642,15 +774,33 @@ inline void strAppend(std::string& x, const char*        y) { x += y; }
 inline void strAppend(std::string& x, std::string_view   y) { x.append(y.data(), y.size()); }
 
 
-template<size_t N, std::integral T>
-[[nodiscard]] inline strCatImpl::ConcatFixedWidthHexIntegral<N, T> hex_string(T t)
+template<HexCase Case = HexCase::lower, std::integral T>
+[[nodiscard]] inline strCatImpl::ConcatVariableWidthHexIntegral<Case, T> hex_string(Digits n, T t)
 {
-	return {t};
+	return {n, t};
 }
 
-[[nodiscard]] inline strCatImpl::ConcatSpaces spaces(size_t n)
+template<size_t N, HexCase Case = HexCase::lower, std::integral T>
+[[nodiscard]] inline auto hex_string(T t)
 {
-	return {n};
+	return strCatImpl::ConcatFixedWidthHexIntegral<N, Case, T>{t};
+}
+
+template<size_t N, std::integral T>
+[[nodiscard]] inline auto bin_string(T t)
+{
+	return strCatImpl::ConcatFixedWidthBinIntegral<N, T>{t};
+}
+
+template<size_t N, std::integral T>
+[[nodiscard]] inline auto dec_string(T t)
+{
+	return strCatImpl::ConcatFixedWidthDecIntegral<N, T>{t};
+}
+
+[[nodiscard]] inline auto spaces(size_t n)
+{
+	return strCatImpl::ConcatSpaces{n};
 }
 
 #endif

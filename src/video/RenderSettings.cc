@@ -1,11 +1,14 @@
 #include "RenderSettings.hh"
+
 #include "CommandController.hh"
 #include "CommandException.hh"
 #include "Version.hh"
+
 #include "stl.hh"
 #include "unreachable.hh"
+
 #include "build-info.hh"
-#include "components.hh"
+
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -16,44 +19,36 @@ namespace openmsx {
 
 EnumSetting<RenderSettings::ScaleAlgorithm>::Map RenderSettings::getScalerMap()
 {
-	EnumSetting<ScaleAlgorithm>::Map scalerMap = { { "simple", SCALER_SIMPLE } };
-	if constexpr (MAX_SCALE_FACTOR > 1) {
-		append(scalerMap, {{"SaI",        SCALER_SAI},
-		                   {"ScaleNx",    SCALER_SCALE},
-		                   {"hq",         SCALER_HQ},
-		                   {"hqlite",     SCALER_HQLITE},
-		                   {"RGBtriplet", SCALER_RGBTRIPLET},
-		                   {"TV",         SCALER_TV}});
-		if (!Version::RELEASE) {
-			// This scaler is not ready yet for the upcoming 0.8.1
-			// release, so disable it. As soon as it is ready we
-			// can remove this test.
-			scalerMap.emplace_back("MLAA", SCALER_MLAA);
-		}
-	}
+	using enum ScaleAlgorithm;
+	EnumSetting<ScaleAlgorithm>::Map scalerMap = {
+		{"simple",     SIMPLE},
+		{"ScaleNx",    SCALE},
+		{"hq",         HQ},
+		{"hqlite",     HQLITE},
+		{"RGBtriplet", RGBTRIPLET},
+		{"TV",         TV}
+	};
 	return scalerMap;
 }
 
 EnumSetting<RenderSettings::RendererID>::Map RenderSettings::getRendererMap()
 {
+	using enum RendererID;
 	EnumSetting<RendererID>::Map rendererMap = {
-		{ "none", DUMMY },// TODO: only register when in CliComm mode
-		{ "SDL", SDL } };
-#if COMPONENT_GL
-	// compiled with OpenGL-2.0, still need to test whether
-	// it's available at run time, but cannot be done here
-	rendererMap.emplace_back("SDLGL-PP", SDLGL_PP);
-#endif
+		{"uninitialized", UNINITIALIZED},
+		{"none",          DUMMY},
+		{"SDLGL-PP",      SDLGL_PP}
+	};
 	return rendererMap;
 }
 
 RenderSettings::RenderSettings(CommandController& commandController)
 	: accuracySetting(commandController,
-		"accuracy", "rendering accuracy", ACC_PIXEL,
+		"accuracy", "rendering accuracy", Accuracy::PIXEL,
 		EnumSetting<Accuracy>::Map{
-			{"screen", ACC_SCREEN},
-			{"line",   ACC_LINE},
-			{"pixel",  ACC_PIXEL}})
+			{"screen", Accuracy::SCREEN},
+			{"line",   Accuracy::LINE},
+			{"pixel",  Accuracy::PIXEL}})
 
 	, deinterlaceSetting(commandController,
 		"deinterlace", "deinterlacing on/off", true)
@@ -98,12 +93,7 @@ RenderSettings::RenderSettings(CommandController& commandController)
 
 	, rendererSetting(commandController,
 		"renderer", "rendering back-end used to display the MSX screen",
-#if COMPONENT_GL
-		SDLGL_PP,
-#else
-		SDL,
-#endif
-		getRendererMap())
+		RendererID::SDLGL_PP, getRendererMap(), Setting::Save::NO)
 
 	, horizontalBlurSetting(commandController,
 		"blur", "amount of horizontal blur effect: 0 = none, 100 = full",
@@ -111,11 +101,11 @@ RenderSettings::RenderSettings(CommandController& commandController)
 
 	, scaleAlgorithmSetting(
 		commandController, "scale_algorithm", "scale algorithm",
-		SCALER_SIMPLE, getScalerMap())
+		ScaleAlgorithm::SIMPLE, getScalerMap())
 
 	, scaleFactorSetting(commandController,
 		"scale_factor", "scale factor",
-		std::min(2, MAX_SCALE_FACTOR), MIN_SCALE_FACTOR, MAX_SCALE_FACTOR)
+		std::clamp(2, MIN_SCALE_FACTOR, MAX_SCALE_FACTOR), MIN_SCALE_FACTOR, MAX_SCALE_FACTOR)
 
 	, scanlineAlphaSetting(commandController,
 		"scanline", "amount of scanline effect: 0 = none, 100 = full",
@@ -127,12 +117,12 @@ RenderSettings::RenderSettings(CommandController& commandController)
 
 	, disableSpritesSetting(commandController,
 		"disablesprites", "disable sprite rendering",
-		false, Setting::DONT_SAVE)
+		false, Setting::Save::NO)
 
 	, cmdTimingSetting(commandController,
 		"cmdtiming", "VDP command timing", false,
 		EnumSetting<bool>::Map{{"real", false}, {"broken", true}},
-		Setting::DONT_SAVE)
+		Setting::Save::NO)
 
 	, tooFastAccessSetting(commandController,
 		"too_fast_vram_access",
@@ -142,22 +132,20 @@ RenderSettings::RenderSettings(CommandController& commandController)
 		" ignore -> access speed is ignored, all accesses are executed",
 		false,
 		EnumSetting<bool>::Map{{"real", false }, {"ignore", true}},
-		Setting::DONT_SAVE)
+		Setting::Save::NO)
 
 	, displayDeformSetting(
 		commandController,
-		"display_deform", "Display deform (for the moment this only "
-		"works with the SDLGL-PP renderer)", DEFORM_NORMAL,
+		"display_deform", "Display deform", DisplayDeform::NORMAL,
 		EnumSetting<DisplayDeform>::Map{
-			{"normal", DEFORM_NORMAL},
-			{"3d",     DEFORM_3D}})
+			{"normal", DisplayDeform::NORMAL},
+			{"3d",     DisplayDeform::_3D}})
 
 	, vSyncSetting(commandController,
 		"vsync", "Synchronize page flip with the host screen vertical sync:\n"
 		" on -> flip on host vsync: avoids tearing\n"
 		" off -> immediate flip: might be more fluent when host framerate"
-		" (typically 60Hz) differs from MSX framerate (50 or 60Hz)\n"
-		"Currently this only affects the SDLGL-PP renderer.",
+		" (typically 60Hz) differs from MSX framerate (50 or 60Hz).\n",
 		true)
 
 	// Many android devices are relatively low powered. Therefore use
@@ -167,10 +155,13 @@ RenderSettings::RenderSettings(CommandController& commandController)
 		"horizontal_stretch",
 		"Amount of horizontal stretch: this many MSX pixels will be "
 		"stretched over the complete width of the output screen.\n"
-		"  320 = no stretch\n"
-		"  256 = max stretch (no border visible anymore)\n"
-		"  good values are 272 or 280\n"
-		"This setting has only effect when using the SDLGL-PP renderer.",
+		"  320 = no stretch (large borders)\n"
+		"  288 = a bit more than all border pixels\n"
+		"  284 = all border pixels\n"
+		"  280 = a bit less than all border pixels\n"
+		"  272 = realistic\n"
+		"  256 = max stretch (no border visible at all)\n"
+		"  good values are 272 or 280\n",
 		PLATFORM_ANDROID ? 320.0 : 280.0, 256.0, 320.0)
 
 	, pointerHideDelaySetting(commandController,
@@ -191,7 +182,7 @@ RenderSettings::RenderSettings(CommandController& commandController)
 	updateBrightnessAndContrast();
 
 	auto& interp = commandController.getInterpreter();
-	colorMatrixSetting.setChecker([this, &interp](TclObject& newValue) {
+	colorMatrixSetting.setChecker([this, &interp](const TclObject& newValue) {
 		try {
 			parseColorMatrix(interp, newValue);
 		} catch (CommandException& e) {
@@ -206,26 +197,14 @@ RenderSettings::RenderSettings(CommandController& commandController)
 		cmIdentity = true;
 	}
 
-	// RendererSetting
-	// Make sure the value 'none' never gets saved in settings.xml.
-	// This happened in the following scenario:
-	// - During startup, the renderer is forced to the value 'none'.
-	// - If there's an error in the parsing of the command line (e.g.
-	//   because an invalid option is passed) then openmsx will never
-	//   get to the point where the actual renderer setting is restored
-	// - After the error, the classes are destructed, part of that is
-	//   saving the current settings. But without extra care, this would
-	//   save renderer=none
-	rendererSetting.setDontSaveValue(TclObject("none"));
-
-	// A saved value 'none' can be very confusing. If so change it to default.
-	if (rendererSetting.getEnum() == DUMMY) {
-		rendererSetting.setValue(rendererSetting.getDefaultValue());
-	}
-	// set saved value as default
-	rendererSetting.setRestoreValue(rendererSetting.getValue());
-
-	rendererSetting.setEnum(DUMMY); // always start hidden
+	rendererSetting.setEnum(RendererID::UNINITIALIZED); // always start hidden
+	rendererSetting.setChecker([this](const TclObject& newValue) {
+		if (newValue.getString() == "uninitialized") {
+			throw CommandException("can't set special value 'uninitialized'");
+		}
+		// the default enum check
+		(void)rendererSetting.fromStringBase(newValue.getString());
+	});
 }
 
 RenderSettings::~RenderSettings()
@@ -248,9 +227,9 @@ void RenderSettings::update(const Setting& setting) noexcept
 void RenderSettings::updateBrightnessAndContrast()
 {
 	float contrastValue = getContrast();
-	contrast = (contrastValue >= 0.0f) ? (1.0f + contrastValue /  25.0f)
-	                                   : (1.0f + contrastValue / 125.0f);
-	brightness = (getBrightness() / 100.0f - 0.5f) * contrast + 0.5f;
+	contrast = (contrastValue >= 0.0f) ? (1.0f + contrastValue * (1.0f /  25.0f))
+	                                   : (1.0f + contrastValue * (1.0f / 125.0f));
+	brightness = (getBrightness() * (1.0f / 100.0f) - 0.5f) * contrast + 0.5f;
 }
 
 static float conv2(float x, float gamma)

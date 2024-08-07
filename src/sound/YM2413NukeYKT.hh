@@ -59,7 +59,10 @@
 #define YM2413NUKEYKT_HH
 
 #include "YM2413Core.hh"
+
 #include "inline.hh"
+#include "stl.hh"
+
 #include <array>
 #include <span>
 
@@ -85,6 +88,15 @@ public:
 		decay,
 		sustain,
 		release,
+	};
+	enum class RmNum : uint8_t {
+		bd0, // cycles == 11
+		hh,  //           12
+		tom, //           13
+		bd1, //           14
+		sd,  //           15
+		tc,  //           16
+		NUM
 	};
 
 private:
@@ -145,13 +157,13 @@ private:
 		uint8_t_2 rr4 = {0, 0}; // multiplied by 4
 	};
 	struct Locals {
-		Locals(std::span<float*, 9 + 5> out_) : out(out_) {}
+		explicit Locals(std::span<float*, 9 + 5> out_) : out(out_) {}
 
 		std::span<float*, 9 + 5> out;
-		uint8_t rm_hh_bits;
-		bool use_rm_patches;
-		bool lfo_am_car;
-		bool eg_timer_carry;
+		uint8_t rm_hh_bits = 0;
+		bool use_rm_patches = false;
+		bool lfo_am_car = false; // between cycle 17 and 0 'lfo_am_car' is always =0
+		bool eg_timer_carry = false;
 	};
 	struct Write {
 		uint8_t port;
@@ -193,7 +205,7 @@ private:
 
 private:
 	static const std::array<Patch, 15> m_patches;
-	static const std::array<Patch,  6> r_patches;
+	static const array_with_enum_index<RmNum, Patch> r_patches;
 
 	// IO
 	std::array<Write, 18> writes;

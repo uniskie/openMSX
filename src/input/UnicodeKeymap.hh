@@ -3,7 +3,10 @@
 
 #include "CommandException.hh"
 #include "MsxChar2Unicode.hh"
+
 #include "narrow.hh"
+#include "stl.hh"
+
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -34,7 +37,7 @@ public:
 	/** Creates a key matrix position from a uint8_t: the row is stored in
 	  * the high nibble, the column is stored in the low nibble.
 	  */
-	constexpr KeyMatrixPosition(uint8_t rowCol_)
+	explicit constexpr KeyMatrixPosition(uint8_t rowCol_)
 		: KeyMatrixPosition(rowCol_ >> 4, rowCol_ & 0x0F)
 	{
 	}
@@ -99,13 +102,13 @@ class UnicodeKeymap
 {
 public:
 	struct KeyInfo {
-		enum Modifier { SHIFT, CTRL, GRAPH, CAPS, CODE, NUM_MODIFIERS };
+		enum class Modifier { SHIFT, CTRL, GRAPH, CAPS, CODE, NUM };
 		// Modifier masks:
-		static constexpr uint8_t SHIFT_MASK = 1 << SHIFT;
-		static constexpr uint8_t CTRL_MASK  = 1 << CTRL;
-		static constexpr uint8_t GRAPH_MASK = 1 << GRAPH;
-		static constexpr uint8_t CAPS_MASK  = 1 << CAPS;
-		static constexpr uint8_t CODE_MASK  = 1 << CODE;
+		static constexpr uint8_t SHIFT_MASK = 1 << to_underlying(Modifier::SHIFT);
+		static constexpr uint8_t CTRL_MASK  = 1 << to_underlying(Modifier::CTRL);
+		static constexpr uint8_t GRAPH_MASK = 1 << to_underlying(Modifier::GRAPH);
+		static constexpr uint8_t CAPS_MASK  = 1 << to_underlying(Modifier::CAPS);
+		static constexpr uint8_t CODE_MASK  = 1 << to_underlying(Modifier::CODE);
 
 		constexpr KeyInfo() = default;
 		constexpr KeyInfo(KeyMatrixPosition pos_, uint8_t modMask_)

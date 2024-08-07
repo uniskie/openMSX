@@ -3,6 +3,7 @@
 
 #include "OSDTopWidget.hh"
 #include "Command.hh"
+
 #include <memory>
 
 namespace openmsx {
@@ -19,9 +20,6 @@ public:
 	[[nodiscard]] const OSDTopWidget& getTopWidget() const { return topWidget; }
 	[[nodiscard]]       OSDTopWidget& getTopWidget()       { return topWidget; }
 	void refresh() const;
-
-	void setOpenGL(bool openGL_) { openGL = openGL_; }
-	[[nodiscard]] bool isOpenGL() const { return openGL; }
 
 private:
 	Display& display;
@@ -41,13 +39,12 @@ private:
 		void configure(std::span<const TclObject> tokens, TclObject& result);
 		[[nodiscard]] std::unique_ptr<OSDWidget> create(
 			std::string_view type, const TclObject& name) const;
-		void configure(OSDWidget& widget, std::span<const TclObject> tokens);
+		void configure(OSDWidget& widget, std::span<const TclObject> tokens) const;
 
 		[[nodiscard]] OSDWidget& getWidget(std::string_view name) const;
 	} osdCommand;
 
 	OSDTopWidget topWidget;
-	bool openGL;
 };
 
 } // namespace openmsx

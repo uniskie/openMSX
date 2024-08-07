@@ -25,7 +25,6 @@ namespace LZ4 {
 
 static constexpr int MEMORY_USAGE = 14;
 static constexpr int HASHLOG = MEMORY_USAGE - 2;
-static constexpr int HASH_SIZE_U32 = 1 << HASHLOG;
 static constexpr int ACCELERATION = 1;
 static constexpr int MINMATCH = 4;
 static constexpr int WILDCOPYLENGTH = 8;
@@ -262,7 +261,7 @@ template<> struct HashImpl<false, false> {
 		putPositionOnHash(p, hashPosition(p), srcBase);
 	}
 	[[nodiscard]] uint32_t getIndexOnHash(uint32_t /*h*/) const {
-		UNREACHABLE; return 0;
+		UNREACHABLE;
 	}
 	[[nodiscard]] const uint8_t* getPositionOnHash(uint32_t h, const uint8_t* /*srcBase*/) const {
 		return tab[h];
@@ -353,7 +352,7 @@ ALWAYS_INLINE int compress_impl(const uint8_t* src, uint8_t* const dst, const in
 		auto litLength = unsigned(ip - anchor);
 		uint8_t* token = op++;
 		if (litLength >= RUN_MASK) {
-			int len = int(litLength - RUN_MASK);
+			auto len = int(litLength - RUN_MASK);
 			*token = RUN_MASK << ML_BITS;
 			while (len >= 255) {
 				*op++ = 255;
@@ -531,7 +530,7 @@ int decompress(const uint8_t* src, uint8_t* dst, int compressedSize, int dstCapa
 			ip += 2;
 			match = op - offset;
 
-			// get matchlength
+			// get match-length
 			length = token & ML_MASK;
 
 			if (length == ML_MASK) {
@@ -546,15 +545,13 @@ int decompress(const uint8_t* src, uint8_t* dst, int compressedSize, int dstCapa
 					goto safe_match_copy;
 				}
 
-				// Fastpath check: Avoids a branch in wildCopy32 if true
-				if (match >= dst) {
-					if (offset >= 8) {
-						memcpy(op +  0, match +  0, 8);
-						memcpy(op +  8, match +  8, 8);
-						memcpy(op + 16, match + 16, 2);
-						op += length;
-						continue;
-					}
+				// Fast path check: Avoids a branch in wildCopy32 if true
+				if ((match >= dst) && (offset >= 8)) {
+					memcpy(op +  0, match +  0, 8);
+					memcpy(op +  8, match +  8, 8);
+					memcpy(op + 16, match + 16, 2);
+					op += length;
+					continue;
 				}
 			}
 
@@ -623,7 +620,7 @@ int decompress(const uint8_t* src, uint8_t* dst, int compressedSize, int dstCapa
 		// copy literals
 		cpy = op + length;
 safe_literal_copy:
-		if ((((cpy > oend - MFLIMIT) || (ip + length > iend - (2 + 1 + LASTLITERALS))))) {
+		if ((cpy > oend - MFLIMIT) || (ip + length > iend - (2 + 1 + LASTLITERALS))) {
 			// We've either hit the input parsing restriction or the output parsing restriction.
 			// If we've hit the input parsing condition then this must be the last sequence.
 			// If we've hit the output parsing condition then we are either using partialDecoding

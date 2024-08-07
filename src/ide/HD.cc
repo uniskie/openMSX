@@ -2,7 +2,7 @@
 #include "FileContext.hh"
 #include "FilePool.hh"
 #include "DeviceConfig.hh"
-#include "CliComm.hh"
+#include "MSXCliComm.hh"
 #include "HDImageCLI.hh"
 #include "MSXMotherBoard.hh"
 #include "Reactor.hh"
@@ -21,11 +21,16 @@ namespace openmsx {
 
 using std::string;
 
+std::shared_ptr<HD::HDInUse> HD::getDrivesInUse(MSXMotherBoard& motherBoard)
+{
+	return motherBoard.getSharedStuff<HDInUse>("hdInUse");
+}
+
 HD::HD(const DeviceConfig& config)
 	: motherBoard(config.getMotherBoard())
 	, name("hdX")
 {
-	hdInUse = motherBoard.getSharedStuff<HDInUse>("hdInUse");
+	hdInUse = getDrivesInUse(motherBoard);
 
 	int id = 0;
 	while ((*hdInUse)[id]) {
@@ -40,19 +45,19 @@ HD::HD(const DeviceConfig& config)
 	// For the initial hd image, savestate should only try exactly this
 	// (resolved) filename. For user-specified hd images (command line or
 	// via hda command) savestate will try to re-resolve the filename.
-	auto mode = File::NORMAL;
-	string cliImage = HDImageCLI::getImageForId(id);
-	if (cliImage.empty()) {
+	auto mode = File::OpenMode::NORMAL;
+	if (string cliImage = HDImageCLI::getImageForId(id);
+	    cliImage.empty()) {
 		const auto& original = config.getChildData("filename");
 		filename = Filename(config.getFileContext().resolveCreate(original));
-		mode = File::CREATE;
+		mode = File::OpenMode::CREATE;
 	} else {
 		filename = Filename(std::move(cliImage), userFileContext());
 	}
 
 	file = File(filename, mode);
 	filesize = file.getSize();
-	if (mode == File::CREATE && filesize == 0) {
+	if (mode == File::OpenMode::CREATE && filesize == 0) {
 		// OK, the file was just newly created. Now make sure the file
 		// is of the right (default) size
 		file.truncate(size_t(config.getChildDataAsInt("size", 0)) * 1024 * 1024);
@@ -69,13 +74,13 @@ HD::HD(const DeviceConfig& config)
 		motherBoard.getReactor().getGlobalSettings().getPowerSetting());
 
 	motherBoard.registerMediaInfo(name, *this);
-	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, name, "add");
+	motherBoard.getMSXCliComm().update(CliComm::UpdateType::HARDWARE, name, "add");
 }
 
 HD::~HD()
 {
 	motherBoard.unregisterMediaInfo(*this);
-	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, name, "remove");
+	motherBoard.getMSXCliComm().update(CliComm::UpdateType::HARDWARE, name, "remove");
 
 	unsigned id = name[2] - 'a';
 	assert((*hdInUse)[id]);
@@ -94,7 +99,7 @@ void HD::switchImage(const Filename& newFilename)
 	filename = newFilename;
 	filesize = file.getSize();
 	tigerTree.emplace(*this, filesize, filename.getResolved());
-	motherBoard.getMSXCliComm().update(CliComm::MEDIA, getName(),
+	motherBoard.getMSXCliComm().update(CliComm::UpdateType::MEDIA, getName(),
 	                                   filename.getResolved());
 }
 
@@ -141,10 +146,10 @@ void HD::showProgress(size_t position, size_t maxPosition)
 	if (((now - lastProgressTime) > 1000000) ||
 	    ((position == maxPosition) && everDidProgress)) {
 		lastProgressTime = now;
-		int percentage = int((100 * position) / maxPosition);
+		auto fraction = float(position) / float(maxPosition);
 		motherBoard.getMSXCliComm().printProgress(
-			"Calculating hash for ", filename.getResolved(),
-			"... ", percentage, '%');
+			tmpStrCat("Calculating hash for ", filename.getResolved()),
+			fraction);
 		motherBoard.getReactor().getDisplay().repaint();
 		everDidProgress = true;
 	}

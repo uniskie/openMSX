@@ -1,7 +1,7 @@
 #include "InputEventFactory.hh"
 #include "Event.hh"
 #include "CommandException.hh"
-#include "Keys.hh"
+#include "SDLKey.hh"
 #include "StringOp.hh"
 #include "TclObject.hh"
 #include "one_of.hh"
@@ -11,14 +11,26 @@ namespace openmsx::InputEventFactory {
 
 [[nodiscard]] static Event parseKeyEvent(std::string_view str, uint32_t unicode)
 {
-	auto keyCode = Keys::getCode(str);
-	if (keyCode == Keys::K_NONE) {
+	auto key = SDLKey::fromString(str);
+	if (!key) {
 		throw CommandException("Invalid keycode: ", str);
 	}
-	if (keyCode & Keys::KD_RELEASE) {
-		return Event::create<KeyUpEvent>(keyCode);
+
+	SDL_Event evt;
+	evt.key = SDL_KeyboardEvent{};
+	auto& e = evt.key;
+
+	e.timestamp = SDL_GetTicks();
+	e.keysym = key->sym;
+	e.keysym.unused = unicode;
+	if (key->down) {
+		e.type = SDL_KEYDOWN;
+		e.state = SDL_PRESSED;
+		return KeyDownEvent(evt);
 	} else {
-		return Event::create<KeyDownEvent>(keyCode, unicode);
+		e.type = SDL_KEYUP;
+		e.state = SDL_RELEASED;
+		return KeyUpEvent(evt);
 	}
 }
 
@@ -26,7 +38,7 @@ namespace openmsx::InputEventFactory {
 {
 	auto len = str.getListLength(interp);
 	if (len == 1) {
-		return Event::create<GroupEvent>(
+		return GroupEvent(
 			std::initializer_list<EventType>{EventType::KEY_UP, EventType::KEY_DOWN},
 			makeTclList("keyb"));
 	} else if (len == 2) {
@@ -62,7 +74,7 @@ namespace openmsx::InputEventFactory {
 		auto comp1 = str.getListIndex(interp, 1).getString();
 		if (comp1 == "motion") {
 			if (len == 2) {
-				return Event::create<GroupEvent>(
+				return GroupEvent(
 					std::initializer_list<EventType>{EventType::MOUSE_MOTION},
 					makeTclList("mouse", comp1));
 			} else if (len == one_of(4u, 6u)) {
@@ -73,34 +85,63 @@ namespace openmsx::InputEventFactory {
 				} else {
 					// for bw-compat also allow events without absX,absY
 				}
-				return Event::create<MouseMotionEvent>(
-					str.getListIndex(interp, 2).getInt(interp),
-					str.getListIndex(interp, 3).getInt(interp),
-					absX, absY);
+
+				SDL_Event evt;
+				evt.motion = SDL_MouseMotionEvent{};
+				auto& e = evt.motion;
+
+				e.type = SDL_MOUSEMOTION;
+				e.timestamp = SDL_GetTicks();
+				e.x = absX;
+				e.y = absY;
+				e.xrel = str.getListIndex(interp, 2).getInt(interp);
+				e.yrel = str.getListIndex(interp, 3).getInt(interp);
+				return MouseMotionEvent(evt);
 			}
 		} else if (comp1.starts_with("button")) {
 			if (len == 2) {
-				return Event::create<GroupEvent>(
+				return GroupEvent(
 					std::initializer_list<EventType>{EventType::MOUSE_BUTTON_UP, EventType::MOUSE_BUTTON_DOWN},
 					makeTclList("mouse", "button"));
 			} else if (len == 3) {
 				if (auto button = StringOp::stringToBase<10, unsigned>(comp1.substr(6))) {
+					SDL_Event evt;
+					evt.button = SDL_MouseButtonEvent{};
+					auto& e = evt.button;
+
+					e.timestamp = SDL_GetTicks();
+					e.button = narrow<uint8_t>(*button);
 					if (upDown(str.getListIndex(interp, 2).getString())) {
-						return Event::create<MouseButtonUpEvent>  (*button);
+						e.type = SDL_MOUSEBUTTONUP;
+						e.state = SDL_RELEASED;
+						return MouseButtonUpEvent(evt);
 					} else {
-						return Event::create<MouseButtonDownEvent>(*button);
+						e.type = SDL_MOUSEBUTTONDOWN;
+						e.state = SDL_PRESSED;
+						return MouseButtonDownEvent(evt);
 					}
 				}
 			}
 		} else if (comp1 == "wheel") {
 			if (len == 2) {
-				return Event::create<GroupEvent>(
+				return GroupEvent(
 					std::initializer_list<EventType>{EventType::MOUSE_WHEEL},
 					makeTclList("mouse", comp1));
 			} else if (len == 4) {
-				return Event::create<MouseWheelEvent>(
-					str.getListIndex(interp, 2).getInt(interp),
-					str.getListIndex(interp, 3).getInt(interp));
+				SDL_Event evt;
+				evt.wheel = SDL_MouseWheelEvent{};
+				auto& e = evt.wheel;
+
+				e.type = SDL_MOUSEWHEEL;
+				e.timestamp = SDL_GetTicks();
+				e.direction = SDL_MOUSEWHEEL_NORMAL;
+				e.x = str.getListIndex(interp, 2).getInt(interp);
+				e.y = str.getListIndex(interp, 3).getInt(interp);
+				#if (SDL_VERSION_ATLEAST(2, 0, 18))
+					e.preciseX = narrow_cast<float>(e.x);
+					e.preciseY = narrow_cast<float>(e.y);
+				#endif
+				return MouseWheelEvent(evt);
 			}
 		}
 	}
@@ -111,19 +152,20 @@ namespace openmsx::InputEventFactory {
 {
 	if (str.getListLength(interp) == 3) {
 		auto buttonName = str.getListIndex(interp, 1).getString();
-		unsigned button = [&] {
+		auto button = [&] {
+			using enum OsdControlEvent::Button;
 			if (buttonName == "LEFT") {
-				return OsdControlEvent::LEFT_BUTTON;
+				return LEFT;
 			} else if (buttonName == "RIGHT") {
-				return OsdControlEvent::RIGHT_BUTTON;
+				return RIGHT;
 			} else if (buttonName == "UP") {
-				return OsdControlEvent::UP_BUTTON;
+				return UP;
 			} else if (buttonName == "DOWN") {
-				return OsdControlEvent::DOWN_BUTTON;
+				return DOWN;
 			} else if (buttonName == "A") {
-				return OsdControlEvent::A_BUTTON;
+				return A;
 			} else if (buttonName == "B") {
-				return OsdControlEvent::B_BUTTON;
+				return B;
 			} else {
 				throw CommandException(
 					"Invalid OSDcontrol event, invalid button name: ",
@@ -132,9 +174,9 @@ namespace openmsx::InputEventFactory {
 		}();
 		auto buttonAction = str.getListIndex(interp, 2).getString();
 		if (buttonAction == "RELEASE") {
-			return Event::create<OsdControlReleaseEvent>(button, Event{});
+			return OsdControlReleaseEvent(button);
 		} else if (buttonAction == "PRESS") {
-			return Event::create<OsdControlPressEvent>  (button, Event{});
+			return OsdControlPressEvent(button);
 		}
 	}
 	throw CommandException("Invalid OSDcontrol event: ", str.getString());
@@ -148,17 +190,18 @@ namespace openmsx::InputEventFactory {
 		auto comp1 = str.getListIndex(interp, 1).getString();
 
 		if (len == 2) {
+			using enum EventType;
 			if (comp1.starts_with("button")) {
-				return Event::create<GroupEvent>(
-					std::initializer_list<EventType>{EventType::JOY_BUTTON_UP, EventType::JOY_BUTTON_DOWN},
+				return GroupEvent(
+					std::initializer_list<EventType>{JOY_BUTTON_UP, JOY_BUTTON_DOWN},
 					makeTclList("joy", "button"));
 			} else if (comp1.starts_with("axis")) {
-				return Event::create<GroupEvent>(
-					std::initializer_list<EventType>{EventType::JOY_AXIS_MOTION},
+				return GroupEvent(
+					std::initializer_list<EventType>{JOY_AXIS_MOTION},
 					makeTclList("joy", "axis"));
 			} else if (comp1.starts_with("hat")) {
-				return Event::create<GroupEvent>(
-					std::initializer_list<EventType>{EventType::JOY_HAT},
+				return GroupEvent(
+					std::initializer_list<EventType>{JOY_HAT},
 					makeTclList("joy", "hat"));
 			}
 		} else if (len == 3) {
@@ -167,16 +210,35 @@ namespace openmsx::InputEventFactory {
 				unsigned joystick = *j - 1;
 				if (comp1.starts_with("button")) {
 					if (auto button = StringOp::stringToBase<10, unsigned>(comp1.substr(6))) {
+						SDL_Event evt;
+						evt.jbutton = SDL_JoyButtonEvent{};
+						auto& e = evt.jbutton;
+
+						e.timestamp = SDL_GetTicks();
+						e.which = joystick;
+						e.button = narrow_cast<uint8_t>(*button);
 						if (upDown(comp2.getString())) {
-							return Event::create<JoystickButtonUpEvent>  (joystick, *button);
+							e.type = SDL_JOYBUTTONUP;
+							e.state = SDL_RELEASED;
+							return JoystickButtonUpEvent(evt);
 						} else {
-							return Event::create<JoystickButtonDownEvent>(joystick, *button);
+							e.type = SDL_JOYBUTTONDOWN;
+							e.state = SDL_PRESSED;
+							return JoystickButtonDownEvent(evt);
 						}
 					}
 				} else if (comp1.starts_with("axis")) {
 					if (auto axis = StringOp::stringToBase<10, unsigned>(comp1.substr(4))) {
-						int value = str.getListIndex(interp, 2).getInt(interp);
-						return Event::create<JoystickAxisMotionEvent>(joystick, *axis, value);
+						SDL_Event evt;
+						evt.jaxis = SDL_JoyAxisEvent{};
+						auto& e = evt.jaxis;
+
+						e.type = SDL_JOYAXISMOTION;
+						e.timestamp = SDL_GetTicks();
+						e.which = joystick;
+						e.axis = narrow_cast<uint8_t>(*axis);
+						e.value = narrow_cast<int16_t>(str.getListIndex(interp, 2).getInt(interp));
+						return JoystickAxisMotionEvent(evt);
 					}
 				} else if (comp1.starts_with("hat")) {
 					if (auto hat = StringOp::stringToBase<10, unsigned>(comp1.substr(3))) {
@@ -195,7 +257,16 @@ namespace openmsx::InputEventFactory {
 								throw CommandException("Invalid hat value: ", valueStr);
 							}
 						}();
-						return Event::create<JoystickHatEvent>(joystick, *hat, value);
+						SDL_Event evt;
+						evt.jhat = SDL_JoyHatEvent{};
+						auto& e = evt.jhat;
+
+						e.type = SDL_JOYHATMOTION;
+						e.timestamp = SDL_GetTicks();
+						e.which = joystick;
+						e.hat = narrow_cast<uint8_t>(*hat);
+						e.value = narrow_cast<uint8_t>(value);
+						return JoystickHatEvent(evt);
 					}
 				}
 			}
@@ -209,7 +280,17 @@ namespace openmsx::InputEventFactory {
 	if (str.getListLength(interp) != 2) {
 		throw CommandException("Invalid focus event: ", str.getString());
 	}
-	return Event::create<FocusEvent>(str.getListIndex(interp, 1).getBoolean(interp));
+	bool gained = str.getListIndex(interp, 1).getBoolean(interp);
+
+	SDL_Event evt;
+	evt.window = SDL_WindowEvent{};
+	auto& e = evt.window;
+
+	e.type = SDL_WINDOWEVENT;
+	e.timestamp = SDL_GetTicks();
+	e.windowID = WindowEvent::getMainWindowId();
+	e.event = gained ? SDL_WINDOWEVENT_FOCUS_GAINED : SDL_WINDOWEVENT_FOCUS_LOST;
+	return WindowEvent(evt);
 }
 
 [[nodiscard]] static Event parseFileDropEvent(const TclObject& str, Interpreter& interp)
@@ -217,19 +298,9 @@ namespace openmsx::InputEventFactory {
 	if (str.getListLength(interp) != 1) {
 		throw CommandException("Invalid filedrop event: ", str.getString());
 	}
-	return Event::create<GroupEvent>(
+	return GroupEvent(
 		std::initializer_list<EventType>{EventType::FILE_DROP},
 		makeTclList("filename"));
-}
-
-[[nodiscard]] static Event parseResizeEvent(const TclObject& str, Interpreter& interp)
-{
-	if (str.getListLength(interp) != 3) {
-		throw CommandException("Invalid resize event: ", str.getString());
-	}
-	return Event::create<ResizeEvent>(
-		str.getListIndex(interp, 1).getInt(interp),
-		str.getListIndex(interp, 2).getInt(interp));
 }
 
 [[nodiscard]] static Event parseQuitEvent(const TclObject& str, Interpreter& interp)
@@ -237,7 +308,7 @@ namespace openmsx::InputEventFactory {
 	if (str.getListLength(interp) != 1) {
 		throw CommandException("Invalid quit event: ", str.getString());
 	}
-	return Event::create<QuitEvent>();
+	return QuitEvent();
 }
 
 Event createInputEvent(const TclObject& str, Interpreter& interp)
@@ -256,18 +327,20 @@ Event createInputEvent(const TclObject& str, Interpreter& interp)
 		return parseFocusEvent(str, interp);
 	} else if (type == "filedrop") {
 		return parseFileDropEvent(str, interp);
-	} else if (type == "resize") {
-		return parseResizeEvent(str, interp);
 	} else if (type == "quit") {
 		return parseQuitEvent(str, interp);
 	} else if (type == "command") {
-		return Event::create<KeyUpEvent>(Keys::K_UNKNOWN); // dummy event, for bw compat
+		SDL_Event evt;
+		evt.key = SDL_KeyboardEvent{};
+		evt.key.type = SDL_KEYUP;
+		evt.key.state = SDL_RELEASED;
+		return KeyUpEvent(evt); // dummy event, for bw compat
 		//return parseCommandEvent(str);
 	} else if (type == "OSDcontrol") {
 		return parseOsdControlEvent(str, interp);
 	} else {
 		// fall back
-		return parseKeyEvent(type, 0);
+		return parseKeyEvent(str.getString(), 0);
 	}
 }
 Event createInputEvent(std::string_view str, Interpreter& interp)

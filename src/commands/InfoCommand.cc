@@ -18,24 +18,24 @@ InfoCommand::~InfoCommand()
 	assert(infoTopics.empty());
 }
 
-void InfoCommand::registerTopic(InfoTopic& topic)
+void InfoCommand::registerTopic(const InfoTopic& topic)
 {
 #ifndef NDEBUG
 	if (infoTopics.contains(topic.getName())) {
 		std::cerr << "INTERNAL ERROR: already have an info topic with "
 		             "name " << topic.getName() << '\n';
-		UNREACHABLE;
+		assert(false);
 	}
 #endif
 	infoTopics.insert_noDuplicateCheck(&topic);
 }
 
-void InfoCommand::unregisterTopic(InfoTopic& topic)
+void InfoCommand::unregisterTopic(const InfoTopic& topic)
 {
 	if (!infoTopics.contains(topic.getName())) {
 		std::cerr << "INTERNAL ERROR: can't unregister topic with name "
 		          << topic.getName() << ", not found!\n";
-		UNREACHABLE;
+		assert(false);
 	}
 	infoTopics.erase(topic.getName());
 }
@@ -99,8 +99,7 @@ void InfoCommand::tabCompletion(std::vector<std::string>& tokens) const
 	default:
 		// show help on a certain topic
 		assert(tokens.size() >= 3);
-		auto it = infoTopics.find(tokens[1]);
-		if (it != end(infoTopics)) {
+		if (auto it = infoTopics.find(tokens[1]); it != end(infoTopics)) {
 			(*it)->tabCompletion(tokens);
 		}
 		break;

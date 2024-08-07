@@ -1,9 +1,10 @@
 #ifndef KEYBOARDSETTINGS_HH
 #define KEYBOARDSETTINGS_HH
 
-#include "Keys.hh"
+#include "SDLKey.hh"
 #include "EnumSetting.hh"
 #include "BooleanSetting.hh"
+
 #include <array>
 #include <cassert>
 
@@ -14,16 +15,16 @@ class CommandController;
 class KeyboardSettings
 {
 public:
-	enum KpEnterMode { MSX_KP_COMMA, MSX_ENTER };
-	enum MappingMode { KEY_MAPPING, CHARACTER_MAPPING, POSITIONAL_MAPPING };
+	enum class KpEnterMode { MSX_KP_COMMA, MSX_ENTER };
+	enum class MappingMode { KEY, CHARACTER, POSITIONAL };
 
 	explicit KeyboardSettings(CommandController& commandController);
 
-	[[nodiscard]] Keys::KeyCode getDeadKeyHostKey(unsigned n) const {
+	[[nodiscard]] SDL_Keycode getDeadKeyHostKey(unsigned n) const {
 		assert(n < 3);
 		return deadKeyHostKey[n].getEnum();
 	}
-	[[nodiscard]] Keys::KeyCode getCodeKanaHostKey() const {
+	[[nodiscard]] SDL_Keycode getCodeKanaHostKey() const {
 		return codeKanaHostKey.getEnum();
 	}
 	[[nodiscard]] KpEnterMode getKpEnterMode() const {
@@ -43,8 +44,8 @@ public:
 	}
 
 private:
-	std::array<EnumSetting<Keys::KeyCode>, 3> deadKeyHostKey;
-	EnumSetting<Keys::KeyCode> codeKanaHostKey;
+	std::array<EnumSetting<SDL_Keycode>, 3> deadKeyHostKey;
+	EnumSetting<SDL_Keycode> codeKanaHostKey;
 	EnumSetting<KpEnterMode> kpEnterMode;
 	EnumSetting<MappingMode> mappingMode;
 	BooleanSetting alwaysEnableKeypad;

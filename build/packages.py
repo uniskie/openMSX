@@ -57,11 +57,11 @@ class GLEW(DownloadablePackage):
 	downloadURL = 'http://downloads.sourceforge.net/glew'
 	niceName = 'GLEW'
 	sourceName = 'glew'
-	version = '2.1.0'
-	fileLength = 764073
+	version = '2.2.0'
+	fileLength = 835861
 	checksums = {
 		'sha256':
-			'04de91e7e6763039bc11940095cd9c7f880baba82196a7765f727ac05a993c95',
+			'd4fc82893cfb00109578d0a1a2337fb8ca335b3ceccf97b97e5cc7f08e4353e1',
 		}
 
 	@classmethod
@@ -117,22 +117,22 @@ class SDL2(DownloadablePackage):
 	downloadURL = 'https://www.libsdl.org/release'
 	niceName = 'SDL2'
 	sourceName = 'SDL2'
-	version = '2.26.4'
-	fileLength = 8084255
+	version = '2.30.1'
+	fileLength = 7428023
 	checksums = {
 		'sha256':
-			'1a0f686498fb768ad9f3f80b39037a7d006eac093aad39cb4ebcc832a8887231',
+			'01215ffbc8cfc4ad165ba7573750f15ddda1f971d5a66e9dcaffd37c587f473a',
 		}
 
 class SDL2_ttf(DownloadablePackage):
 	downloadURL = 'http://www.libsdl.org/projects/SDL_ttf/release'
 	niceName = 'SDL2_ttf'
 	sourceName = 'SDL2_ttf'
-	version = '2.0.15'
-	fileLength = 4479718
+	version = '2.22.0'
+	fileLength = 14314901
 	checksums = {
 		'sha256':
-			'a9eceb1ad88c1f1545cd7bd28e7cbc0b2c14191d40238f531a15b01b1b22cd33',
+			'd48cbd1ce475b9e178206bf3b72d56b66d84d44f64ac05803328396234d67723',
 		}
 
 class TCL(DownloadablePackage):

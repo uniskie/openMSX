@@ -1,4 +1,5 @@
 #include "MSXRom.hh"
+#include "RomInfo.hh"
 #include "XMLElement.hh"
 #include "TclObject.hh"
 
@@ -15,18 +16,31 @@ void MSXRom::writeMem(word /*address*/, byte /*value*/, EmuTime::param /*time*/)
 	// nothing
 }
 
-byte* MSXRom::getWriteCacheLine(word /*address*/) const
+byte* MSXRom::getWriteCacheLine(word /*address*/)
 {
 	return unmappedWrite.data();
 }
 
-void MSXRom::getInfo(TclObject& result) const
+std::string_view MSXRom::getMapperTypeString() const
 {
-	// Add detected rom type. This value is guaranteed to be stored in
-	// the device config (and 'auto' is already changed to actual type).
+	// This value is guaranteed to be stored in the device config (and
+	// 'auto' is already changed to actual type).
 	const auto* mapper = getDeviceConfig().findChild("mappertype");
 	assert(mapper);
-	result.addDictKeyValues("mappertype", mapper->getData(),
+	return mapper->getData();
+}
+
+RomType MSXRom::getRomType() const
+{
+	auto result = RomInfo::nameToRomType(getMapperTypeString());
+	assert(result != RomType::UNKNOWN);
+	return result;
+}
+
+void MSXRom::getInfo(TclObject& result) const
+{
+	// Add detected rom type.
+	result.addDictKeyValues("mappertype", getMapperTypeString(),
 
 	// add sha1sum, to be able to get a unique key for this ROM device,
 	// so that it can be used to look up things in databases

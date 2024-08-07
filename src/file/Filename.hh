@@ -3,6 +3,8 @@
 
 #include "FileContext.hh"
 #include "FileOperations.hh"
+
+#include <concepts>
 #include <string>
 
 namespace openmsx {
@@ -19,20 +21,9 @@ class Filename
 public:
 	// dummy constructor, to be able to serialize vector<Filename>
 	Filename() = default;
-	Filename(Filename&&) = default;
-	Filename& operator=(Filename&&) = default;
-	Filename& operator=(const Filename&) = default;
-
-	//workaround msvc bug(?)
-	//Filename(const Filename&) = default;
-	Filename(const Filename& f)
-		: originalFilename(f.originalFilename)
-		, resolvedFilename(f.resolvedFilename) {}
-
-	// needed because the template below hides this version
-	Filename(Filename& f) : Filename(const_cast<const Filename&>(f)) {}
 
 	template<typename String>
+		requires(!std::same_as<Filename, std::remove_cvref_t<String>>) // don't block copy-constructor
 	explicit Filename(String&& filename)
 		: originalFilename(std::forward<String>(filename))
 		, resolvedFilename(originalFilename) {}

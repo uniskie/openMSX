@@ -1,4 +1,5 @@
 #include "MSXRS232.hh"
+
 #include "RS232Device.hh"
 #include "CacheLine.hh"
 #include "Ram.hh"
@@ -6,9 +7,11 @@
 #include "BooleanSetting.hh"
 #include "MSXException.hh"
 #include "serialize.hh"
+
 #include "one_of.hh"
 #include "outer.hh"
 #include "unreachable.hh"
+
 #include <cassert>
 #include <memory>
 
@@ -33,6 +36,8 @@ MSXRS232::MSXRS232(const DeviceConfig& config)
 		: nullptr)
 	, rxrdyIRQ(getMotherBoard(), MSXDevice::getName() + ".IRQrxrdy")
 	, hasMemoryBasedIo(config.getChildDataAsBool("memorybasedio", false))
+	, hasRIPin(config.getChildDataAsBool("has_ri_pin", true))
+	, inputsPullup(config.getChildDataAsBool("rs232_pullup",false))
 	, ioAccessEnabled(!hasMemoryBasedIo)
 	, switchSetting(config.getChildDataAsBool("toshiba_rs232c_switch",
 		false) ? std::make_unique<BooleanSetting>(getCommandController(),
@@ -122,7 +127,7 @@ void MSXRS232::writeMem(word address, byte value, EmuTime::param time)
 	}
 }
 
-byte* MSXRS232::getWriteCacheLine(word start) const
+byte* MSXRS232::getWriteCacheLine(word start)
 {
 	if (hasMemoryBasedIo && (start == (0xBFF8 & CacheLine::HIGH))) {
 		return nullptr;
@@ -165,7 +170,7 @@ byte MSXRS232::readIOImpl(word port, EmuTime::param time)
 		case 7: // timer command register
 			return i8254.readIO(port - 4, time);
 		default:
-			UNREACHABLE; return 0;
+			UNREACHABLE;
 	}
 }
 
@@ -187,7 +192,7 @@ byte MSXRS232::peekIO(word port, EmuTime::param time) const
 		case 7: // timer command register
 			return i8254.peekIO(port - 4, time);
 		default:
-			UNREACHABLE; return 0;
+			UNREACHABLE;
 	}
 }
 
@@ -224,7 +229,8 @@ byte MSXRS232::readStatus(EmuTime::param time)
 	//
 	//  Bit Name  Expl.
 	//  0   CD    Carrier Detect   (0=Active, 1=Not active)
-	//  1   RI    Ring Indicator   (0=Active, 1=Not active) (N/C in MSX)
+	//  1   RI    Ring Indicator   (0=Active, 1=Not active)
+	//            (Not connected on many RS232 BIOS v1 implementations)
 	//  6         Timer Output from i8253 Counter 2
 	//  7   CTS   Clear to Send    (0=Active, 1=Not active)
 	//
@@ -235,20 +241,16 @@ byte MSXRS232::readStatus(EmuTime::param time)
 	//   on this I/O port, if CN1 is open. If CN1 is closed, it always
 	//   reads back as "0". ...
 
-	byte result = 0; // TODO check unused bits
+	byte result = 0xFF; // Start with 0xFF, open lines on the data bus pull to 1
+	const auto& dev = getPluggedRS232Dev();
 
-	// TODO bit 0: carrier detect
+	// Mask out (active low) bits
+	if (dev.getDCD(time).value_or(inputsPullup)) result &= ~0x01;
+	if (hasRIPin && (dev.getRI(time).value_or(inputsPullup))) result &= ~0x02;
+	if (rxrdyIRQenabled && switchSetting && switchSetting->getBoolean()) result &= ~0x08;
+	if (i8254.getOutputPin(2).getState(time)) result &= ~0x40;
+	if (interface.getCTS(time)) result &= ~0x80;
 
-	if (!rxrdyIRQenabled && switchSetting && switchSetting->getBoolean()) {
-		result |= 0x08;
-	}
-
-	if (!interface.getCTS(time)) {
-		result |= 0x80;
-	}
-	if (i8254.getOutputPin(2).getState(time)) {
-		result |= 0x40;
-	}
 	return result;
 }
 
@@ -292,55 +294,55 @@ void MSXRS232::Interface::setRxRDY(bool status, EmuTime::param /*time*/)
 
 void MSXRS232::Interface::setDTR(bool status, EmuTime::param time)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
+	const auto& rs232 = OUTER(MSXRS232, interface);
 	rs232.getPluggedRS232Dev().setDTR(status, time);
 }
 
 void MSXRS232::Interface::setRTS(bool status, EmuTime::param time)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
+	const auto& rs232 = OUTER(MSXRS232, interface);
 	rs232.getPluggedRS232Dev().setRTS(status, time);
 }
 
 bool MSXRS232::Interface::getDSR(EmuTime::param time)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
-	return rs232.getPluggedRS232Dev().getDSR(time);
+	const auto& rs232 = OUTER(MSXRS232, interface);
+	return rs232.getPluggedRS232Dev().getDSR(time).value_or(rs232.inputsPullup);
 }
 
 bool MSXRS232::Interface::getCTS(EmuTime::param time)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
-	return rs232.getPluggedRS232Dev().getCTS(time);
+	const auto& rs232 = OUTER(MSXRS232, interface);
+	return rs232.getPluggedRS232Dev().getCTS(time).value_or(rs232.inputsPullup);
 }
 
 void MSXRS232::Interface::setDataBits(DataBits bits)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
+	const auto& rs232 = OUTER(MSXRS232, interface);
 	rs232.getPluggedRS232Dev().setDataBits(bits);
 }
 
 void MSXRS232::Interface::setStopBits(StopBits bits)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
+	const auto& rs232 = OUTER(MSXRS232, interface);
 	rs232.getPluggedRS232Dev().setStopBits(bits);
 }
 
-void MSXRS232::Interface::setParityBit(bool enable, ParityBit parity)
+void MSXRS232::Interface::setParityBit(bool enable, Parity parity)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
+	const auto& rs232 = OUTER(MSXRS232, interface);
 	rs232.getPluggedRS232Dev().setParityBit(enable, parity);
 }
 
 void MSXRS232::Interface::recvByte(byte value, EmuTime::param time)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
+	const auto& rs232 = OUTER(MSXRS232, interface);
 	rs232.getPluggedRS232Dev().recvByte(value, time);
 }
 
 void MSXRS232::Interface::signal(EmuTime::param time)
 {
-	auto& rs232 = OUTER(MSXRS232, interface);
+	const auto& rs232 = OUTER(MSXRS232, interface);
 	rs232.getPluggedRS232Dev().signal(time); // for input
 }
 
@@ -407,7 +409,7 @@ void MSXRS232::setStopBits(StopBits bits)
 	i8251.setStopBits(bits);
 }
 
-void MSXRS232::setParityBit(bool enable, ParityBit parity)
+void MSXRS232::setParityBit(bool enable, Parity parity)
 {
 	i8251.setParityBit(enable, parity);
 }

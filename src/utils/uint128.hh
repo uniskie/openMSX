@@ -25,7 +25,7 @@ using uint128 = __uint128_t;
 class uint128
 {
 public:
-	constexpr uint128(uint64_t a) : lo(a), hi(0) {}
+	constexpr uint128(uint64_t a) : lo(a) {}
 
 	[[nodiscard]] constexpr bool operator==(const uint128&) const = default;
 
@@ -142,7 +142,7 @@ public:
 	constexpr uint128& operator*=(const uint128& b);
 
 private:
-	constexpr uint128() : lo(0), hi(0) {}
+	constexpr uint128() = default;
 	constexpr uint128(uint64_t low, uint64_t high) : lo(low), hi(high) {}
 
 	[[nodiscard]] constexpr std::pair<uint128, uint128> div(const uint128& ds) const;
@@ -150,18 +150,18 @@ private:
 	[[nodiscard]] constexpr bool bit(unsigned n) const
 	{
 		if (n < 64) {
-			return (lo & (1ull << n)) != 0;
+			return (lo & (1ULL << n)) != 0;
 		} else {
-			return (hi & (1ull << (n - 64))) != 0;
+			return (hi & (1ULL << (n - 64))) != 0;
 		}
 	}
 
 	constexpr void setBit(unsigned n)
 	{
 		if (n < 64) {
-			lo |= (1ull << n);
+			lo |= (1ULL << n);
 		} else {
-			hi |= (1ull << (n - 64));
+			hi |= (1ULL << (n - 64));
 		}
 	}
 
@@ -176,8 +176,8 @@ private:
 	}
 
 private:
-	uint64_t lo;
-	uint64_t hi;
+	uint64_t lo = 0;
+	uint64_t hi = 0;
 };
 
 [[nodiscard]] constexpr uint128 operator+(const uint128& a, const uint128& b)
@@ -260,6 +260,8 @@ constexpr uint128& uint128::operator*=(const uint128& b)
 
 constexpr std::pair<uint128, uint128> uint128::div(const uint128& ds) const
 {
+	assert(ds != uint128(0));
+
 	uint128 dd = *this;
 	uint128 r = 0;
 	uint128 q = 0;

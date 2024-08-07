@@ -3,6 +3,7 @@
 
 #include "Poller.hh"
 #include "Socket.hh"
+
 #include <string>
 #include <thread>
 
@@ -32,8 +33,9 @@ private:
 
 	std::thread thread;
 	std::string socketName;
-	SOCKET listenSock;
+	SOCKET listenSock = OPENMSX_INVALID_SOCKET;
 	Poller poller;
+	[[no_unique_address]] SocketActivator socketActivator;
 };
 
 } // namespace openmsx

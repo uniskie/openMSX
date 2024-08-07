@@ -33,7 +33,7 @@
 #include "ReverseManager.hh"
 #include "WavImage.hh"
 #include "CasImage.hh"
-#include "CliComm.hh"
+#include "MSXCliComm.hh"
 #include "MSXMotherBoard.hh"
 #include "Reactor.hh"
 #include "GlobalSettings.hh"
@@ -64,6 +64,7 @@ static constexpr static_string_view DESCRIPTION = "Cassetteplayer, use to read .
 
 static constexpr unsigned DUMMY_INPUT_RATE = 44100; // actual rate depends on .cas/.wav file
 static constexpr unsigned RECORD_FREQ = 44100;
+static constexpr double RECIP_RECORD_FREQ = 1.0 / RECORD_FREQ;
 static constexpr double OUTPUT_AMP = 60.0;
 
 static std::string_view getCassettePlayerName()
@@ -98,7 +99,7 @@ CassettePlayer::CassettePlayer(const HardwareConfig& hwConf)
 	motherBoard.getReactor().getEventDistributor().registerEventListener(
 		EventType::BOOT, *this);
 	motherBoard.registerMediaInfo(getCassettePlayerName(), *this);
-	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, getCassettePlayerName(), "add");
+	motherBoard.getMSXCliComm().update(CliComm::UpdateType::HARDWARE, getCassettePlayerName(), "add");
 
 	removeTape(EmuTime::zero());
 }
@@ -112,7 +113,7 @@ CassettePlayer::~CassettePlayer()
 	motherBoard.getReactor().getEventDistributor().unregisterEventListener(
 		EventType::BOOT, *this);
 	motherBoard.unregisterMediaInfo(*this);
-	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, getCassettePlayerName(), "remove");
+	motherBoard.getMSXCliComm().update(CliComm::UpdateType::HARDWARE, getCassettePlayerName(), "remove");
 }
 
 void CassettePlayer::getMediaInfo(TclObject& result)
@@ -209,7 +210,7 @@ string CassettePlayer::getStateString() const
 		case RECORD: return "record";
 		case STOP:   return "stop";
 	}
-	UNREACHABLE; return {};
+	UNREACHABLE;
 }
 
 bool CassettePlayer::isRolling() const
@@ -227,7 +228,7 @@ double CassettePlayer::getTapePos(EmuTime::param time)
 	sync(time);
 	if (getState() == RECORD) {
 		// we record 8-bit mono, so bytes == samples
-		return (double(recordImage->getBytes()) + partialInterval) / RECORD_FREQ;
+		return (double(recordImage->getBytes()) + partialInterval) * RECIP_RECORD_FREQ;
 	} else {
 		return (tapePos - EmuTime::zero()).toDouble();
 	}
@@ -310,7 +311,7 @@ void CassettePlayer::setState(State newState, const Filename& newImage,
 		lastY = 0.0;
 	}
 	motherBoard.getMSXCliComm().update(
-		CliComm::STATUS, "cassetteplayer", getStateString());
+		CliComm::UpdateType::STATUS, "cassetteplayer", getStateString());
 
 	updateLoadingState(time); // sets SP for tape-end detection
 
@@ -334,7 +335,7 @@ void CassettePlayer::setImageName(const Filename& newImage)
 {
 	casImage = newImage;
 	motherBoard.getMSXCliComm().update(
-		CliComm::MEDIA, "cassetteplayer", casImage.getResolved());
+		CliComm::UpdateType::MEDIA, "cassetteplayer", casImage.getResolved());
 }
 
 void CassettePlayer::insertTape(const Filename& filename, EmuTime::param time)
@@ -369,8 +370,8 @@ void CassettePlayer::insertTape(const Filename& filename, EmuTime::param time)
 	}
 
 	// possibly recreate resampler
-	unsigned inputRate = playImage ? playImage->getFrequency() : 44100;
-	if (inputRate != getInputRate()) {
+	if (unsigned inputRate = playImage ? playImage->getFrequency() : 44100;
+	    inputRate != getInputRate()) {
 		setInputRate(inputRate);
 		createResampler();
 	}
@@ -496,15 +497,14 @@ void CassettePlayer::generateRecordOutput(EmuDuration::param duration)
 
 	double out = lastOutput ? OUTPUT_AMP : -OUTPUT_AMP;
 	double samples = duration.toDouble() * RECORD_FREQ;
-	double rest = 1.0 - partialInterval;
-	if (rest <= samples) {
+	if (auto rest = 1.0 - partialInterval; rest <= samples) {
 		// enough to fill next interval
 		partialOut += out * rest;
 		fillBuf(1, partialOut);
 		samples -= rest;
 
 		// fill complete intervals
-		int count = int(samples);
+		auto count = int(samples);
 		if (count > 0) {
 			fillBuf(count, out);
 		}
@@ -525,7 +525,7 @@ void CassettePlayer::generateRecordOutput(EmuDuration::param duration)
 void CassettePlayer::fillBuf(size_t length, double x)
 {
 	assert(recordImage);
-	constexpr double A = 252.0 / 256.0;
+	static constexpr double A = 252.0 / 256.0;
 
 	double y = lastY + (x - lastX);
 
@@ -599,20 +599,18 @@ float CassettePlayer::getAmplificationFactorImpl() const
 	return playImage ? playImage->getAmplificationFactorImpl() : 1.0f;
 }
 
-int CassettePlayer::signalEvent(const Event& event)
+bool CassettePlayer::signalEvent(const Event& event)
 {
-	if (getType(event) == EventType::BOOT) {
-		if (!getImageName().empty()) {
-			// Reinsert tape to make sure everything is reset.
-			try {
-				playTape(getImageName(), getCurrentTime());
-			} catch (MSXException& e) {
-				motherBoard.getMSXCliComm().printWarning(
-					"Failed to insert tape: ", e.getMessage());
-			}
+	if (getType(event) == EventType::BOOT && !getImageName().empty()) {
+		// Reinsert tape to make sure everything is reset.
+		try {
+			playTape(getImageName(), getCurrentTime());
+		} catch (MSXException& e) {
+			motherBoard.getMSXCliComm().printWarning(
+				"Failed to insert tape: ", e.getMessage());
 		}
 	}
-	return 0;
+	return false;
 }
 
 void CassettePlayer::execEndOfTape(EmuTime::param time)
@@ -665,12 +663,10 @@ void CassettePlayer::TapeCommand::execute(
 		                      options);
 
 	} else if (tokens[1] == "new") {
-		std::string_view directory = "taperecordings";
 		std::string_view prefix = "openmsx";
-		std::string_view extension = ".wav";
 		string filename = FileOperations::parseCommandFileArgument(
 			(tokens.size() == 3) ? tokens[2].getString() : string{},
-			directory, prefix, extension);
+			TAPE_RECORDING_DIR, prefix, TAPE_RECORDING_EXTENSION);
 		cassettePlayer.recordTape(Filename(filename), time);
 		result = tmpStrCat(
 			"Created new cassette image file: ", filename,
@@ -876,7 +872,7 @@ template<typename Archive>
 void CassettePlayer::serialize(Archive& ar, unsigned version)
 {
 	if (recordImage) {
-		// buf, sampcnt
+		// buf, sampCnt
 		flushOutput();
 	}
 

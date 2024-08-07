@@ -80,20 +80,21 @@ output_iterator replace_invalid(octet_iterator start, octet_iterator end,
 		auto sequence_start = start;
 		internal::utf_error err_code = internal::validate_next(start, end);
 		switch (err_code) {
-		case internal::OK:
+		using enum internal::utf_error;
+		case OK:
 			for (auto it = sequence_start; it != start; ++it) {
 				*out++ = *it;
 			}
 			break;
-		case internal::NOT_ENOUGH_ROOM:
+		case NOT_ENOUGH_ROOM:
 			throw not_enough_room();
-		case internal::INVALID_LEAD:
+		case INVALID_LEAD:
 			append(replacement, out);
 			++start;
 			break;
-		case internal::INCOMPLETE_SEQUENCE:
-		case internal::OVERLONG_SEQUENCE:
-		case internal::INVALID_CODE_POINT:
+		case INCOMPLETE_SEQUENCE:
+		case OVERLONG_SEQUENCE:
+		case INVALID_CODE_POINT:
 			append(replacement, out);
 			++start;
 			// just one replacement mark for the sequence
@@ -124,19 +125,19 @@ octet_iterator append(uint32_t cp, octet_iterator result)
 		*result++ = cp;
 	} else if (cp < 0x800) {
 		// two octets
-		*result++ = ((cp >>  6)       ) | 0xc0;
-		*result++ = ((cp >>  0) & 0x3f) | 0x80;
+		*result++ = ((cp >>  6) & 0x1f) | 0xc0; // 0b110.'....  (5)
+		*result++ = ((cp >>  0) & 0x3f) | 0x80; // 0b10..'....  (6)
 	} else if (cp < 0x10000) {
 		// three octets
-		*result++ = ((cp >> 12)       ) | 0xe0;
-		*result++ = ((cp >>  6) & 0x3f) | 0x80;
-		*result++ = ((cp >>  0) & 0x3f) | 0x80;
+		*result++ = ((cp >> 12) & 0x0f) | 0xe0; // 0b1110'....  (4)
+		*result++ = ((cp >>  6) & 0x3f) | 0x80; // 0b10..'....  (6)
+		*result++ = ((cp >>  0) & 0x3f) | 0x80; // 0b10..'....  (6)
 	} else if (cp <= internal::CODE_POINT_MAX) {
 		// four octets
-		*result++ = ((cp >> 18)       ) | 0xf0;
-		*result++ = ((cp >> 12) & 0x3f) | 0x80;
-		*result++ = ((cp >>  6) & 0x3f) | 0x80;
-		*result++ = ((cp >>  0) & 0x3f) | 0x80;
+		*result++ = ((cp >> 18) & 0x07) | 0xf0; // 0b1111'0...  (3)
+		*result++ = ((cp >> 12) & 0x3f) | 0x80; // 0b10..'....  (6)
+		*result++ = ((cp >>  6) & 0x3f) | 0x80; // 0b10..'....  (6)
+		*result++ = ((cp >>  0) & 0x3f) | 0x80; // 0b10..'....  (6)
 	} else {
 		throw invalid_code_point(cp);
 	}
@@ -149,15 +150,16 @@ uint32_t next(octet_iterator& it, octet_iterator end)
 	uint32_t cp = 0;
 	internal::utf_error err_code = internal::validate_next(it, end, &cp);
 	switch (err_code) {
-	case internal::OK :
+	using enum internal::utf_error;
+	case OK:
 		break;
-	case internal::NOT_ENOUGH_ROOM:
+	case NOT_ENOUGH_ROOM:
 		throw not_enough_room();
-	case internal::INVALID_LEAD:
-	case internal::INCOMPLETE_SEQUENCE:
-	case internal::OVERLONG_SEQUENCE:
+	case INVALID_LEAD:
+	case INCOMPLETE_SEQUENCE:
+	case OVERLONG_SEQUENCE:
 		throw invalid_utf8(*it);
-	case internal::INVALID_CODE_POINT:
+	case INVALID_CODE_POINT:
 		throw invalid_code_point(cp);
 	}
 	return cp;

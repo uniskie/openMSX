@@ -16,10 +16,10 @@ GlobalCliComm::~GlobalCliComm()
 	assert(!delivering);
 }
 
-void GlobalCliComm::addListener(std::unique_ptr<CliListener> listener)
+CliListener* GlobalCliComm::addListener(std::unique_ptr<CliListener> listener)
 {
 	// can be called from any thread
-	std::lock_guard<std::mutex> lock(mutex);
+	std::scoped_lock lock(mutex);
 	auto* p = listener.get();
 	listeners.push_back(std::move(listener));
 	if (allowExternalCommands) {
@@ -27,12 +27,13 @@ void GlobalCliComm::addListener(std::unique_ptr<CliListener> listener)
 			conn->start();
 		}
 	}
+	return p;
 }
 
 std::unique_ptr<CliListener> GlobalCliComm::removeListener(CliListener& listener)
 {
 	// can be called from any thread
-	std::lock_guard<std::mutex> lock(mutex);
+	std::scoped_lock lock(mutex);
 	auto it = rfind_unguarded(listeners, &listener,
 		[](const auto& ptr) { return ptr.get(); });
 	auto result = std::move(*it);
@@ -44,14 +45,14 @@ void GlobalCliComm::setAllowExternalCommands()
 {
 	assert(!allowExternalCommands); // should only be called once
 	allowExternalCommands = true;
-	for (auto& listener : listeners) {
+	for (const auto& listener : listeners) {
 		if (auto* conn = dynamic_cast<CliConnection*>(listener.get())) {
 			conn->start();
 		}
 	}
 }
 
-void GlobalCliComm::log(LogLevel level, std::string_view message)
+void GlobalCliComm::log(LogLevel level, std::string_view message, float fraction)
 {
 	assert(Thread::isMainThread());
 
@@ -68,26 +69,28 @@ void GlobalCliComm::log(LogLevel level, std::string_view message)
 	}
 	ScopedAssign sa(delivering, true);
 
-	std::lock_guard<std::mutex> lock(mutex);
+	std::scoped_lock lock(mutex);
 	if (!listeners.empty()) {
-		for (auto& l : listeners) {
-			l->log(level, message);
+		for (const auto& l : listeners) {
+			l->log(level, message, fraction);
 		}
 	} else {
 		// don't let the message get lost
-		std::cerr << message << '\n';
+		std::cerr << message;
+		if (level == LogLevel::PROGRESS && fraction >= 0.0f) {
+			std::cerr << "... " << int(100.0f * fraction) << '%';
+		}
+		std::cerr << '\n';
 	}
 }
 
 void GlobalCliComm::update(UpdateType type, std::string_view name, std::string_view value)
 {
-	assert(type < NUM_UPDATES);
 	updateHelper(type, {}, name, value);
 }
 
 void GlobalCliComm::updateFiltered(UpdateType type, std::string_view name, std::string_view value)
 {
-	assert(type < NUM_UPDATES);
 	if (auto [it, inserted] = prevValues[type].try_emplace(name, value);
 	    !inserted) { // was already present ..
 		if (it->second == value) {
@@ -103,8 +106,8 @@ void GlobalCliComm::updateHelper(UpdateType type, std::string_view machine,
                                  std::string_view name, std::string_view value)
 {
 	assert(Thread::isMainThread());
-	std::lock_guard<std::mutex> lock(mutex);
-	for (auto& l : listeners) {
+	std::scoped_lock lock(mutex);
+	for (const auto& l : listeners) {
 		l->update(type, machine, name, value);
 	}
 }

@@ -2,6 +2,7 @@
 #define SHA1_HH
 
 #include "xrange.hh"
+
 #include <array>
 #include <cstdint>
 #include <ostream>
@@ -23,7 +24,7 @@ class Sha1Sum
 {
 public:
 	struct UninitializedTag {};
-	Sha1Sum(UninitializedTag) {}
+	explicit Sha1Sum(UninitializedTag) {}
 
 	// note: default copy and assign are ok
 	Sha1Sum();
@@ -41,21 +42,7 @@ public:
 	[[nodiscard]] bool empty() const;
 	void clear();
 
-	// gcc-10.2 miscompiles this (fixed in gcc-11),
-	//  so still manually implement operator==.
-	//[[nodiscard]] constexpr bool operator==(const Sha1Sum&) const = default;
-	[[nodiscard]] bool operator==(const Sha1Sum& other) const {
-		for (int i : xrange(5)) {
-			if (a[i] != other.a[i]) return false;
-		}
-		return true;
-	}
-	[[nodiscard]] constexpr auto operator<=>(const Sha1Sum& other) const {
-		for (int i : xrange(5 - 1)) {
-			if (auto cmp = a[i] <=> other.a[i]; cmp != 0) return cmp;
-		}
-		return a[5 - 1] <=> other.a[5 - 1];
-	}
+	[[nodiscard]] constexpr auto operator<=>(const Sha1Sum&) const = default;
 
 	friend std::ostream& operator<<(std::ostream& os, const Sha1Sum& sum) {
 		os << sum.toString();

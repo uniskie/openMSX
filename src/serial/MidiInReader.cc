@@ -39,12 +39,13 @@ void MidiInReader::plugHelper(Connector& connector_, EmuTime::param /*time*/)
 	}
 
 	auto& midiConnector = checked_cast<MidiInConnector&>(connector_);
-	midiConnector.setDataBits(SerialDataInterface::DATA_8); // 8 data bits
-	midiConnector.setStopBits(SerialDataInterface::STOP_1); // 1 stop bit
-	midiConnector.setParityBit(false, SerialDataInterface::EVEN); // no parity
+	midiConnector.setDataBits(SerialDataInterface::DataBits::D8); // 8 data bits
+	midiConnector.setStopBits(SerialDataInterface::StopBits::S1); // 1 stop bit
+	midiConnector.setParityBit(false, SerialDataInterface::Parity::EVEN); // no parity
 
 	setConnector(&connector_); // base class will do this in a moment,
 	                           // but thread already needs it
+	poller.reset();
 	thread = std::thread([this]() { run(); });
 }
 
@@ -88,11 +89,10 @@ void MidiInReader::run()
 		assert(isPluggedIn());
 
 		{
-			std::lock_guard<std::mutex> lock(mutex);
+			std::scoped_lock lock(mutex);
 			queue.push_back(buf[0]);
 		}
-		eventDistributor.distributeEvent(
-			Event::create<MidiInReaderEvent>());
+		eventDistributor.distributeEvent(MidiInReaderEvent());
 	}
 }
 
@@ -101,7 +101,7 @@ void MidiInReader::signal(EmuTime::param time)
 {
 	auto* conn = checked_cast<MidiInConnector*>(getConnector());
 	if (!conn->acceptsData()) {
-		std::lock_guard<std::mutex> lock(mutex);
+		std::scoped_lock lock(mutex);
 		queue.clear();
 		return;
 	}
@@ -111,7 +111,7 @@ void MidiInReader::signal(EmuTime::param time)
 
 	uint8_t data;
 	{
-		std::lock_guard<std::mutex> lock(mutex);
+		std::scoped_lock lock(mutex);
 		if (queue.empty()) return;
 		data = queue.pop_front();
 	}
@@ -119,15 +119,15 @@ void MidiInReader::signal(EmuTime::param time)
 }
 
 // EventListener
-int MidiInReader::signalEvent(const Event& /*event*/)
+bool MidiInReader::signalEvent(const Event& /*event*/)
 {
 	if (isPluggedIn()) {
 		signal(scheduler.getCurrentTime());
 	} else {
-		std::lock_guard<std::mutex> lock(mutex);
+		std::scoped_lock lock(mutex);
 		queue.clear();
 	}
-	return 0;
+	return false;
 }
 
 

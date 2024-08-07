@@ -9,11 +9,11 @@
 
 namespace openmsx {
 
-class BaseImage;
+class GLImage;
 
 class OSDRectangle final : public OSDImageBasedWidget
 {
-protected:
+private:
 	static constexpr auto rectangleProperties = [] {
 		using namespace std::literals;
 		return concatArray(
@@ -42,10 +42,7 @@ private:
 
 	[[nodiscard]] gl::vec2 getSize(const OutputSurface& output) const override;
 	[[nodiscard]] uint8_t getFadedAlpha() const override;
-	[[nodiscard]] std::unique_ptr<BaseImage> createSDL(OutputSurface& output) override;
-	[[nodiscard]] std::unique_ptr<BaseImage> createGL (OutputSurface& output) override;
-	template<typename IMAGE> [[nodiscard]] std::unique_ptr<BaseImage> create(
-		OutputSurface& output);
+	[[nodiscard]] std::unique_ptr<GLImage> create(OutputSurface& output) override;
 
 private:
 	std::string imageName;

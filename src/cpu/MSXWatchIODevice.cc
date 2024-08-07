@@ -1,10 +1,14 @@
 #include "MSXWatchIODevice.hh"
+
+#include "Interpreter.hh"
+#include "MSXCPUInterface.hh"
 #include "MSXMotherBoard.hh"
 #include "Reactor.hh"
-#include "MSXCPUInterface.hh"
+#include "StateChangeDistributor.hh"
 #include "TclObject.hh"
-#include "Interpreter.hh"
+
 #include "narrow.hh"
+
 #include <cassert>
 #include <memory>
 
@@ -44,8 +48,8 @@ void WatchIO::doReadCallback(unsigned port)
 	// keep this object alive by holding a shared_ptr to it, for the case
 	// this watchpoint deletes itself in checkAndExecute()
 	auto keepAlive = shared_from_this();
-	bool remove = checkAndExecute(cliComm, interp);
-	if (remove) {
+	auto scopedBlock = motherboard.getStateChangeDistributor().tempBlockNewEventsDuringReplay();
+	if (bool remove = checkAndExecute(cliComm, interp); remove) {
 		cpuInterface.removeWatchPoint(keepAlive);
 	}
 
@@ -64,8 +68,8 @@ void WatchIO::doWriteCallback(unsigned port, unsigned value)
 
 	// see comment in doReadCallback() above
 	auto keepAlive = shared_from_this();
-	bool remove = checkAndExecute(cliComm, interp);
-	if (remove) {
+	auto scopedBlock = motherboard.getStateChangeDistributor().tempBlockNewEventsDuringReplay();
+	if (bool remove = checkAndExecute(cliComm, interp); remove) {
 		cpuInterface.removeWatchPoint(keepAlive);
 	}
 

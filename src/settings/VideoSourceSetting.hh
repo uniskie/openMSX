@@ -19,15 +19,18 @@ public:
 	void unregisterVideoSource(int source);
 	[[nodiscard]] int getSource() noexcept;
 	void setSource(int id);
+	[[nodiscard]] std::vector<std::string_view> getPossibleValues() const;
 
 private:
-	[[nodiscard]] std::vector<std::string_view> getPossibleValues() const;
 	void checkSetValue(std::string_view value) const;
 	[[nodiscard]] bool has(int value) const;
 	[[nodiscard]] int has(std::string_view value) const;
 
 private:
 	struct Source {
+		Source(std::string n, int i)
+			: name(std::move(n)), id(i) {} // clang-15 workaround
+
 		std::string name;
 		int id;
 	};
@@ -37,9 +40,13 @@ private:
 class VideoSourceActivator
 {
 public:
-	VideoSourceActivator(
-		VideoSourceSetting& setting, const std::string& name);
+	VideoSourceActivator(VideoSourceSetting& setting, const std::string& name);
+	VideoSourceActivator(const VideoSourceActivator&) = delete;
+	VideoSourceActivator(VideoSourceActivator&&) = delete;
+	VideoSourceActivator& operator=(const VideoSourceActivator&) = delete;
+	VideoSourceActivator& operator=(VideoSourceActivator&&) = delete;
 	~VideoSourceActivator();
+
 	[[nodiscard]] int getID() const { return id; }
 
 private:

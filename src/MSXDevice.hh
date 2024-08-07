@@ -20,7 +20,7 @@ class MSXMotherBoard;
 class MSXCPU;
 class MSXCPUInterface;
 class Scheduler;
-class CliComm;
+class MSXCliComm;
 class Reactor;
 class CommandController;
 class LedStatus;
@@ -36,7 +36,9 @@ class MSXDevice
 {
 public:
 	MSXDevice(const MSXDevice&) = delete;
+	MSXDevice(MSXDevice&&) = delete;
 	MSXDevice& operator=(const MSXDevice&) = delete;
+	MSXDevice& operator=(MSXDevice&&) = delete;
 
 	using Devices = std::vector<MSXDevice*>;
 
@@ -174,7 +176,7 @@ public:
 	 * The default implementation always returns a null pointer.
 	 * The start of the interval is CacheLine::SIZE aligned.
 	 */
-	[[nodiscard]] virtual byte* getWriteCacheLine(word start) const;
+	[[nodiscard]] virtual byte* getWriteCacheLine(word start);
 
 	/**
 	 * Read a byte from a given memory location. Reading memory
@@ -247,7 +249,7 @@ public:
 	[[nodiscard]] MSXCPU& getCPU() const;
 	[[nodiscard]] MSXCPUInterface& getCPUInterface() const;
 	[[nodiscard]] Scheduler& getScheduler() const;
-	[[nodiscard]] CliComm& getCliComm() const;
+	[[nodiscard]] MSXCliComm& getCliComm() const;
 	[[nodiscard]] Reactor& getReactor() const;
 	[[nodiscard]] CommandController& getCommandController() const;
 	[[nodiscard]] PluggingController& getPluggingController() const;

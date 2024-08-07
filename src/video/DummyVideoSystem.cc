@@ -10,14 +10,12 @@ namespace openmsx {
 std::unique_ptr<Rasterizer> DummyVideoSystem::createRasterizer(VDP& /*vdp*/)
 {
 	UNREACHABLE;
-	return nullptr;
 }
 
 std::unique_ptr<V9990Rasterizer> DummyVideoSystem::createV9990Rasterizer(
 	V9990& /*vdp*/)
 {
 	UNREACHABLE;
-	return nullptr;
 }
 
 #if COMPONENT_LASERDISC
@@ -25,7 +23,6 @@ std::unique_ptr<LDRasterizer> DummyVideoSystem::createLDRasterizer(
 	LaserdiscPlayer& /*ld*/)
 {
 	UNREACHABLE;
-	return nullptr;
 }
 #endif
 
@@ -58,6 +55,15 @@ std::string DummyVideoSystem::getClipboardText()
 }
 
 void DummyVideoSystem::setClipboardText(zstring_view /*text*/)
+{
+}
+
+std::optional<gl::ivec2> DummyVideoSystem::getWindowPosition()
+{
+	return {};
+}
+
+void DummyVideoSystem::setWindowPosition(gl::ivec2 /*pos*/)
 {
 }
 

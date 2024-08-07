@@ -1,29 +1,30 @@
 #include "HardwareConfig.hh"
-#include "XMLException.hh"
-#include "DeviceConfig.hh"
-#include "FileOperations.hh"
-#include "MSXMotherBoard.hh"
+
 #include "CartridgeSlotManager.hh"
-#include "MSXCPUInterface.hh"
 #include "CommandController.hh"
+#include "DeviceConfig.hh"
 #include "DeviceFactory.hh"
+#include "FileOperations.hh"
+#include "MSXCPUInterface.hh"
+#include "MSXMotherBoard.hh"
 #include "TclArgParser.hh"
+#include "XMLException.hh"
 #include "serialize.hh"
 #include "serialize_stl.hh"
+
 #include "unreachable.hh"
 #include "xrange.hh"
+
 #include <array>
 #include <cassert>
 #include <iostream>
 #include <memory>
 #include <version> // for _LIBCPP_VERSION
 
-using std::string;
-
 namespace openmsx {
 
 std::unique_ptr<HardwareConfig> HardwareConfig::createMachineConfig(
-	MSXMotherBoard& motherBoard, string machineName)
+	MSXMotherBoard& motherBoard, std::string machineName)
 {
 	auto result = std::make_unique<HardwareConfig>(
 		motherBoard, std::move(machineName));
@@ -33,7 +34,7 @@ std::unique_ptr<HardwareConfig> HardwareConfig::createMachineConfig(
 }
 
 std::unique_ptr<HardwareConfig> HardwareConfig::createExtensionConfig(
-	MSXMotherBoard& motherBoard, string extensionName, std::string_view slotName)
+	MSXMotherBoard& motherBoard, std::string extensionName, std::string_view slotName)
 {
 	auto result = std::make_unique<HardwareConfig>(
 		motherBoard, std::move(extensionName));
@@ -53,14 +54,14 @@ std::unique_ptr<HardwareConfig> HardwareConfig::createRomConfig(
 	result->type = HardwareConfig::Type::ROM;
 
 	std::vector<std::string_view> ipsFiles;
-	string mapper;
+	std::string mapper;
 	std::array info = {
 		valueArg("-ips", ipsFiles),
 		valueArg("-romtype", mapper),
 	};
 	auto& interp = motherBoard.getCommandController().getInterpreter();
-	auto args = parseTclArgs(interp, options, info);
-	if (!args.empty()) {
+	if (auto args = parseTclArgs(interp, options, info);
+	    !args.empty()) {
 		throw MSXException("Invalid option \"", args.front().getString(), '\"');
 	}
 
@@ -72,7 +73,7 @@ std::unique_ptr<HardwareConfig> HardwareConfig::createRomConfig(
 		}
 	}
 
-	string resolvedFilename = FileOperations::getAbsolutePath(
+	std::string resolvedFilename = FileOperations::getAbsolutePath(
 		context.resolve(romFile));
 	if (!FileOperations::isRegularFile(resolvedFilename)) {
 		throw MSXException("Invalid ROM file: ", resolvedFilename);
@@ -138,10 +139,22 @@ std::unique_ptr<HardwareConfig> HardwareConfig::createRomConfig(
 	return result;
 }
 
-HardwareConfig::HardwareConfig(MSXMotherBoard& motherBoard_, string hwName_)
+std::string_view HardwareConfig::getRomFilename() const
+{
+	// often this will give the same result as 'getName()', except when the same ROM file is used twice.
+	assert(type == Type::ROM && "should only be used on ROM extensions");
+	const auto* d = getConfig().findChild("devices"); assert(d);
+	const auto* p = d->findChild("primary"); assert(p);
+	const auto* s = p->findChild("secondary"); assert(s);
+	const auto* R = s->findChild("ROM"); assert(R);
+	const auto* r = R->findChild("rom"); assert(r);
+	const auto* f = r->findChild("filename"); assert(f);
+	return f->getData();
+}
+
+HardwareConfig::HardwareConfig(MSXMotherBoard& motherBoard_, std::string hwName_)
 	: motherBoard(motherBoard_)
 	, hwName(std::move(hwName_))
-	, config(8192) // tweak: initial allocator buffer size
 {
 	for (auto& sub : externalSlots) {
 		ranges::fill(sub, false);
@@ -160,7 +173,7 @@ HardwareConfig::~HardwareConfig()
 		testRemove();
 	} catch (MSXException& e) {
 		std::cerr << e.getMessage() << '\n';
-		UNREACHABLE;
+		assert(false);
 	}
 #endif
 	while (!devices.empty()) {
@@ -195,14 +208,14 @@ void HardwareConfig::testRemove() const
 		// Workaround clang-13/libc++ bug
 		// Don't generally use this workaround, because '*rit.base()'
 		// triggers an error in a debug-STL build.
-		std::span alreadyRemoved(&*rit.base(), et - rit.base());
+		std::span alreadyRemoved(std::to_address(rit.base()), et - rit.base());
 #else
 		std::span alreadyRemoved{rit.base(), et};
 #endif
 		(*rit)->testRemove(alreadyRemoved);
 	}
 
-	auto& slotManager = motherBoard.getSlotManager();
+	const auto& slotManager = motherBoard.getSlotManager();
 	for (auto ps : xrange(4)) {
 		for (auto ss : xrange(4)) {
 			if (externalSlots[ps][ss]) {
@@ -235,7 +248,7 @@ static void loadHelper(XMLDocument& doc, const std::string& filename)
 	}
 }
 
-static string getFilename(std::string_view type, std::string_view name)
+static std::string getFilename(std::string_view type, std::string_view name)
 {
 	const auto& context = systemFileContext();
 	try {
@@ -261,7 +274,7 @@ void HardwareConfig::loadConfig(XMLDocument& doc, std::string_view type, std::st
 
 void HardwareConfig::load(std::string_view type_)
 {
-	string filename = getFilename(type_, hwName);
+	std::string filename = getFilename(type_, hwName);
 	loadHelper(config, filename);
 
 	assert(!userName.empty());

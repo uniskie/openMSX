@@ -2,33 +2,10 @@
 # solution to support key bindings for multiple devices.
 
 variable is_dingux [string match dingux "[openmsx_info platform]"]
-variable is_android [string match android "[openmsx_info platform]"]
 
 # cycle_machine
 bind_default CTRL+PAGEUP cycle_machine
 bind_default CTRL+PAGEDOWN cycle_back_machine
-
-# osd_keyboard
-if {$is_dingux} {
-	# Use the SELECT button.
-	bind_default "keyb ESCAPE" toggle_osd_keyboard
-} elseif {$is_android} {
-	# TODO: This key code no longer exists.
-	#       We probably should create our own virtual keyboard anyway.
-	# Android maps one of the virtual keys to WORLD_95
-	# listen to that one in order to show the keyboard
-	#bind_default "keyb WORLD_95" toggle_osd_keyboard
-}
-
-# osd_menu
-if {$tcl_platform(os) eq "Darwin"} { ;# Mac
-	bind_default "keyb META+O" main_menu_toggle
-} elseif {$is_dingux} { ;# OpenDingux
-	bind_default "keyb RETURN" main_menu_toggle ;# START button
-	bind_default "keyb HOME" main_menu_toggle ;# power slider flick
-} else { ;# any other
-	bind_default "keyb MENU"   main_menu_toggle
-}
 
 # pause
 if {$is_dingux} {
@@ -46,8 +23,8 @@ if {$is_dingux} {
 # reverse
 #  note: you can't use bindings with modifiers like SHIFT, because they
 #        will already stop the replay, as they are MSX keys as well
-bind_default PAGEUP   -repeat "go_back_one_step"
-bind_default PAGEDOWN -repeat "go_forward_one_step"
+bind_default PAGEUP   -msx -repeat "go_back_one_step"
+bind_default PAGEDOWN -msx -repeat "go_forward_one_step"
 
 # savestate
 if {$tcl_platform(os) eq "Darwin"} {
@@ -68,13 +45,11 @@ bind_default SHIFT+ALT+F10 "vdrive diskb -1"
 # CTRL-C/CTRL-V, but not exactly that, as these combinations are also used on
 # MSX. By adding META, the combination will be so rarely used that we can
 # assume it's OK).
-set my_type_command {type [regsub -all "\r?\n" [get_clipboard_text] "\r"]}
-bind_default "mouse button2 down" "$my_type_command"
+bind_default "mouse button2 down" type_clipboard
 if {$tcl_platform(os) eq "Darwin"} { ;# Mac
-	bind_default "keyb META+C" {set_clipboard_text [get_screen]}
-	bind_default "keyb META+V" "$my_type_command"
+	bind_default -msx "keyb META+C" copy_screen_to_clipboard
+	bind_default -msx "keyb META+V" type_clipboard
 } else { ;# any other
-	bind_default "keyb META+CTRL+C" {set_clipboard_text [get_screen]}
-	bind_default "keyb META+CTRL+V" "$my_type_command"
+	bind_default -msx "keyb META+CTRL+C" copy_screen_to_clipboard
+	bind_default -msx "keyb META+CTRL+V" type_clipboard
 }
-unset my_type_command

@@ -1,10 +1,12 @@
 #ifndef REACTOR_HH
 #define REACTOR_HH
 
-#include "Observer.hh"
 #include "EnumSetting.hh"
 #include "EventListener.hh"
+#include "Observer.hh"
+
 #include "view.hh"
+
 #include <cassert>
 #include <memory>
 #include <mutex>
@@ -14,45 +16,50 @@
 
 namespace openmsx {
 
-class RTScheduler;
-class EventDistributor;
+class ActivateMachineCommand;
+class AfterCommand;
+class AviRecorder;
+class CliComm;
 class CommandController;
-class InfoCommand;
+class CommandLineParser;
+class ConfigInfo;
+class CreateMachineCommand;
+class DeleteMachineCommand;
+class DiskChanger;
+class DiskFactory;
+class DiskManipulator;
+class Display;
+class EventDistributor;
+class ExitCommand;
+class FilePool;
+class GetClipboardCommand;
 class GlobalCliComm;
 class GlobalCommandController;
 class GlobalSettings;
-class CliComm;
-class Interpreter;
-class Display;
-class Mixer;
+class HotKey;
+class ImGuiManager;
+class InfoCommand;
 class InputEventGenerator;
-class DiskFactory;
-class DiskManipulator;
-class DiskChanger;
-class FilePool;
-class UserSettings;
-class RomDatabase;
-class TclCallbackMessages;
-class MSXMotherBoard;
-class Setting;
-class CommandLineParser;
-class AfterCommand;
-class ExitCommand;
-class MessageCommand;
-class MachineCommand;
-class TestMachineCommand;
-class CreateMachineCommand;
-class DeleteMachineCommand;
+class Interpreter;
 class ListMachinesCommand;
-class ActivateMachineCommand;
-class StoreMachineCommand;
-class RestoreMachineCommand;
-class GetClipboardCommand;
-class SetClipboardCommand;
-class AviRecorder;
-class ConfigInfo;
+class MSXMotherBoard;
+class MachineCommand;
+class MessageCommand;
+class Mixer;
+class MsxChar2Unicode;
+class RTScheduler;
 class RealTimeInfo;
+class RestoreMachineCommand;
+class RomDatabase;
+class SetClipboardCommand;
+class Setting;
+class Shortcuts;
 class SoftwareInfoTopic;
+class StoreMachineCommand;
+class SymbolManager;
+class TclCallbackMessages;
+class TestMachineCommand;
+class UserSettings;
 
 extern int exitCode;
 
@@ -71,13 +78,13 @@ public:
 	void init();
 	~Reactor();
 
-	/**
-	 * Main loop.
-	 */
-	void run(CommandLineParser& parser);
+	void runStartupScripts(const CommandLineParser& parser);
+	void powerOn();
+	void run();
 
 	void enterMainLoop();
 
+	[[nodiscard]] Shortcuts& getShortcuts() { return *shortcuts; }
 	[[nodiscard]] RTScheduler& getRTScheduler() { return *rtScheduler; }
 	[[nodiscard]] EventDistributor& getEventDistributor() { return *eventDistributor; }
 	[[nodiscard]] GlobalCliComm& getGlobalCliComm() { return *globalCliComm; }
@@ -89,6 +96,10 @@ public:
 	[[nodiscard]] DiskManipulator& getDiskManipulator() { return *diskManipulator; }
 	[[nodiscard]] EnumSetting<int>& getMachineSetting() { return *machineSetting; }
 	[[nodiscard]] FilePool& getFilePool() { return *filePool; }
+	[[nodiscard]] ImGuiManager& getImGuiManager() { return *imGuiManager; }
+	[[nodiscard]] const HotKey& getHotKey() const;
+	[[nodiscard]] SymbolManager& getSymbolManager() const { return *symbolManager; }
+	[[nodiscard]] AviRecorder& getRecorder() const { return *aviRecordCommand; }
 
 	[[nodiscard]] RomDatabase& getSoftwareDatabase();
 
@@ -96,6 +107,8 @@ public:
 	[[nodiscard]] MSXMotherBoard* getMotherBoard() const;
 
 	[[nodiscard]] static std::vector<std::string> getHwConfigs(std::string_view type);
+
+	[[nodiscard]] const MsxChar2Unicode& getMsxChar2Unicode() const;
 
 	void block();
 	void unblock();
@@ -111,30 +124,24 @@ public:
 	using Board = std::shared_ptr<MSXMotherBoard>;
 	[[nodiscard]] Board createEmptyMotherBoard();
 	void replaceBoard(MSXMotherBoard& oldBoard, Board newBoard); // for reverse
+	[[nodiscard]] Board getMachine(std::string_view machineID) const;
 
 	[[nodiscard]] bool isFullyStarted() const { return fullyStarted; }
 
-private:
-	void createMachineSetting();
-	void switchBoard(Board newBoard);
-	void deleteBoard(Board board);
-	[[nodiscard]] Board getMachine(std::string_view machineID) const;
 	[[nodiscard]] auto getMachineIDs() const {
 		return view::transform(boards,
 			[](auto& b) -> std::string_view { return b->getMachineID(); });
 	}
+private:
+	void createMachineSetting();
+	void switchBoard(Board newBoard);
+	void deleteBoard(Board board);
 
 	// Observer<Setting>
 	void update(const Setting& setting) noexcept override;
 
 	// EventListener
-	int signalEvent(const Event& event) override;
-
-	// Run 1 iteration of the openMSX event loop. Typically this will
-	// emulate about 1 frame (but could be more or less depending on
-	// various factors). Returns true when openMSX wants to continue
-	// running.
-	[[nodiscard]] bool doOneIteration();
+	bool signalEvent(const Event& event) override;
 
 	void unpause();
 	void pause();
@@ -144,12 +151,15 @@ private:
 	                    // the destructors of the unique_ptr below
 
 	// note: order of unique_ptr's is important
+	std::unique_ptr<Shortcuts> shortcuts; // before globalCommandController
 	std::unique_ptr<RTScheduler> rtScheduler;
 	std::unique_ptr<EventDistributor> eventDistributor;
 	std::unique_ptr<GlobalCliComm> globalCliComm;
 	std::unique_ptr<GlobalCommandController> globalCommandController;
 	std::unique_ptr<GlobalSettings> globalSettings;
 	std::unique_ptr<InputEventGenerator> inputEventGenerator;
+	std::unique_ptr<SymbolManager> symbolManager; // before imGuiManager
+	std::unique_ptr<ImGuiManager> imGuiManager; // before display
 	std::unique_ptr<Display> display;
 	std::unique_ptr<Mixer> mixer; // lazy initialized
 	std::unique_ptr<DiskFactory> diskFactory;

@@ -18,15 +18,16 @@ class InterpreterOutput;
 class Interpreter
 {
 public:
-	Interpreter(const Interpreter&) = delete;
-	Interpreter& operator=(const Interpreter&) = delete;
-
 	Interpreter();
+	Interpreter(const Interpreter&) = delete;
+	Interpreter(Interpreter&&) = delete;
+	Interpreter& operator=(const Interpreter&) = delete;
+	Interpreter& operator=(Interpreter&&) = delete;
 	~Interpreter();
 
 	void setOutput(InterpreterOutput* output_) { output = output_; }
 
-	void init(const char* programName);
+	void init(const char* programName) const;
 	[[nodiscard]] bool hasCommand(zstring_view name) const;
 	void registerCommand(zstring_view name, Command& command);
 	void unregisterCommand(Command& command);
@@ -36,6 +37,7 @@ public:
 	TclObject executeFile(zstring_view filename);
 
 	void setVariable(const TclObject& name, const TclObject& value);
+	void setVariable(const TclObject& arrayName, const TclObject& arrayIndex, const TclObject& value);
 	void unsetVariable(const char* name);
 	void registerSetting(BaseSetting& variable);
 	void unregisterSetting(BaseSetting& variable);
@@ -51,10 +53,12 @@ public:
 	void deleteNamespace(const std::string& name);
 
 	[[nodiscard]] TclParser parse(std::string_view command);
+	[[nodiscard]] bool validCommand(std::string_view command);
+	[[nodiscard]] bool validExpression(std::string_view expression);
 
-	void poll();
+	void poll() const;
 
-	void wrongNumArgs(unsigned argc, std::span<const TclObject> tokens, const char* message);
+	[[noreturn]] void wrongNumArgs(unsigned argc, std::span<const TclObject> tokens, const char* message);
 
 private:
 	static int outputProc(ClientData clientData, const char* buf,

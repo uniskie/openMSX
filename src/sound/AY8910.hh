@@ -5,6 +5,7 @@
 #include "FloatSetting.hh"
 #include "SimpleDebuggable.hh"
 #include "TclCallback.hh"
+
 #include <array>
 #include <cstdint>
 
@@ -40,16 +41,16 @@ public:
 private:
 	class Generator {
 	public:
-		inline void setPeriod(int value);
-		[[nodiscard]] inline unsigned getNextEventTime() const;
-		inline void advanceFast(unsigned duration);
+		void setPeriod(int value);
+		[[nodiscard]] unsigned getNextEventTime() const;
+		void advanceFast(unsigned duration);
 
 		template<typename Archive>
 		void serialize(Archive& ar, unsigned version);
 
 	protected:
 		Generator() = default;
-		inline void reset();
+		void reset();
 
 		/** Time between output steps.
 		  * For tones, this is half the period of the square wave.
@@ -68,14 +69,14 @@ private:
 	public:
 		ToneGenerator();
 
-		inline void reset();
+		void reset();
 
 		/** Advance tone generator several steps in time.
 		  * @param duration Length of interval to simulate.
 		  */
-		inline void advance(unsigned duration);
+		void advance(unsigned duration);
 
-		inline void doNextEvent(AY8910& ay8910);
+		void doNextEvent(const AY8910& ay8910);
 
 		/** Gets the current output of this generator.
 		  */
@@ -85,7 +86,7 @@ private:
 		void serialize(Archive& ar, unsigned version);
 
 	private:
-		[[nodiscard]] int getDetune(AY8910& ay8910);
+		[[nodiscard]] int getDetune(const AY8910& ay8910);
 
 	private:
 		/** Time passed since start of vibrato cycle.
@@ -102,13 +103,13 @@ private:
 	public:
 		NoiseGenerator();
 
-		inline void reset();
+		void reset();
 		/** Advance noise generator several steps in time.
 		  * @param duration Length of interval to simulate.
 		  */
-		inline void advance(unsigned duration);
+		void advance(unsigned duration);
 
-		inline void doNextEvent();
+		void doNextEvent();
 
 		/** Gets the current output of this generator.
 		  */
@@ -125,9 +126,9 @@ private:
 	public:
 		explicit Amplitude(const DeviceConfig& config);
 		[[nodiscard]] auto getEnvVolTable() const { return envVolTable; }
-		[[nodiscard]] inline float getVolume(unsigned chan) const;
-		inline void setChannelVolume(unsigned chan, unsigned value);
-		[[nodiscard]] inline bool followsEnvelope(unsigned chan) const;
+		[[nodiscard]] float getVolume(unsigned chan) const;
+		void setChannelVolume(unsigned chan, unsigned value);
+		[[nodiscard]] bool followsEnvelope(unsigned chan) const;
 
 	private:
 		const bool isAY8910; // must come before envVolTable
@@ -138,23 +139,23 @@ private:
 
 	class Envelope {
 	public:
-		explicit inline Envelope(std::span<const float, 32> envVolTable);
-		inline void reset();
-		inline void setPeriod(int value);
-		inline void setShape(unsigned shape);
-		[[nodiscard]] inline bool isChanging() const;
-		inline void advance(unsigned duration);
-		[[nodiscard]] inline float getVolume() const;
+		explicit Envelope(std::span<const float, 32> envVolTable);
+		void reset();
+		void setPeriod(int value);
+		void setShape(unsigned shape);
+		[[nodiscard]] bool isChanging() const;
+		void advance(unsigned duration);
+		[[nodiscard]] float getVolume() const;
 
-		[[nodiscard]] inline unsigned getNextEventTime() const;
-		inline void advanceFast(unsigned duration);
-		inline void doNextEvent();
+		[[nodiscard]] unsigned getNextEventTime() const;
+		void advanceFast(unsigned duration);
+		void doNextEvent();
 
 		template<typename Archive>
 		void serialize(Archive& ar, unsigned version);
 
 	private:
-		inline void doSteps(int steps);
+		void doSteps(int steps);
 
 	private:
 		std::span<const float, 32> envVolTable;
@@ -197,7 +198,6 @@ private:
 	const bool isAY8910;
 	const bool ignorePortDirections;
 	bool doDetune;
-	bool detuneInitialized = false; // (lazily) initialize detune stuff
 };
 
 SERIALIZE_CLASS_VERSION(AY8910::Generator, 2);

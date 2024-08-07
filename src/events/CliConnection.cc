@@ -45,11 +45,14 @@ CliConnection::~CliConnection()
 	eventDistributor.unregisterEventListener(EventType::CLICOMMAND, *this);
 }
 
-void CliConnection::log(CliComm::LogLevel level, std::string_view message) noexcept
+void CliConnection::log(CliComm::LogLevel level, std::string_view message, float fraction) noexcept
 {
-	auto levelStr = CliComm::getLevelStrings();
-	output(tmpStrCat("<log level=\"", levelStr[level], "\">",
-	                 XMLEscape(message), "</log>\n"));
+	std::string fullMessage{message};
+	if (level == CliComm::LogLevel::PROGRESS && fraction >= 0.0f) {
+		strAppend(fullMessage, "... ", int(100.0f * fraction), '%');
+	}
+	output(tmpStrCat("<log level=\"", toString(level), "\">",
+	                 XMLEscape(fullMessage), "</log>\n"));
 }
 
 void CliConnection::update(CliComm::UpdateType type, std::string_view machine,
@@ -57,8 +60,7 @@ void CliConnection::update(CliComm::UpdateType type, std::string_view machine,
 {
 	if (!getUpdateEnable(type)) return;
 
-	auto updateStr = CliComm::getUpdateStrings();
-	auto tmp = strCat("<update type=\"", updateStr[type], '\"');
+	auto tmp = strCat("<update type=\"", toString(type), '\"');
 	if (!machine.empty()) {
 		strAppend(tmp, " machine=\"", machine, '\"');
 	}
@@ -94,8 +96,7 @@ void CliConnection::end()
 
 void CliConnection::execute(const std::string& command)
 {
-	eventDistributor.distributeEvent(
-		Event::create<CliCommandEvent>(command, this));
+	eventDistributor.distributeEvent(CliCommandEvent(command, this));
 }
 
 static TemporaryString reply(std::string_view message, bool status)
@@ -104,11 +105,11 @@ static TemporaryString reply(std::string_view message, bool status)
 	                 XMLEscape(message), "</reply>\n");
 }
 
-int CliConnection::signalEvent(const Event& event)
+bool CliConnection::signalEvent(const Event& event)
 {
 	assert(getType(event) == EventType::CLICOMMAND);
-	const auto& commandEvent = get<CliCommandEvent>(event);
-	if (commandEvent.getId() == this) {
+	if (const auto& commandEvent = get_event<CliCommandEvent>(event);
+	    commandEvent.getId() == this) {
 		try {
 			auto result = commandController.executeCommand(
 				commandEvent.getCommand(), this).getString();
@@ -118,7 +119,7 @@ int CliConnection::signalEvent(const Event& event)
 			output(reply(result, false));
 		}
 	}
-	return 0;
+	return false;
 }
 
 
@@ -290,7 +291,7 @@ void SocketConnection::run()
 #ifdef _WIN32
 	bool ok;
 	{
-		std::lock_guard<std::mutex> lock(sdMutex);
+		std::scoped_lock lock(sdMutex);
 		// Authenticate and authorize the caller
 		SocketStreamWrapper stream(sd);
 		SspiNegotiateServer server(stream);
@@ -338,7 +339,7 @@ void SocketConnection::output(std::string_view message_)
 	while (!message.empty()) {
 		ptrdiff_t bytesSend;
 		{
-			std::lock_guard<std::mutex> lock(sdMutex);
+			std::scoped_lock lock(sdMutex);
 			if (sd == OPENMSX_INVALID_SOCKET) return;
 			bytesSend = sock_send(sd, message.data(), message.size());
 		}
@@ -357,7 +358,7 @@ void SocketConnection::output(std::string_view message_)
 
 void SocketConnection::closeSocket()
 {
-	std::lock_guard<std::mutex> lock(sdMutex);
+	std::scoped_lock lock(sdMutex);
 	if (sd != OPENMSX_INVALID_SOCKET) {
 		SOCKET _sd = sd;
 		sd = OPENMSX_INVALID_SOCKET;

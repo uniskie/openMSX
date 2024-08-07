@@ -1,11 +1,15 @@
 #include "CliServer.hh"
-#include "GlobalCliComm.hh"
+
 #include "CliConnection.hh"
 #include "FileOperations.hh"
+#include "GlobalCliComm.hh"
 #include "MSXException.hh"
+
 #include "one_of.hh"
 #include "random.hh"
 #include "xrange.hh"
+
+#include <bit>
 #include <memory>
 #include <string>
 
@@ -25,7 +29,7 @@ namespace openmsx {
 #if defined(_WIN32)
 	return "default";
 #else
-	struct passwd* pw = getpwuid(getuid());
+	const struct passwd* pw = getpwuid(getuid());
 	return pw->pw_name ? pw->pw_name : std::string{};
 #endif
 }
@@ -57,8 +61,8 @@ namespace openmsx {
 
 [[nodiscard]] static bool checkSocket(zstring_view socket)
 {
-	std::string_view name = FileOperations::getFilename(socket);
-	if (!name.starts_with("socket.")) {
+	if (auto name = FileOperations::getFilename(socket);
+	    !name.starts_with("socket.")) {
 		return false; // wrong name
 	}
 
@@ -109,7 +113,7 @@ namespace openmsx {
 		server_address.sin_family = AF_INET;
 		server_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 		server_address.sin_port = htons(port);
-		if (bind(listenSock, reinterpret_cast<sockaddr*>(&server_address),
+		if (bind(listenSock, std::bit_cast<sockaddr*>(&server_address),
 		         sizeof(server_address)) != -1) {
 			return port;
 		}
@@ -157,7 +161,7 @@ SOCKET CliServer::createSocket()
 	addr.sun_path[sizeof(addr.sun_path) - 1] = '\0';
 	addr.sun_family = AF_UNIX;
 
-	if (bind(sd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == -1) {
+	if (bind(sd, std::bit_cast<sockaddr*>(&addr), sizeof(addr)) == -1) {
 		sock_close(sd);
 		throw MSXException("Couldn't bind socket.");
 	}
@@ -198,9 +202,7 @@ CliServer::CliServer(CommandController& commandController_,
 	: commandController(commandController_)
 	, eventDistributor(eventDistributor_)
 	, cliComm(cliComm_)
-	, listenSock(OPENMSX_INVALID_SOCKET)
 {
-	sock_startup();
 	try {
 		listenSock = createSocket();
 		thread = std::thread([this]() { mainLoop(); });
@@ -217,7 +219,6 @@ CliServer::~CliServer()
 	}
 
 	deleteSocket(socketName);
-	sock_cleanup();
 }
 
 void CliServer::mainLoop()

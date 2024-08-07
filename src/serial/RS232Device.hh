@@ -18,11 +18,13 @@ public:
 	// SerialDataInterface (part) (output)
 	void setDataBits(DataBits bits) override;
 	void setStopBits(StopBits bits) override;
-	void setParityBit(bool enable, ParityBit parity) override;
+	void setParityBit(bool enable, Parity parity) override;
 
 	// control
-	[[nodiscard]] virtual bool getCTS(EmuTime::param time) const;
-	[[nodiscard]] virtual bool getDSR(EmuTime::param time) const;
+	[[nodiscard]] virtual std::optional<bool> getCTS(EmuTime::param time) const;
+	[[nodiscard]] virtual std::optional<bool> getDSR(EmuTime::param time) const;
+	[[nodiscard]] virtual std::optional<bool> getDCD(EmuTime::param time) const;
+	[[nodiscard]] virtual std::optional<bool> getRI(EmuTime::param time) const;
 	virtual void setDTR(bool status, EmuTime::param time);
 	virtual void setRTS(bool status, EmuTime::param time);
 };

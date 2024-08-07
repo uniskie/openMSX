@@ -1,15 +1,21 @@
 #include "Display.hh"
+
 #include "RendererFactory.hh"
+#include "ImGuiManager.hh"
 #include "Layer.hh"
-#include "VideoSystem.hh"
+#include "OutputSurface.hh"
 #include "VideoLayer.hh"
+#include "VideoSystem.hh"
+#include "VideoSystemChangeListener.hh"
+
+#include "BooleanSetting.hh"
+#include "CommandException.hh"
 #include "EventDistributor.hh"
 #include "Event.hh"
 #include "FileOperations.hh"
 #include "FileContext.hh"
 #include "CliComm.hh"
 #include "Timer.hh"
-#include "BooleanSetting.hh"
 #include "IntegerSetting.hh"
 #include "EnumSetting.hh"
 #include "Reactor.hh"
@@ -17,16 +23,15 @@
 #include "HardwareConfig.hh"
 #include "TclArgParser.hh"
 #include "XMLElement.hh"
-#include "VideoSystemChangeListener.hh"
-#include "CommandException.hh"
 #include "Version.hh"
-#include "build-info.hh"
+
 #include "narrow.hh"
 #include "outer.hh"
 #include "ranges.hh"
 #include "stl.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
 #include <array>
 #include <cassert>
 
@@ -41,8 +46,6 @@ Display::Display(Reactor& reactor_)
 	, osdGui(reactor_.getCommandController(), *this)
 	, reactor(reactor_)
 	, renderSettings(reactor.getCommandController())
-	, commandConsole(reactor.getGlobalCommandController(),
-	                 reactor.getEventDistributor(), *this)
 {
 	frameDurationSum = 0;
 	repeat(NUM_FRAME_DURATIONS, [&] {
@@ -52,42 +55,23 @@ Display::Display(Reactor& reactor_)
 	prevTimeStamp = Timer::getTime();
 
 	EventDistributor& eventDistributor = reactor.getEventDistributor();
-	eventDistributor.registerEventListener(EventType::FINISH_FRAME,
-			*this);
-	eventDistributor.registerEventListener(EventType::SWITCH_RENDERER,
-			*this);
-	eventDistributor.registerEventListener(EventType::MACHINE_LOADED,
-			*this);
-	eventDistributor.registerEventListener(EventType::EXPOSE,
-			*this);
-#if PLATFORM_ANDROID
-	eventDistributor.registerEventListener(EventType::FOCUS,
-			*this);
-#endif
+	using enum EventType;
+	for (auto type : {FINISH_FRAME, SWITCH_RENDERER, MACHINE_LOADED, WINDOW}) {
+		eventDistributor.registerEventListener(type, *this);
+	}
+
 	renderSettings.getRendererSetting().attach(*this);
-	renderSettings.getFullScreenSetting().attach(*this);
-	renderSettings.getScaleFactorSetting().attach(*this);
 }
 
 Display::~Display()
 {
 	renderSettings.getRendererSetting().detach(*this);
-	renderSettings.getFullScreenSetting().detach(*this);
-	renderSettings.getScaleFactorSetting().detach(*this);
 
 	EventDistributor& eventDistributor = reactor.getEventDistributor();
-#if PLATFORM_ANDROID
-	eventDistributor.unregisterEventListener(EventType::FOCUS,
-			*this);
-#endif
-	eventDistributor.unregisterEventListener(EventType::EXPOSE,
-			*this);
-	eventDistributor.unregisterEventListener(EventType::MACHINE_LOADED,
-			*this);
-	eventDistributor.unregisterEventListener(EventType::SWITCH_RENDERER,
-			*this);
-	eventDistributor.unregisterEventListener(EventType::FINISH_FRAME,
-			*this);
+	using enum EventType;
+	for (auto type : {WINDOW, MACHINE_LOADED, SWITCH_RENDERER, FINISH_FRAME}) {
+		eventDistributor.unregisterEventListener(type, *this);
+	}
 
 	resetVideoSystem();
 
@@ -97,7 +81,7 @@ Display::~Display()
 void Display::createVideoSystem()
 {
 	assert(!videoSystem);
-	assert(currentRenderer == RenderSettings::UNINITIALIZED);
+	assert(currentRenderer == RenderSettings::RendererID::UNINITIALIZED);
 	assert(!switchInProgress);
 	currentRenderer = renderSettings.getRenderer();
 	switchInProgress = true;
@@ -160,7 +144,7 @@ Display::Layers::iterator Display::baseLayer()
 			return it;
 		}
 		--it;
-		if ((*it)->getCoverage() == Layer::COVER_FULL) return it;
+		if ((*it)->getCoverage() == Layer::Coverage::FULL) return it;
 	}
 }
 
@@ -169,14 +153,13 @@ void Display::executeRT()
 	repaint();
 }
 
-int Display::signalEvent(const Event& event)
+bool Display::signalEvent(const Event& event)
 {
-	visit(overloaded{
+	std::visit(overloaded{
 		[&](const FinishFrameEvent& e) {
 			if (e.needRender()) {
 				repaint();
-				reactor.getEventDistributor().distributeEvent(
-					Event::create<FrameDrawnEvent>());
+				reactor.getEventDistributor().distributeEvent(FrameDrawnEvent());
 			}
 		},
 		[&](const SwitchRendererEvent& /*e*/) {
@@ -185,14 +168,15 @@ int Display::signalEvent(const Event& event)
 		[&](const MachineLoadedEvent& /*e*/) {
 			videoSystem->updateWindowTitle();
 		},
-		[&](const ExposeEvent& /*e*/) {
-			// Don't render too often, and certainly not when the screen
-			// will anyway soon be rendered.
-			repaintDelayed(100 * 1000); // 10fps
-		},
-		[&](const FocusEvent& e) {
-			(void)e;
-			if (PLATFORM_ANDROID) {
+		[&](const WindowEvent& e) {
+			const auto& evt = e.getSdlWindowEvent();
+			if (evt.event == SDL_WINDOWEVENT_EXPOSED) {
+				// Don't render too often, and certainly not when the screen
+				// will anyway soon be rendered.
+				repaintDelayed(100 * 1000); // 10fps
+			}
+			if (PLATFORM_ANDROID && e.isMainWindow() &&
+			    evt.event == one_of(SDL_WINDOWEVENT_FOCUS_GAINED, SDL_WINDOWEVENT_FOCUS_LOST)) {
 				// On Android, the rendering must be frozen when the app is sent to
 				// the background, because Android takes away all graphics resources
 				// from the app. It simply destroys the entire graphics context.
@@ -208,13 +192,14 @@ int Display::signalEvent(const Event& event)
 				// -When gaining the focus, this repaint does nothing as
 				//  the renderFrozen flag is still false
 				repaint();
-				ad_printf("Setting renderFrozen to %d", !e.getGain());
-				renderFrozen = !e.getGain();
+				bool lost = evt.event == SDL_WINDOWEVENT_FOCUS_LOST;
+				ad_printf("Setting renderFrozen to %d", lost);
+				renderFrozen = lost;
 			}
 		},
 		[](const EventBase&) { /*ignore*/ }
 	}, event);
-	return 0;
+	return false;
 }
 
 string Display::getWindowTitle()
@@ -234,17 +219,45 @@ string Display::getWindowTitle()
 	return title;
 }
 
+gl::ivec2 Display::getWindowPosition()
+{
+	if (auto pos = videoSystem->getWindowPosition()) {
+		storeWindowPosition(*pos);
+	}
+	return retrieveWindowPosition();
+}
+
+void Display::setWindowPosition(gl::ivec2 pos)
+{
+	storeWindowPosition(pos);
+	videoSystem->setWindowPosition(pos);
+}
+
+void Display::storeWindowPosition(gl::ivec2 pos)
+{
+	reactor.getImGuiManager().storeWindowPosition(pos);
+}
+
+gl::ivec2 Display::retrieveWindowPosition()
+{
+	return reactor.getImGuiManager().retrieveWindowPosition();
+}
+
+gl::ivec2 Display::getWindowSize() const
+{
+	int factor = renderSettings.getScaleFactor();
+	return {320 * factor, 240 * factor};
+}
+
+float Display::getFps() const
+{
+	return 1000000.0f * NUM_FRAME_DURATIONS / narrow_cast<float>(frameDurationSum);
+}
+
 void Display::update(const Setting& setting) noexcept
 {
-	if (&setting == &renderSettings.getRendererSetting()) {
-		checkRendererSwitch();
-	} else if (&setting == &renderSettings.getFullScreenSetting()) {
-		checkRendererSwitch();
-	} else if (&setting == &renderSettings.getScaleFactorSetting()) {
-		checkRendererSwitch();
-	} else {
-		UNREACHABLE;
-	}
+	assert(&setting == &renderSettings.getRendererSetting());
+	checkRendererSwitch();
 }
 
 void Display::checkRendererSwitch()
@@ -256,15 +269,13 @@ void Display::checkRendererSwitch()
 		return;
 	}
 	auto newRenderer = renderSettings.getRenderer();
-	if ((newRenderer != currentRenderer) ||
-	    !getVideoSystem().checkSettings()) {
+	if (newRenderer != currentRenderer) {
 		currentRenderer = newRenderer;
 		// don't do the actual switching in the Tcl callback
 		// it seems creating and destroying Settings (= Tcl vars)
 		// causes problems???
 		switchInProgress = true;
-		reactor.getEventDistributor().distributeEvent(
-			Event::create<SwitchRendererEvent>());
+		reactor.getEventDistributor().distributeEvent(SwitchRendererEvent());
 	}
 }
 
@@ -284,22 +295,16 @@ void Display::doRendererSwitch()
 				rendererSetting.getString(),
 				": ", e.getMessage());
 			// now try some things that might work against this:
-			if (rendererSetting.getEnum() != RenderSettings::SDL) {
-				errorMsg += "\nTrying to switch to SDL renderer instead...";
-				rendererSetting.setEnum(RenderSettings::SDL);
-				currentRenderer = RenderSettings::SDL;
-			} else {
-				auto& scaleFactorSetting = renderSettings.getScaleFactorSetting();
-				auto curVal = scaleFactorSetting.getInt();
-				if (curVal == 1) {
-					throw FatalError(
-						e.getMessage(),
-						" (and I have no other ideas to try...)"); // give up and die... :(
-				}
-				strAppend(errorMsg, "\nTrying to decrease scale_factor setting from ",
-				          curVal, " to ", curVal - 1, "...");
-				scaleFactorSetting.setInt(curVal - 1);
+			auto& scaleFactorSetting = renderSettings.getScaleFactorSetting();
+			auto curVal = scaleFactorSetting.getInt();
+			if (curVal == MIN_SCALE_FACTOR) {
+				throw FatalError(
+					e.getMessage(),
+					" (and I have no other ideas to try...)"); // give up and die... :(
 			}
+			strAppend(errorMsg, "\nTrying to decrease scale_factor setting from ",
+					curVal, " to ", curVal - 1, "...");
+			scaleFactorSetting.setInt(curVal - 1);
 			getCliComm().printWarning(errorMsg);
 		}
 	}
@@ -350,12 +355,16 @@ void Display::repaintImpl()
 	prevTimeStamp = now;
 	frameDurationSum += duration - frameDurations.removeBack();
 	frameDurations.addFront(duration);
+
+	// TODO maybe revisit this later (and/or simplify other calls to repaintDelayed())
+	// This ensures a minimum framerate for ImGui
+	repaintDelayed(40 * 1000); // 25fps
 }
 
 void Display::repaintImpl(OutputSurface& surface)
 {
 	for (auto it = baseLayer(); it != end(layers); ++it) {
-		if ((*it)->getCoverage() != Layer::COVER_NONE) {
+		if ((*it)->getCoverage() != Layer::Coverage::NONE) {
 			(*it)->paint(surface);
 		}
 	}
@@ -379,8 +388,8 @@ void Display::repaintDelayed(uint64_t delta)
 
 void Display::addLayer(Layer& layer)
 {
-	int z = layer.getZ();
-	auto it = ranges::find_if(layers, [&](Layer* l) { return l->getZ() > z; });
+	auto z = layer.getZ();
+	auto it = ranges::find_if(layers, [&](const Layer* l) { return l->getZ() > z; });
 	layers.insert(it, &layer);
 	layer.setDisplay(*this);
 }
@@ -451,10 +460,10 @@ void Display::ScreenShotCmd::execute(std::span<const TclObject> tokens, TclObjec
 		throw SyntaxError();
 	}
 	string filename = FileOperations::parseCommandFileArgument(
-		fname, "screenshots", prefix, ".png");
+		fname, SCREENSHOT_DIR, prefix, SCREENSHOT_EXTENSION);
 
 	if (!rawShot) {
-		// include all layers (OSD stuff, console)
+		// take screenshot as displayed, possibly with other layers (OSD stuff, ImGUI)
 		try {
 			display.getVideoSystem().takeScreenShot(filename, withOsd);
 		} catch (MSXException& e) {
@@ -483,21 +492,24 @@ void Display::ScreenShotCmd::execute(std::span<const TclObject> tokens, TclObjec
 
 string Display::ScreenShotCmd::help(std::span<const TclObject> /*tokens*/) const
 {
-	// Note: -no-sprites option is implemented in Tcl
+	// Note: -no-sprites and -guess-name options are implemented in Tcl.
+	// TODO: find a way to extend the help and completion for a command
+	// when extending it in Tcl
 	return "screenshot                   Write screenshot to file \"openmsxNNNN.png\"\n"
 	       "screenshot <filename>        Write screenshot to indicated file\n"
 	       "screenshot -prefix foo       Write screenshot to file \"fooNNNN.png\"\n"
 	       "screenshot -raw              320x240 raw screenshot (of MSX screen only)\n"
 	       "screenshot -raw -doublesize  640x480 raw screenshot (of MSX screen only)\n"
 	       "screenshot -with-osd         Include OSD elements in the screenshot\n"
-	       "screenshot -no-sprites       Don't include sprites in the screenshot\n";
+	       "screenshot -no-sprites       Don't include sprites in the screenshot\n"
+	       "screenshot -guess-name       Guess the name of the running software and use it as prefix\n";
 }
 
 void Display::ScreenShotCmd::tabCompletion(std::vector<string>& tokens) const
 {
 	using namespace std::literals;
 	static constexpr std::array extra = {
-		"-prefix"sv, "-raw"sv, "-doublesize"sv, "-with-osd"sv, "-no-sprites"sv,
+		"-prefix"sv, "-raw"sv, "-doublesize"sv, "-with-osd"sv, "-no-sprites"sv, "-guess-name"sv,
 	};
 	completeFileName(tokens, userFileContext(), extra);
 }
@@ -514,7 +526,7 @@ void Display::FpsInfoTopic::execute(std::span<const TclObject> /*tokens*/,
                                     TclObject& result) const
 {
 	auto& display = OUTER(Display, fpsInfo);
-	result = 1000000.0f * Display::NUM_FRAME_DURATIONS / narrow_cast<float>(display.frameDurationSum);
+	result = display.getFps();
 }
 
 string Display::FpsInfoTopic::help(std::span<const TclObject> /*tokens*/) const

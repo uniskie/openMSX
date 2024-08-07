@@ -10,9 +10,13 @@ struct Tracked
 	static inline std::vector<int> constructed;
 	static inline std::vector<int> destructed;
 
-	Tracked(int i_) : i(i_) {
+	explicit Tracked(int i_) : i(i_) {
 		constructed.push_back(i);
 	}
+	Tracked(const Tracked&) = delete;
+	Tracked(Tracked&&) = delete;
+	Tracked& operator=(const Tracked&) = delete;
+	Tracked& operator=(Tracked&&) = delete;
 	~Tracked() {
 		destructed.push_back(i);
 	}

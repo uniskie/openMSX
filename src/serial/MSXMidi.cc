@@ -17,12 +17,12 @@ static constexpr byte DISABLED_VALUE      = 0x80; // b7 = EN
 
 MSXMidi::MSXMidi(const DeviceConfig& config)
 	: MSXDevice(config)
-	, MidiInConnector(MSXDevice::getPluggingController(), "msx-midi-in")
+	, MidiInConnector(MSXDevice::getPluggingController(), "MSX-MIDI-in")
 	, timerIRQ(getMotherBoard(), MSXDevice::getName() + ".IRQtimer")
 	, rxrdyIRQ(getMotherBoard(), MSXDevice::getName() + ".IRQrxrdy")
 	, isExternalMSXMIDI(config.findChild("external") != nullptr)
 	, isEnabled(!isExternalMSXMIDI)
-	, outConnector(MSXDevice::getPluggingController(), "msx-midi-out")
+	, outConnector(MSXDevice::getPluggingController(), "MSX-MIDI-out")
 	, i8251(getScheduler(), interface, getCurrentTime())
 	, i8254(getScheduler(), &cntr0, nullptr, &cntr2, getCurrentTime())
 {
@@ -94,7 +94,7 @@ byte MSXMidi::readIO(word port, EmuTime::param time)
 		case 7: // timer command register
 			return i8254.readIO(port & 3, time);
 		default:
-			UNREACHABLE; return 0;
+			UNREACHABLE;
 	}
 }
 
@@ -118,7 +118,7 @@ byte MSXMidi::peekIO(word port, EmuTime::param time) const
 		case 7: // timer command register
 			return i8254.peekIO(port & 3, time);
 		default:
-			UNREACHABLE; return 0;
+			UNREACHABLE;
 	}
 }
 
@@ -281,7 +281,7 @@ void MSXMidi::Interface::setRTS(bool status, EmuTime::param /*time*/)
 
 bool MSXMidi::Interface::getDSR(EmuTime::param /*time*/)
 {
-	auto& midi = OUTER(MSXMidi, interface);
+	const auto& midi = OUTER(MSXMidi, interface);
 	return midi.timerIRQ.getState();
 }
 
@@ -302,7 +302,7 @@ void MSXMidi::Interface::setStopBits(StopBits bits)
 	midi.outConnector.setStopBits(bits);
 }
 
-void MSXMidi::Interface::setParityBit(bool enable, ParityBit parity)
+void MSXMidi::Interface::setParityBit(bool enable, Parity parity)
 {
 	auto& midi = OUTER(MSXMidi, interface);
 	midi.outConnector.setParityBit(enable, parity);
@@ -316,7 +316,7 @@ void MSXMidi::Interface::recvByte(byte value, EmuTime::param time)
 
 void MSXMidi::Interface::signal(EmuTime::param time)
 {
-	auto& midi = OUTER(MSXMidi, interface);
+	const auto& midi = OUTER(MSXMidi, interface);
 	midi.getPluggedMidiInDev().signal(time);
 }
 
@@ -384,7 +384,7 @@ void MSXMidi::setStopBits(StopBits bits)
 	i8251.setStopBits(bits);
 }
 
-void MSXMidi::setParityBit(bool enable, ParityBit parity)
+void MSXMidi::setParityBit(bool enable, Parity parity)
 {
 	i8251.setParityBit(enable, parity);
 }

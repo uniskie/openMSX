@@ -4,9 +4,11 @@
 #include "V9990Rasterizer.hh"
 #include "V9990BitmapConverter.hh"
 #include "V9990PxConverter.hh"
+
 #include "Observer.hh"
+
 #include <array>
-#include <concepts>
+#include <cstdint>
 #include <memory>
 
 namespace openmsx {
@@ -22,17 +24,20 @@ class PostProcessor;
 
 /** Rasterizer using SDL.
   */
-template<std::unsigned_integral Pixel>
 class V9990SDLRasterizer final : public V9990Rasterizer
                                , private Observer<Setting>
 {
 public:
+	using Pixel = uint32_t;
+
 	V9990SDLRasterizer(
 		V9990& vdp, Display& display, OutputSurface& screen,
 		std::unique_ptr<PostProcessor> postProcessor);
-	~V9990SDLRasterizer() override;
 	V9990SDLRasterizer(const V9990SDLRasterizer&) = delete;
+	V9990SDLRasterizer(V9990SDLRasterizer&&) = delete;
 	V9990SDLRasterizer& operator=(const V9990SDLRasterizer&) = delete;
+	V9990SDLRasterizer& operator=(V9990SDLRasterizer&&) = delete;
+	~V9990SDLRasterizer() override;
 
 	// Rasterizer interface:
 	[[nodiscard]] PostProcessor* getPostProcessor() const override;
@@ -110,8 +115,8 @@ private:
 
 	/** The current screen mode
 	  */
-	V9990DisplayMode displayMode = P1; // dummy value
-	V9990ColorMode   colorMode   = PP; //   avoid UMR
+	V9990DisplayMode displayMode = V9990DisplayMode::P1; // dummy value
+	V9990ColorMode   colorMode   = V9990ColorMode::PP; //   avoid UMR
 
 	/** Palette containing the complete V9990 Color space
 	  */
@@ -135,9 +140,9 @@ private:
 	  */
 	const std::unique_ptr<PostProcessor> postProcessor;
 
-	V9990BitmapConverter<Pixel> bitmapConverter;
-	V9990P1Converter<Pixel> p1Converter;
-	V9990P2Converter<Pixel> p2Converter;
+	V9990BitmapConverter bitmapConverter;
+	V9990P1Converter p1Converter;
+	V9990P2Converter p2Converter;
 };
 
 } // namespace openmsx

@@ -135,7 +135,9 @@ class VRAMWindow
 {
 public:
 	VRAMWindow(const VRAMWindow&) = delete;
+	VRAMWindow(VRAMWindow&&) = delete;
 	VRAMWindow& operator=(const VRAMWindow&) = delete;
+	VRAMWindow& operator=(VRAMWindow&&) = delete;
 
 	/** Gets the mask for this window.
 	  * Should only be called if the window is enabled.
@@ -397,7 +399,9 @@ class VDPVRAM
 {
 public:
 	VDPVRAM(const VDPVRAM&) = delete;
+	VDPVRAM(VDPVRAM&&) = delete;
 	VDPVRAM& operator=(const VDPVRAM&) = delete;
+	VDPVRAM& operator=(VDPVRAM&&) = delete;
 
 	VDPVRAM(VDP& vdp, unsigned size, EmuTime::param time);
 
@@ -555,6 +559,12 @@ public:
 	  */
 	void change4k8kMapping(bool mapping8k);
 
+	/** Only used by debugger
+	 */
+	[[nodiscard]] std::span<const uint8_t> getData() const {
+		return {data.data(), data.size()};
+	}
+
 	template<typename Archive>
 	void serialize(Archive& ar, unsigned version);
 
@@ -625,7 +635,7 @@ private:
 	  */
 	class LogicalVRAMDebuggable final : public SimpleDebuggable {
 	public:
-		explicit LogicalVRAMDebuggable(VDP& vdp);
+		explicit LogicalVRAMDebuggable(const VDP& vdp);
 		[[nodiscard]] byte read(unsigned address, EmuTime::param time) override;
 		void write(unsigned address, byte value, EmuTime::param time) override;
 	private:
@@ -637,7 +647,7 @@ private:
 	  *   debuggable is the same as the actual VRAM size.
 	  */
 	struct PhysicalVRAMDebuggable final : SimpleDebuggable {
-		PhysicalVRAMDebuggable(VDP& vdp, unsigned actualSize);
+		PhysicalVRAMDebuggable(const VDP& vdp, unsigned actualSize);
 		[[nodiscard]] byte read(unsigned address, EmuTime::param time) override;
 		void write(unsigned address, byte value, EmuTime::param time) override;
 	} physicalVRAMDebug;
@@ -655,7 +665,7 @@ private:
 	  * in the correct order.
 	  */
 	#ifdef DEBUG
-	EmuTime vramTime;
+	EmuTime vramTime = EmuTime::zero();
 	#endif
 
 	/** Mask to handle vram mirroring

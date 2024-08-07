@@ -3,11 +3,12 @@
 #include "DummyDisk.hh"
 #include "DirAsDSK.hh"
 #include "RamDSKDiskImage.hh"
+#include "DMKDiskImage.hh"
 #include "MSXMotherBoard.hh"
 #include "Reactor.hh"
 #include "LedStatus.hh"
 #include "MSXCommandController.hh"
-#include "CliComm.hh"
+#include "MSXCliComm.hh"
 #include "GlobalSettings.hh"
 #include "MSXException.hh"
 #include "narrow.hh"
@@ -16,6 +17,11 @@
 #include <memory>
 
 namespace openmsx {
+
+std::shared_ptr<RealDrive::DrivesInUse> RealDrive::getDrivesInUse(MSXMotherBoard& motherBoard)
+{
+	return motherBoard.getSharedStuff<DrivesInUse>("drivesInUse");
+}
 
 RealDrive::RealDrive(MSXMotherBoard& motherBoard_, EmuDuration::param motorTimeout_,
                      bool signalsNeedMotorOn_, bool doubleSided,
@@ -31,7 +37,7 @@ RealDrive::RealDrive(MSXMotherBoard& motherBoard_, EmuDuration::param motorTimeo
 	, signalsNeedMotorOn(signalsNeedMotorOn_)
 	, trackMode(trackMode_)
 {
-	drivesInUse = motherBoard.getSharedStuff<DrivesInUse>("drivesInUse");
+	drivesInUse = getDrivesInUse(motherBoard);
 
 	unsigned i = 0;
 	while ((*drivesInUse)[i]) {
@@ -45,7 +51,7 @@ RealDrive::RealDrive(MSXMotherBoard& motherBoard_, EmuDuration::param motorTimeo
 	if (motherBoard.getMSXCommandController().hasCommand(driveName)) {
 		throw MSXException("Duplicated drive name: ", driveName);
 	}
-	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, driveName, "add");
+	motherBoard.getMSXCliComm().update(CliComm::UpdateType::HARDWARE, driveName, "add");
 	changer.emplace(motherBoard, driveName, true, doubleSizedDrive,
 	                [this]() { invalidateTrack(); });
 	motherBoard.registerMediaInfo(changer->getDriveName(), *this);
@@ -63,7 +69,7 @@ RealDrive::~RealDrive()
 	motherBoard.unregisterMediaInfo(*this);
 
 	const auto& driveName = changer->getDriveName();
-	motherBoard.getMSXCliComm().update(CliComm::HARDWARE, driveName, "remove");
+	motherBoard.getMSXCliComm().update(CliComm::UpdateType::HARDWARE, driveName, "remove");
 
 	unsigned driveNum = driveName[4] - 'a';
 	assert((*drivesInUse)[driveNum]);
@@ -85,8 +91,12 @@ void RealDrive::getMediaInfo(TclObject& result)
 	}();
 	result.addDictKeyValues("target", changer->getDiskName().getResolved(),
 	                        "type", typeStr,
-	                        "readonly", changer->getDisk().isWriteProtected());
-	if (auto* disk = changer->getSectorAccessibleDisk()) {
+	                        "readonly", changer->getDisk().isWriteProtected(),
+	                        "doublesided", changer->getDisk().isDoubleSided());
+	if (!dynamic_cast<DMKDiskImage*>(&(changer->getDisk()))) {
+		result.addDictKeyValues("size", int(changer->getDisk().getNbSectors() * SectorAccessibleDisk::SECTOR_SIZE));
+	}
+	if (const auto* disk = changer->getSectorAccessibleDisk()) {
 		TclObject patches;
 		patches.addListElements(view::transform(disk->getPatches(), [](auto& p) {
 			return p.getResolved();
@@ -150,7 +160,6 @@ unsigned RealDrive::getMaxTrack() const
 		return MAX_TRACK * 4 + 3;
 	default:
 		UNREACHABLE;
-		return 0;
 	}
 }
 
@@ -174,7 +183,6 @@ std::optional<unsigned> RealDrive::getDiskReadTrack() const
 		}
 	default:
 		UNREACHABLE;
-		return {};
 	}
 }
 
@@ -192,7 +200,6 @@ std::optional<unsigned> RealDrive::getDiskWriteTrack() const
 		}
 	default:
 		UNREACHABLE;
-		return {};
 	}
 }
 

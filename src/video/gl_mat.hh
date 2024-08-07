@@ -97,20 +97,17 @@ public:
 		return c[i];
 	}
 
+	[[nodiscard]] constexpr const T* data() const { return c[0].data(); }
+	[[nodiscard]] constexpr       T* data()       { return c[0].data(); }
+
+
 	// Assignment version of the +,-,* operations defined below.
 	constexpr matMxN& operator+=(const matMxN& x) { *this = *this + x; return *this; }
 	constexpr matMxN& operator-=(const matMxN& x) { *this = *this - x; return *this; }
 	constexpr matMxN& operator*=(T             x) { *this = *this * x; return *this; }
 	constexpr matMxN& operator*=(const matMxN<N, N, T>& x) { *this = *this * x; return *this; }
 
-	// gcc-10 mis-compiles this (fixed in gcc-11):
-	//    [[nodiscard]] constexpr bool operator==(const matMxN&) const = default;
-	// For now still manually implement it.
-	[[nodiscard]] friend constexpr bool operator==(const matMxN& x, const matMxN& y)
-	{
-		for (auto i : xrange(N)) if (x[i] != y[i]) return false;
-		return true;
-	}
+	[[nodiscard]] constexpr bool operator==(const matMxN&) const = default;
 
 private:
 	std::array<vecN<M, T>, N> c;

@@ -4,33 +4,35 @@
 #include "aligned.hh"
 #include "narrow.hh"
 #include "xrange.hh"
+
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
-#include <concepts>
+#include <cstdint>
 #include <span>
 
 namespace openmsx {
-
-class PixelFormat;
 
 /** Interface for getting lines from a video frame.
   */
 class FrameSource
 {
 public:
+	using Pixel = uint32_t;
+
 	/** What role does this frame play in interlacing?
 	  */
-	enum FieldType {
+	enum class FieldType {
 		/** Interlacing is off for this frame.
 		  */
-		FIELD_NONINTERLACED,
+		NONINTERLACED,
 		/** Interlacing is on and this is an even frame.
 		  */
-		FIELD_EVEN,
+		EVEN,
 		/** Interlacing is on and this is an odd frame.
 		  */
-		FIELD_ODD
+		ODD,
 	};
 
 	/** (Re)initialize an existing FrameSource. This method sets the
@@ -75,12 +77,9 @@ public:
 	  * line. But it's fine to call this on non-border lines as well, in
 	  * that case the color of the first pixel of the line is returned.
 	  */
-	template<std::unsigned_integral Pixel>
 	[[nodiscard]] inline Pixel getLineColor(unsigned line) const {
 		ALIGNAS_SSE std::array<Pixel, 1280> buf; // large enough for widest line
-		unsigned width; // not used
-		return reinterpret_cast<const Pixel*>(
-			getLineInfo(line, width, buf.data(), 1280))[0];
+		return getUnscaledLine(line, buf)[0];
 	}
 
 	/** Gets a pointer to the pixels of the given line number.
@@ -92,68 +91,52 @@ public:
 	  * value of this function will point to the line data (some internal
 	  * buffer or the work buffer).
 	  */
-	template<std::unsigned_integral Pixel>
 	[[nodiscard]] inline std::span<const Pixel> getLine(int line, std::span<Pixel> buf) const
 	{
 		line = std::clamp(line, 0, narrow<int>(getHeight() - 1));
-		unsigned internalWidth;
-		auto* internalData = reinterpret_cast<const Pixel*>(
-			getLineInfo(line, internalWidth, buf.data(), narrow<unsigned>(buf.size())));
-		if (internalWidth == narrow<unsigned>(buf.size())) {
-			return std::span{internalData, buf.size()};
+		auto unscaledLine = getUnscaledLine(line, buf);
+		if (unscaledLine.size() == buf.size()) {
+			// Already the correct width.
+			return unscaledLine;
 		} else {
 			// slow path, non-inlined
 			// internalData might be equal to buf
-			scaleLine(std::span{internalData, internalWidth}, buf);
+			scaleLine(unscaledLine, buf);
 			return buf;
 		}
 	}
 
-	/** Abstract implementation of getLinePtr().
-	  * Pixel type is unspecified (implementations that care about the
-	  * exact type should get it via some other mechanism).
+	/** Get a specific line, with the 'native' line-width.
 	  * @param line The line number for the requested line.
-	  * @param lineWidth Output parameter, the width of the returned line
-	  *                  in pixel units.
-	  * @param buf Buffer space that can _optionally_ be used by the
-	  *            implementation.
-	  * @param bufWidth The size of the above buffer, in pixel units.
-	  * @return Pointer to the first pixel of the requested line. This might
-	  *         be the same as the given 'buf' parameter or it might be some
-	  *         internal buffer.
+	  * @param helpBuf Buffer space that can _optionally_ be used by the
+	  *                implementation.
+	  * @return Returns a span of the requested line. This span may or may
+	            not use the helper input buffer.
 	  */
-	[[nodiscard]] virtual const void* getLineInfo(
-		unsigned line, unsigned& lineWidth,
-		void* buf, unsigned bufWidth) const = 0;
+	[[nodiscard]] virtual std::span<const Pixel> getUnscaledLine(
+		unsigned line, std::span<Pixel> helpBuf) const = 0;
 
 	/** Get a pointer to a given line in this frame, the frame is scaled
 	  * to 320x240 pixels. The difference between this method and
 	  * getLinePtr() is that this method also does vertical scaling.
 	  * This is used for video recording.
 	  */
-	template<std::unsigned_integral Pixel>
 	[[nodiscard]] std::span<const Pixel, 320> getLinePtr320_240(unsigned line, std::span<Pixel, 320> buf) const;
 
 	/** Get a pointer to a given line in this frame, the frame is scaled
 	  * to 640x480 pixels. Same as getLinePtr320_240, but then for a
 	  * higher resolution output.
 	  */
-	template<std::unsigned_integral Pixel>
 	[[nodiscard]] std::span<const Pixel, 640> getLinePtr640_480(unsigned line, std::span<Pixel, 640> buf) const;
 
 	/** Get a pointer to a given line in this frame, the frame is scaled
 	  * to 960x720 pixels. Same as getLinePtr320_240, but then for a
 	  * higher resolution output.
 	  */
-	template<std::unsigned_integral Pixel>
 	[[nodiscard]] std::span<const Pixel, 960> getLinePtr960_720(unsigned line, std::span<Pixel, 960> buf) const;
 
-	[[nodiscard]] const PixelFormat& getPixelFormat() const {
-		return pixelFormat;
-	}
-
 protected:
-	explicit FrameSource(const PixelFormat& format);
+	FrameSource() = default;
 	~FrameSource() = default;
 
 	void setHeight(unsigned height_) { height = height_; }
@@ -165,14 +148,9 @@ protected:
 		return false;
 	}
 
-	template<std::unsigned_integral Pixel> void scaleLine(
-		std::span<const Pixel> in, std::span<Pixel> out) const;
+	void scaleLine(std::span<const Pixel> in, std::span<Pixel> out) const;
 
 private:
-	/** Pixel format. Needed for getLinePtr scaling
-	  */
-	const PixelFormat& pixelFormat;
-
 	/** Number of lines in this frame.
 	  */
 	unsigned height;

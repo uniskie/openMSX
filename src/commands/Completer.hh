@@ -2,6 +2,8 @@
 #define COMPLETER_HH
 
 #include "inline.hh"
+
+#include <concepts>
 #include <span>
 #include <string>
 #include <string_view>
@@ -18,7 +20,9 @@ class Completer
 {
 public:
 	Completer(const Completer&) = delete;
+	Completer(Completer&&) = delete;
 	Completer& operator=(const Completer&) = delete;
+	Completer& operator=(Completer&&) = delete;
 
 	[[nodiscard]] const std::string& getName() const { return theName; }
 
@@ -69,6 +73,7 @@ public:
 
 protected:
 	template<typename String>
+		requires(!std::same_as<Completer, std::remove_cvref_t<String>>) // don't block copy-constructor
 	explicit Completer(String&& name_)
 		: theName(std::forward<String>(name_))
 	{

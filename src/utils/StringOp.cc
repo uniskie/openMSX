@@ -1,7 +1,11 @@
 #include "StringOp.hh"
+
 #include "MSXException.hh"
+
 #include "ranges.hh"
 #include "stl.hh"
+
+#include <bit>
 #include <cstdlib>
 
 using std::string;
@@ -19,12 +23,12 @@ bool stringToBool(string_view str)
 	return false;
 }
 
-//string toLower(string_view str)
-//{
-//	string result(str);
-//	transform_in_place(result, ::tolower);
-//	return result;
-//}
+std::string toLower(std::string_view str)
+{
+	std::string result(str);
+	transform_in_place(result, ::tolower);
+	return result;
+}
 
 void trimRight(string& str, const char* chars)
 {
@@ -212,7 +216,7 @@ std::string fromCFString(CFStringRef str)
 	UInt8 buffer[usedBufLen];
 	CFStringGetBytes(
 		str, range, kCFStringEncodingUTF8, '?', false, buffer, len, &usedBufLen);
-	return std::string(reinterpret_cast<const char *>(buffer), usedBufLen);
+	return std::string(reinterpret_cast<const char*>(buffer), usedBufLen);
 }
 
 #endif

@@ -15,6 +15,10 @@ class Poller
 {
 public:
 	Poller();
+	Poller(const Poller&) = delete;
+	Poller(Poller&&) = delete;
+	Poller& operator=(const Poller&) = delete;
+	Poller& operator=(Poller&&) = delete;
 	~Poller();
 
 #ifndef _WIN32
@@ -26,7 +30,7 @@ public:
 
 	/** Returns true iff abort() was called.
 	  */
-	[[nodiscard]] bool aborted() {
+	[[nodiscard]] bool aborted() const {
 		return abortFlag;
 	}
 
@@ -34,11 +38,17 @@ public:
 	  */
 	void abort();
 
+	/** Reset aborted() to false. (Functionally the same, but more efficient
+	  * than destroying and recreating this object). */
+	void reset() {
+		abortFlag = false;
+	}
+
 private:
 #ifndef _WIN32
 	std::array<int, 2> wakeupPipe;
 #endif
-	std::atomic_bool abortFlag;
+	std::atomic_bool abortFlag = false;
 };
 
 } // namespace openmsx

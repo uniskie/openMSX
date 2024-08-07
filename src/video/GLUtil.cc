@@ -1,12 +1,16 @@
 #include "GLUtil.hh"
+
 #include "File.hh"
 #include "FileContext.hh"
 #include "FileException.hh"
 #include "InitException.hh"
+
 #include "vla.hh"
 #include "Version.hh"
-#include <iostream>
+
+#include <bit>
 #include <cstdio>
+#include <iostream>
 
 using namespace openmsx;
 
@@ -40,8 +44,19 @@ void Texture::allocate()
 
 void Texture::reset()
 {
-	glDeleteTextures(1, &textureId); // ok to delete 0-texture
-	textureId = 0;
+	// Calling glDeleteTextures with a 0-texture-id is OK, it doesn't do
+	// anything. So from that point of view we don't need this test. However
+	// during initialization, before the openGL context is created, we
+	// already create some Texture(null) objects. These can also be moved
+	// around (std::move()), and then when the moved-from object gets
+	// deleted that also calls this method. That should be fine as calling
+	// glDeleteTextures() with 0 does nothing. EXCEPT that on macOS it does
+	// crash when calling an openGL function before an openGL context is
+	// created (it works fine on Linux and Windows).
+	if (textureId) {
+		glDeleteTextures(1, &textureId);
+		textureId = 0;
+	}
 }
 
 void Texture::setInterpolation(bool interpolation)
@@ -145,7 +160,7 @@ void Shader::init(GLenum type, std::string_view header, std::string_view filenam
 	try {
 		File file(systemFileContext().resolve(tmpStrCat("shaders/", filename)));
 		auto mmap = file.mmap();
-		source.append(reinterpret_cast<const char*>(mmap.data()),
+		source.append(std::bit_cast<const char*>(mmap.data()),
 		              mmap.size());
 	} catch (FileException& e) {
 		std::cerr << "Cannot find shader: " << e.getMessage() << '\n';
@@ -205,8 +220,11 @@ void ShaderProgram::allocate()
 
 void ShaderProgram::reset()
 {
-	glDeleteProgram(handle); // ok to delete '0'
-	handle = 0;
+	// ok to delete '0', but see comment in Texture::reset()
+	if (handle) {
+		glDeleteProgram(handle);
+		handle = 0;
+	}
 }
 
 bool ShaderProgram::isOK() const

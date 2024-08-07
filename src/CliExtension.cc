@@ -1,5 +1,6 @@
 #include "CliExtension.hh"
 #include "CommandLineParser.hh"
+#include "HardwareConfig.hh"
 #include "MSXMotherBoard.hh"
 #include "MSXException.hh"
 #include <cassert>
@@ -9,11 +10,9 @@ namespace openmsx {
 CliExtension::CliExtension(CommandLineParser& cmdLineParser_)
 	: cmdLineParser(cmdLineParser_)
 {
-	cmdLineParser.registerOption("-ext", *this);
-	cmdLineParser.registerOption("-exta", *this);
-	cmdLineParser.registerOption("-extb", *this);
-	cmdLineParser.registerOption("-extc", *this);
-	cmdLineParser.registerOption("-extd", *this);
+	for (const auto* ext : {"-ext", "-exta", "-extb", "-extc", "-extd"}) {
+		cmdLineParser.registerOption(ext, *this);
+	}
 }
 
 void CliExtension::parseOption(const std::string& option, std::span<std::string>& cmdLine)
@@ -28,7 +27,8 @@ void CliExtension::parseOption(const std::string& option, std::span<std::string>
 		} else {
 			slotName = "any";
 		}
-		motherboard->loadExtension(extensionName, slotName);
+		motherboard->insertExtension(extensionName,
+			motherboard->loadExtension(extensionName, slotName));
 	} catch (MSXException& e) {
 		throw FatalError(std::move(e).getMessage());
 	}

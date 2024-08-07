@@ -5,9 +5,11 @@
 #include "EmuTime.hh"
 #include "InfoTopic.hh"
 #include "Mixer.hh"
-#include "Observer.hh"
 #include "Schedulable.hh"
+
+#include "Observer.hh"
 #include "dynarray.hh"
+
 #include <memory>
 #include <span>
 #include <vector>
@@ -36,12 +38,28 @@ public:
 	// and MSXMixer::updateVolumeParams()
 	static constexpr int AMP_BITS = 9;
 
-public:
-	MSXMixer(const MSXMixer&) = delete;
-	MSXMixer& operator=(const MSXMixer&) = delete;
+	struct SoundDeviceInfo {
+		explicit SoundDeviceInfo(unsigned numChannels);
 
+		SoundDevice* device = nullptr;
+		std::unique_ptr<IntegerSetting> volumeSetting;
+		std::unique_ptr<IntegerSetting> balanceSetting;
+		struct ChannelSettings {
+			std::unique_ptr<StringSetting> record;
+			std::unique_ptr<BooleanSetting> mute;
+		};
+		dynarray<ChannelSettings> channelSettings;
+		float defaultVolume = 0.f;
+		float left1 = 0.f, right1 = 0.f, left2 = 0.f, right2 = 0.f;
+	};
+
+public:
 	MSXMixer(Mixer& mixer, MSXMotherBoard& motherBoard,
 	         GlobalSettings& globalSettings);
+	MSXMixer(const MSXMixer&) = delete;
+	MSXMixer(MSXMixer&&) = delete;
+	MSXMixer& operator=(const MSXMixer&) = delete;
+	MSXMixer& operator=(MSXMixer&&) = delete;
 	~MSXMixer();
 
 	/**
@@ -119,26 +137,13 @@ public:
 	[[nodiscard]] unsigned getSampleRate() const { return hostSampleRate; }
 
 	[[nodiscard]] SoundDevice* findDevice(std::string_view name) const;
+	[[nodiscard]] const SoundDeviceInfo* findDeviceInfo(std::string_view name) const;
+	[[nodiscard]] const auto& getDeviceInfos() const { return infos; }
 
 	void reInit();
 
 private:
-	struct SoundDeviceInfo {
-		SoundDeviceInfo(unsigned numChannels);
-
-		SoundDevice* device = nullptr;
-		std::unique_ptr<IntegerSetting> volumeSetting;
-		std::unique_ptr<IntegerSetting> balanceSetting;
-		struct ChannelSettings {
-			std::unique_ptr<StringSetting> record;
-			std::unique_ptr<BooleanSetting> mute;
-		};
-		dynarray<ChannelSettings> channelSettings;
-		float defaultVolume = 0.f;
-		float left1 = 0.f, right1 = 0.f, left2 = 0.f, right2 = 0.f;
-	};
-
-	void updateVolumeParams(SoundDeviceInfo& info);
+	void updateVolumeParams(SoundDeviceInfo& info) const;
 	void updateMasterVolume();
 	void reschedule();
 	void reschedule2();
@@ -158,9 +163,9 @@ private:
 	void changeMuteSetting(const Setting& setting);
 
 private:
-	unsigned fragmentSize;
-	unsigned hostSampleRate; // requested freq by sound driver,
-	                         // not compensated for speed
+	unsigned fragmentSize = 0;
+	unsigned hostSampleRate = 44100; // requested freq by sound driver,
+	                                 // not compensated for speed
 
 	std::vector<SoundDeviceInfo> infos;
 
@@ -185,7 +190,7 @@ private:
 	AviRecorder* recorder = nullptr;
 	unsigned synchronousCounter = 0;
 
-	unsigned muteCount;
+	unsigned muteCount = 1; // start muted
 	float tl0, tr0; // internal DC-filter state
 };
 

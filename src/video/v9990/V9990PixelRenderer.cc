@@ -127,11 +127,10 @@ void V9990PixelRenderer::frameEnd(EmuTime::param time)
 	}
 	if (vdp.getMotherBoard().isActive() &&
 	    !vdp.getMotherBoard().isFastForwarding()) {
-		eventDistributor.distributeEvent(
-			Event::create<FinishFrameEvent>(
-				rasterizer->getPostProcessor()->getVideoSource(),
-				videoSourceSetting.getSource(),
-				skipEvent));
+		eventDistributor.distributeEvent(FinishFrameEvent(
+			rasterizer->getPostProcessor()->getVideoSource(),
+			videoSourceSetting.getSource(),
+			skipEvent));
 	}
 }
 
@@ -139,7 +138,7 @@ void V9990PixelRenderer::sync(EmuTime::param time, bool force)
 {
 	if (!drawFrame) return;
 
-	if (accuracy != RenderSettings::ACC_SCREEN || force) {
+	if (accuracy != RenderSettings::Accuracy::SCREEN || force) {
 		vdp.getVRAM().sync(time);
 		renderUntil(time);
 	}
@@ -153,13 +152,13 @@ void V9990PixelRenderer::renderUntil(EmuTime::param time)
 	       V9990DisplayTiming::getUCTicksPerFrame(vdp.isPalTiming()));
 	auto [toX, toY] = [&] {
 		switch (accuracy) {
-		case RenderSettings::ACC_PIXEL:
+		case RenderSettings::Accuracy::PIXEL:
 			return std::pair{
 				limitTicks % V9990DisplayTiming::UC_TICKS_PER_LINE,
 				limitTicks / V9990DisplayTiming::UC_TICKS_PER_LINE
 			};
-		case RenderSettings::ACC_LINE:
-		case RenderSettings::ACC_SCREEN:
+		case RenderSettings::Accuracy::LINE:
+		case RenderSettings::Accuracy::SCREEN:
 			// TODO figure out rounding point
 			return std::pair{
 				0,
@@ -168,7 +167,6 @@ void V9990PixelRenderer::renderUntil(EmuTime::param time)
 			};
 		default:
 			UNREACHABLE;
-			return std::pair{0, 0}; // avoid warning
 		}
 	}();
 

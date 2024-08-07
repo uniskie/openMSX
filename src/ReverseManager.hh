@@ -5,14 +5,18 @@
 #include "EventListener.hh"
 #include "Command.hh"
 #include "EmuTime.hh"
+
 #include "MemBuffer.hh"
 #include "DeltaBlock.hh"
 #include "outer.hh"
+#include "view.hh"
+
 #include <cstdint>
 #include <deque>
 #include <span>
 #include <map>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 namespace openmsx {
@@ -21,22 +25,18 @@ class EventDelay;
 class EventDistributor;
 class Interpreter;
 class MSXMotherBoard;
-class Keyboard;
 class StateChange;
 class TclObject;
 
 class ReverseManager final : private EventListener
 {
 public:
+	static constexpr std::string_view REPLAY_DIR = "replays";
+	static constexpr std::string_view REPLAY_EXTENSION = ".omr";
+
+public:
 	explicit ReverseManager(MSXMotherBoard& motherBoard);
 	~ReverseManager();
-
-	// Keyboard is special because we need to transfer the host keyboard
-	// state on 'reverse goto' to be able to resynchronize when replay
-	// stops. See Keyboard::transferHostKeyMatrix() for more info.
-	void registerKeyboard(Keyboard& keyboard_) {
-		keyboard = &keyboard_;
-	}
 
 	// To not loose any events we need to flush delayed events before
 	// switching machine. See comments in goTo() for more info.
@@ -62,11 +62,20 @@ public:
 		return *history.events.back();
 	}
 
+	[[nodiscard]] bool isCollecting() const { return collecting; }
+	[[nodiscard]] bool isViewOnlyMode() const;
+	[[nodiscard]] double getBegin() const;
+	[[nodiscard]] double getEnd() const;
+	[[nodiscard]] double getCurrent() const;
+	[[nodiscard]] auto getSnapshotTimes() const {
+		return view::transform(history.chunks, [](auto& p) {
+			return (p.second.time - EmuTime::zero()).toDouble();
+		});
+	}
+
 private:
 	struct ReverseChunk {
-		ReverseChunk() : time(EmuTime::zero()) {}
-
-		EmuTime time;
+		EmuTime time = EmuTime::zero();
 		std::vector<std::shared_ptr<DeltaBlock>> deltaBlocks;
 		MemBuffer<uint8_t> savestate;
 		size_t size;
@@ -88,8 +97,6 @@ private:
 		Events events;
 		LastDeltaBlocks lastDeltaBlocks;
 	};
-
-	[[nodiscard]] bool isCollecting() const { return collecting; }
 
 	void start();
 	void stop();
@@ -138,7 +145,7 @@ private:
 	[[nodiscard]] EmuTime::param getCurrentTime() const { return syncNewSnapshot.getCurrentTime(); }
 
 	// EventListener
-	int signalEvent(const Event& event) override;
+	bool signalEvent(const Event& event) override;
 
 private:
 	MSXMotherBoard& motherBoard;
@@ -151,7 +158,6 @@ private:
 		void tabCompletion(std::vector<std::string>& tokens) const override;
 	} reverseCmd;
 
-	Keyboard* keyboard = nullptr;
 	EventDelay* eventDelay = nullptr;
 	ReverseHistory history;
 	unsigned replayIndex = 0;

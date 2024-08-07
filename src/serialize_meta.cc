@@ -21,7 +21,7 @@ void PolymorphicSaverRegistry<Archive>::registerHelper(
 {
 	assert(!initialized);
 	assert(!contains(saverMap, type, &Entry::index)); // not yet sorted
-	saverMap.emplace_back(Entry{type, std::move(saver)});
+	saverMap.emplace_back(type, std::move(saver));
 }
 
 template<typename Archive>
@@ -77,8 +77,10 @@ void* PolymorphicLoaderRegistry<Archive>::load(
 	std::string type;
 	ar.attribute("type", type);
 	auto& reg = PolymorphicLoaderRegistry<Archive>::instance();
-	auto v = lookup(reg.loaderMap, type);
-	assert(v);
+	auto* v = lookup(reg.loaderMap, type);
+	if (!v) {
+		throw MSXException("Deserialize unknown polymorphic type: '", type, "'.");
+	}
 	return (*v)(ar, id, args);
 }
 

@@ -52,7 +52,6 @@ byte I8255::read(byte port, EmuTime::param time)
 		return readControlPort(time);
 	default:
 		UNREACHABLE;
-		return 0; // avoid warning
 	}
 }
 
@@ -69,7 +68,6 @@ byte I8255::peek(byte port, EmuTime::param time) const
 		return readControlPort(time);
 	default:
 		UNREACHABLE;
-		return 0; // avoid warning
 	}
 }
 
@@ -317,7 +315,7 @@ void I8255::writeControlPort(byte value, EmuTime::param time)
 	if (value & SET_MODE) {
 		// set new control mode
 		control = value;
-		if ((control & (MODE_A | MODE_B))) {
+		if (control & (MODE_A | MODE_B)) {
 			ppiModeCallback.execute();
 		}
 		// Some PPI datasheets state that port A and C (and sometimes

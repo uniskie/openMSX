@@ -38,6 +38,10 @@ class FilePoolCore
 {
 public:
 	struct Dir {
+		Dir() = default;
+		Dir(std::string_view p, FileType t)
+			: path(p), types(t) {} // clang-15 workaround
+
 		std::string_view path;
 		FileType types;
 	};
@@ -46,7 +50,7 @@ public:
 public:
 	FilePoolCore(std::string fileCache,
 	             std::function<Directories()> getDirectories,
-	             std::function<void(std::string_view)> reportProgress);
+	             std::function<void(std::string_view, float)> reportProgress);
 	~FilePoolCore();
 
 	/** Search file with the given sha1sum.
@@ -70,7 +74,8 @@ public:
 private:
 	struct ScanProgress {
 		uint64_t lastTime;
-		unsigned amountScanned;
+		unsigned amountScanned = 0;
+		bool printed = false;
 	};
 
 	struct Entry {
@@ -102,35 +107,35 @@ private:
 
 	class FilenameIndexHelper {
 	public:
-		FilenameIndexHelper(const Pool& p) : pool(p) {}
+		explicit FilenameIndexHelper(const Pool& p) : pool(p) {}
 		[[nodiscard]] std::string_view get(std::string_view s) const { return s; }
 		[[nodiscard]] std::string_view get(Index idx) const { return pool[idx].filename; }
 	private:
 		const Pool& pool;
 	};
 	struct FilenameIndexHash : FilenameIndexHelper {
-		FilenameIndexHash(const Pool& p) : FilenameIndexHelper(p) {}
+		using FilenameIndexHelper::FilenameIndexHelper;
 		template<typename T> [[nodiscard]] auto operator()(T t) const {
 			XXHasher hasher;
 			return hasher(get(t));
 		}
 	};
 	struct FilenameIndexEqual : FilenameIndexHelper {
-		FilenameIndexEqual(const Pool& p) : FilenameIndexHelper(p) {}
+		using FilenameIndexHelper::FilenameIndexHelper;
 		template<typename T1, typename T2>
 		[[nodiscard]] bool operator()(T1 x, T2 y) const {
 			return get(x) == get(y);
 		}
 	};
 	// Hash indexed by filename, points to a full object in 'pool'
-	using FilenameIndex = SimpleHashSet<Index, Index(-1), FilenameIndexHash, FilenameIndexEqual>;
+	using FilenameIndex = SimpleHashSet<Index(-1), FilenameIndexHash, FilenameIndexEqual>;
 
 private:
 	void insert(const Sha1Sum& sum, time_t time, const std::string& filename);
-	[[nodiscard]] Sha1Index::iterator getSha1Iterator(Index idx, Entry& entry);
+	[[nodiscard]] Sha1Index::iterator getSha1Iterator(Index idx, const Entry& entry);
 	void remove(Sha1Index::iterator it);
 	void remove(Index idx);
-	void remove(Index idx, Entry& entry);
+	void remove(Index idx, const Entry& entry);
 	bool adjustSha1(Sha1Index::iterator it, Entry& entry, const Sha1Sum& newSum);
 	bool adjustSha1(Index idx,              Entry& entry, const Sha1Sum& newSum);
 
@@ -149,13 +154,13 @@ private:
 	        const FileOperations::Stat& st,
 	        std::string_view poolPath,
 	        ScanProgress& progress);
-	[[nodiscard]] Sha1Sum calcSha1sum(File& file);
+	[[nodiscard]] Sha1Sum calcSha1sum(File& file) const;
 	[[nodiscard]] std::pair<Index, Entry*> findInDatabase(std::string_view filename);
 
 private:
 	std::string fileCache; // path of the '.filecache' file.
 	std::function<Directories()> getDirectories;
-	std::function<void(std::string_view)> reportProgress;
+	std::function<void(std::string_view, float)> reportProgress;
 
 	MemBuffer<char> fileMem; // content of initial .filecache
 	std::vector<std::string> stringBuffer; // owns strings that are not in 'fileMem'

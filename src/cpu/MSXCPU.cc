@@ -22,12 +22,12 @@ MSXCPU::MSXCPU(MSXMotherBoard& motherboard_)
 	: motherboard(motherboard_)
 	, traceSetting(
 		motherboard.getCommandController(), "cputrace",
-		"CPU tracing on/off", false, Setting::DONT_SAVE)
+		"CPU tracing on/off", false, Setting::Save::NO)
 	, diHaltCallback(
 		motherboard.getCommandController(), "di_halt_callback",
 		"Tcl proc called when the CPU executed a DI/HALT sequence",
 		"default_di_halt_callback",
-		Setting::SaveSetting::SAVE) // user must be able to override
+		Setting::Save::YES) // user must be able to override
 	, z80(std::make_unique<CPUCore<Z80TYPE>>(
 		motherboard, "z80", traceSetting,
 		diHaltCallback, EmuTime::zero()))
@@ -87,11 +87,11 @@ void MSXCPU::doReset(EmuTime::param time)
 	reference = time;
 }
 
-void MSXCPU::setActiveCPU(CPUType cpu)
+void MSXCPU::setActiveCPU(Type cpu)
 {
-	if (cpu == CPU_R800) assert(r800);
+	if (cpu == Type::R800) assert(r800);
 
-	bool tmp = cpu == CPU_Z80;
+	bool tmp = cpu == Type::Z80;
 	if (tmp != z80Active) {
 		exitCPULoopSync();
 		newZ80Active = tmp;
@@ -227,7 +227,7 @@ void MSXCPU::setRWCache(unsigned start, unsigned size, const byte* rData, byte* 
 	unsigned first = start / CacheLine::SIZE;
 	unsigned num = size / CacheLine::SIZE;
 
-	static auto* const NON_CACHEABLE = reinterpret_cast<byte*>(1);
+	static auto* const NON_CACHEABLE = std::bit_cast<byte*>(uintptr_t(1));
 	for (auto i : xrange(num)) {
 		if constexpr (READ)  readLines [first + i] = disallowRead [first + i] ? NON_CACHEABLE : rData;
 		if constexpr (WRITE) writeLines[first + i] = disallowWrite[first + i] ? NON_CACHEABLE : wData;
@@ -236,7 +236,7 @@ void MSXCPU::setRWCache(unsigned start, unsigned size, const byte* rData, byte* 
 
 static constexpr void extendForAlignment(unsigned& start, unsigned& size)
 {
-	constexpr unsigned MASK = ~(CacheLine::LOW); // not CacheLine::HIGH because 0x0000ff00 != 0xffffff00
+	constexpr unsigned MASK = ~CacheLine::LOW; // not CacheLine::HIGH because 0x0000ff00 != 0xffffff00
 
 	auto end = start + size;
 	start &= MASK;                            // round down to cacheline
@@ -384,7 +384,7 @@ MSXCPU::TimeInfoTopic::TimeInfoTopic(InfoCommand& machineInfoCommand)
 void MSXCPU::TimeInfoTopic::execute(
 	std::span<const TclObject> /*tokens*/, TclObject& result) const
 {
-	auto& cpu = OUTER(MSXCPU, timeInfo);
+	const auto& cpu = OUTER(MSXCPU, timeInfo);
 	EmuDuration dur = cpu.getCurrentTime() - cpu.reference;
 	result = dur.toDouble();
 }
@@ -478,7 +478,7 @@ byte MSXCPU::Debuggable::read(unsigned address)
 	case 27: return byte(1 *  regs.getIFF1() +
 	                     2 *  regs.getIFF2() +
 	                     4 * (regs.getIFF1() && !regs.prevWasEI()));
-	default: UNREACHABLE; return 0;
+	default: UNREACHABLE;
 	}
 }
 

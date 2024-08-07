@@ -6,7 +6,7 @@
 
 namespace openmsx {
 
-class CanonWordProcessor : public MSXDevice
+class CanonWordProcessor final : public MSXDevice
 {
 public:
 	explicit CanonWordProcessor(const DeviceConfig& config);
@@ -17,7 +17,7 @@ public:
 	[[nodiscard]] byte peekMem(word address, EmuTime::param time) const override;
 	void writeMem(word address, byte value, EmuTime::param time) override;
 	[[nodiscard]] const byte* getReadCacheLine (word start) const override;
-	[[nodiscard]]       byte* getWriteCacheLine(word start) const override;
+	[[nodiscard]]       byte* getWriteCacheLine(word start) override;
 
 	template<typename Archive>
 	void serialize(Archive& ar, unsigned version);

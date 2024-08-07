@@ -19,10 +19,14 @@ A million repetitions of "a"
 */
 
 #include "sha1.hh"
+
 #include "MSXException.hh"
+
 #include "endian.hh"
 #include "narrow.hh"
 #include "ranges.hh"
+
+#include <bit>
 #include <cassert>
 #include <cstring>
 #ifdef __SSE2__
@@ -207,7 +211,7 @@ void Sha1Sum::parse40(std::span<const char, 40> str)
 	__m128i f2 = _mm_packus_epi16(e2, e2);
 
 	// store result
-	_mm_storeu_si128(reinterpret_cast<__m128i*>(a.data()), _mm_unpacklo_epi64(f0, f1));
+	_mm_storeu_si128(std::bit_cast<__m128i*>(a.data()), _mm_unpacklo_epi64(f0, f1));
 	a[4] = _mm_cvtsi128_si32(f2);
 #else
 	// equivalent c++ version
@@ -345,7 +349,7 @@ void SHA1::finalize()
 		j = 0;
 	}
 	ranges::fill(subspan(m_buffer, j, 56 - j), 0);
-	Endian::B64 finalCount = 8 * m_count; // convert number of bytes to bits
+	Endian::B64 finalCount(8 * m_count); // convert number of bytes to bits
 	memcpy(&m_buffer[56], &finalCount, 8);
 	transform(m_buffer);
 

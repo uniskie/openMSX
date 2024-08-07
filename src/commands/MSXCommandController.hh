@@ -5,6 +5,7 @@
 #include "Command.hh"
 #include "InfoCommand.hh"
 #include "MSXEventListener.hh"
+#include "MSXCliComm.hh"
 #include "TemporaryString.hh"
 #include "hash_set.hh"
 #include "xxhash.hh"
@@ -22,13 +23,14 @@ class MSXCommandController final
 	: public CommandController, private MSXEventListener
 {
 public:
-	MSXCommandController(const MSXCommandController&) = delete;
-	MSXCommandController& operator=(const MSXCommandController&) = delete;
-
 	MSXCommandController(GlobalCommandController& globalCommandController,
 	                     Reactor& reactor, MSXMotherBoard& motherboard,
 	                     MSXEventDistributor& msxEventDistributor,
 	                     const std::string& machineID);
+	MSXCommandController(const MSXCommandController&) = delete;
+	MSXCommandController(MSXCommandController&&) = delete;
+	MSXCommandController& operator=(const MSXCommandController&) = delete;
+	MSXCommandController& operator=(MSXCommandController&&) = delete;
 	~MSXCommandController();
 
 	[[nodiscard]] GlobalCommandController& getGlobalCommandController() {
@@ -45,6 +47,7 @@ public:
 	}
 
 	[[nodiscard]] Command* findCommand(std::string_view name) const;
+	[[nodiscard]] Setting* findSetting(std::string_view name) const;
 
 	/** Returns true iff the machine this controller belongs to is currently
 	  * active.
@@ -70,7 +73,7 @@ public:
 	                         CliConnection* connection = nullptr) override;
 	void registerSetting(Setting& setting) override;
 	void unregisterSetting(Setting& setting) override;
-	[[nodiscard]] CliComm& getCliComm() override;
+	[[nodiscard]] MSXCliComm& getCliComm() override;
 	[[nodiscard]] Interpreter& getInterpreter() override;
 
 private:

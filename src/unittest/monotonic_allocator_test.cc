@@ -1,13 +1,17 @@
 #include "catch.hpp"
+
 #include "monotonic_allocator.hh"
+
 #include "ranges.hh"
+
+#include <bit>
 #include <span>
 
 [[nodiscard]] static char* alloc(monotonic_allocator& a, size_t size, size_t alignment)
 {
-	char* result = static_cast<char*>(a.allocate(size, alignment));
+	auto* result = static_cast<char*>(a.allocate(size, alignment));
 	CHECK(result != nullptr);
-	CHECK((reinterpret_cast<uintptr_t>(result) & (alignment - 1)) == 0);
+	CHECK((std::bit_cast<uintptr_t>(result) & (alignment - 1)) == 0);
 	ranges::fill(std::span{result, size}, 0xab); // this shouldn't crash
 	return result;
 }
@@ -44,17 +48,17 @@ TEST_CASE("monotonic_allocator")
 		CHECK(p1 + 96 != p4); // not adjacent
 	}
 	SECTION("initial buffer") {
-		char buf[100];
-		monotonic_allocator a(buf, 100);
+		std::array<char, 100> buf;
+		monotonic_allocator a(buf.data(), buf.size());
 
 		char* p1 = alloc(a, 40, 1);
-		CHECK(p1 == buf);
+		CHECK(p1 == buf.data());
 
 		char* p2 = alloc(a, 40, 1);
-		CHECK(p2 == buf + 40);
+		CHECK(p2 == &buf[40]);
 
 		char* p3 = alloc(a, 40, 1);
-		CHECK(p3 != buf + 80);
+		CHECK(p3 != &buf[80]);
 
 		char* p4 = alloc(a, 40, 1);
 		CHECK(p4 == p3 + 40);

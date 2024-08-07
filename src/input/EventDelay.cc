@@ -1,15 +1,20 @@
 #include "EventDelay.hh"
+
+#include "Event.hh"
 #include "EventDistributor.hh"
 #include "MSXEventDistributor.hh"
-#include "ReverseManager.hh"
-#include "Event.hh"
-#include "Timer.hh"
 #include "MSXException.hh"
+#include "ReverseManager.hh"
+#include "Timer.hh"
+
 #include "narrow.hh"
 #include "one_of.hh"
 #include "ranges.hh"
 #include "stl.hh"
+
 #include <cassert>
+
+#include <SDL.h>
 
 namespace openmsx {
 
@@ -21,67 +26,38 @@ EventDelay::EventDelay(Scheduler& scheduler_,
 	: Schedulable(scheduler_)
 	, eventDistributor(eventDistributor_)
 	, msxEventDistributor(msxEventDistributor_)
-	, prevEmu(EmuTime::zero())
 	, prevReal(Timer::getTime())
 	, delaySetting(
 		commandController, "inputdelay",
 		"delay input to avoid key-skips", 0.0, 0.0, 10.0)
 {
-	eventDistributor.registerEventListener(
-		EventType::KEY_DOWN, *this, EventDistributor::MSX);
-	eventDistributor.registerEventListener(
-		EventType::KEY_UP,   *this, EventDistributor::MSX);
-
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_MOTION,      *this, EventDistributor::MSX);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_BUTTON_DOWN, *this, EventDistributor::MSX);
-	eventDistributor.registerEventListener(
-		EventType::MOUSE_BUTTON_UP,   *this, EventDistributor::MSX);
-
-	eventDistributor.registerEventListener(
-		EventType::JOY_AXIS_MOTION, *this, EventDistributor::MSX);
-	eventDistributor.registerEventListener(
-		EventType::JOY_HAT,         *this, EventDistributor::MSX);
-	eventDistributor.registerEventListener(
-		EventType::JOY_BUTTON_DOWN, *this, EventDistributor::MSX);
-	eventDistributor.registerEventListener(
-		EventType::JOY_BUTTON_UP,   *this, EventDistributor::MSX);
+	using enum EventType;
+	for (auto type : {KEY_DOWN, KEY_UP,
+	                  MOUSE_MOTION, MOUSE_BUTTON_DOWN, MOUSE_BUTTON_UP,
+	                  JOY_AXIS_MOTION, JOY_HAT, JOY_BUTTON_DOWN, JOY_BUTTON_UP}) {
+		eventDistributor.registerEventListener(type, *this, EventDistributor::Priority::MSX);
+	}
 
 	reverseManager.registerEventDelay(*this);
 }
 
 EventDelay::~EventDelay()
 {
-	eventDistributor.unregisterEventListener(
-		EventType::KEY_DOWN, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::KEY_UP,   *this);
-
-	eventDistributor.unregisterEventListener(
-		EventType::MOUSE_MOTION,      *this);
-	eventDistributor.unregisterEventListener(
-		EventType::MOUSE_BUTTON_DOWN, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::MOUSE_BUTTON_UP,   *this);
-
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_AXIS_MOTION, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_HAT,         *this);
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_BUTTON_DOWN, *this);
-	eventDistributor.unregisterEventListener(
-		EventType::JOY_BUTTON_UP,   *this);
+	using enum EventType;
+	for (auto type : {JOY_BUTTON_UP, JOY_BUTTON_DOWN, JOY_HAT, JOY_AXIS_MOTION,
+	                  MOUSE_BUTTON_UP, MOUSE_BUTTON_DOWN, MOUSE_MOTION,
+	                  KEY_UP, KEY_DOWN}) {
+		eventDistributor.unregisterEventListener(type, *this);
+	}
 }
 
-int EventDelay::signalEvent(const Event& event)
+bool EventDelay::signalEvent(const Event& event)
 {
 	toBeScheduledEvents.push_back(event);
 	if (delaySetting.getDouble() == 0.0) {
 		sync(getCurrentTime());
 	}
-	return 0;
+	return false;
 }
 
 void EventDelay::sync(EmuTime::param curEmu)
@@ -121,7 +97,7 @@ void EventDelay::sync(EmuTime::param curEmu)
 	for (auto& e : toBeScheduledEvents) {
 #if PLATFORM_ANDROID
 		if (getType(e) == one_of(EventType::KEY_DOWN, EventType::KEY_UP)) {
-			const auto& keyEvent = get<KeyEvent>(e);
+			const auto& keyEvent = get_event<KeyEvent>(e);
 			int maskedKeyCode = int(keyEvent.getKeyCode()) & int(Keys::K_MASK);
 			auto it = ranges::find(nonMatchedKeyPresses, maskedKeyCode,
 			                       [](const auto& p) { return p.first; });
@@ -133,8 +109,8 @@ void EventDelay::sync(EmuTime::param curEmu)
 				}
 			} else {
 				if (it != end(nonMatchedKeyPresses)) {
-					const auto& timedPressEvent   = get<TimedEvent>(it->second);
-					const auto& timedReleaseEvent = get<TimedEvent>(e);
+					const auto& timedPressEvent   = get_event<TimedEvent>(it->second);
+					const auto& timedReleaseEvent = get_event<TimedEvent>(e);
 					auto pressRealTime = timedPressEvent.getRealTime();
 					auto releaseRealTime = timedReleaseEvent.getRealTime();
 					auto deltaTime = releaseRealTime - pressRealTime;
@@ -143,7 +119,7 @@ void EventDelay::sync(EmuTime::param curEmu)
 						// Reschedule it for the next sync, with the realTime updated to now, so that it seems like the
 						// key was released now and not when android released it.
 						// Otherwise, the offset calculation for the emuTime further down below will go wrong on the next sync
-						Event newKeyupEvent = Event::create<KeyUpEvent>(keyEvent.getKeyCode());
+						Event newKeyupEvent = KeyUpEvent(keyEvent.getKeyCode());
 						toBeRescheduledEvents.push_back(newKeyupEvent);
 						continue; // continue with next to be scheduled event
 					}
@@ -153,10 +129,12 @@ void EventDelay::sync(EmuTime::param curEmu)
 		}
 #endif
 		scheduledEvents.push_back(e);
-		const auto& timedEvent = get<TimedEvent>(e);
-		auto eventRealTime = timedEvent.getRealTime();
-		assert(eventRealTime <= curRealTime);
-		auto offset = curRealTime - eventRealTime;
+		const auto& sdlEvent = get_event<SdlEvent>(e);
+		uint32_t eventSdlTime = sdlEvent.getCommonSdlEvent().timestamp;
+		uint32_t sdlNow = SDL_GetTicks();
+		auto sdlOffset = int32_t(sdlNow - eventSdlTime);
+		assert(sdlOffset >= 0);
+		auto offset = 1000 * int64_t(sdlOffset); // ms -> us
 		EmuDuration emuOffset(factor * narrow_cast<double>(offset));
 		auto schedTime = (emuOffset < extraDelay)
 		               ? time - emuOffset
@@ -186,12 +164,12 @@ void EventDelay::flush()
 {
 	EmuTime time = getCurrentTime();
 
-	for (auto& e : scheduledEvents) {
+	for (const auto& e : scheduledEvents) {
 		msxEventDistributor.distributeEvent(e, time);
 	}
 	scheduledEvents.clear();
 
-	for (auto& e : toBeScheduledEvents) {
+	for (const auto& e : toBeScheduledEvents) {
 		msxEventDistributor.distributeEvent(e, time);
 	}
 	toBeScheduledEvents.clear();

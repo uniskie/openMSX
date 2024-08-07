@@ -59,8 +59,14 @@ SERIALIZE_CLASS_VERSION(MSXMapperIO, 3);
 
 class MSXMapperIOClient : public MSXMemoryMapperInterface
 {
+public:
+	MSXMapperIOClient(const MSXMapperIOClient&) = delete;
+	MSXMapperIOClient(MSXMapperIOClient&&) = delete;
+	MSXMapperIOClient& operator=(const MSXMapperIOClient&) = delete;
+	MSXMapperIOClient& operator=(MSXMapperIOClient&&) = delete;
+
 protected:
-	MSXMapperIOClient(MSXMotherBoard& motherBoard_)
+	explicit MSXMapperIOClient(MSXMotherBoard& motherBoard_)
 		: motherBoard(motherBoard_)
 	{
 		auto& mapperIO = motherBoard.createMapperIO();

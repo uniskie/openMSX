@@ -46,6 +46,7 @@ template<typename T> struct semiregular_move_assign : std::optional<T> {
 	using std::optional<T>::optional;
 
 	constexpr semiregular_move_assign() = default;
+	constexpr ~semiregular_move_assign() = default;
 	constexpr semiregular_move_assign(const semiregular_move_assign&) = default;
 	constexpr semiregular_move_assign(semiregular_move_assign&&) noexcept = default;
 	constexpr semiregular_move_assign& operator=(const semiregular_move_assign&) = default;
@@ -69,6 +70,7 @@ struct semiregular_copy_assign : semiregular_move_layer<T> {
 	using semiregular_move_layer<T>::semiregular_move_layer;
 
 	constexpr semiregular_copy_assign() = default;
+	constexpr ~semiregular_copy_assign() = default;
 	constexpr semiregular_copy_assign(const semiregular_copy_assign&) = default;
 	constexpr semiregular_copy_assign(semiregular_copy_assign&&) noexcept = default;
 	constexpr semiregular_copy_assign& operator=(const semiregular_copy_assign& that) noexcept(
@@ -136,9 +138,9 @@ template<typename T>
 struct semiregular<T&> : private std::reference_wrapper<T&> {
 	semiregular() = default;
 
-	template<typename Arg, std::enable_if_t<(std::is_constructible<
+	template<typename Arg, std::enable_if_t<(std::is_constructible_v<
 	                                          std::reference_wrapper<T&>,
-	                                          Arg&>::value)>* = nullptr>
+	                                          Arg&>)>* = nullptr>
 	constexpr semiregular(std::in_place_t, Arg& arg) : std::reference_wrapper<T&>(arg)
 	{
 	}
@@ -153,9 +155,9 @@ template<typename T>
 struct semiregular<T&&> : private std::reference_wrapper<T&&> {
 	semiregular() = default;
 
-	template<typename Arg, std::enable_if_t<(std::is_constructible<
+	template<typename Arg, std::enable_if_t<(std::is_constructible_v<
 	                                          std::reference_wrapper<T&&>,
-	                                          Arg>::value)>* = nullptr>
+	                                          Arg>)>* = nullptr>
 	constexpr semiregular(std::in_place_t, Arg&& arg)
 	        : std::reference_wrapper<T&>(static_cast<Arg&&>(arg))
 	{

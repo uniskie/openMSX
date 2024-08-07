@@ -159,21 +159,25 @@
 // instructions too late.
 
 #include "CPUCore.hh"
+
 #include "MSXCPUInterface.hh"
 #include "Scheduler.hh"
 #include "MSXMotherBoard.hh"
-#include "CliComm.hh"
+#include "MSXCliComm.hh"
 #include "TclCallback.hh"
 #include "Dasm.hh"
 #include "Z80.hh"
 #include "R800.hh"
 #include "Thread.hh"
+
 #include "endian.hh"
 #include "inline.hh"
 #include "narrow.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
 #include <array>
+#include <bit>
 #include <cassert>
 #include <iostream>
 #include <type_traits>
@@ -522,6 +526,7 @@ template<typename T> void CPUCore<T>::disasmCommand(
 	std::string dasmOutput;
 	unsigned len = dasm(*interface, address, outBuf, dasmOutput,
 	               T::getTimeFast());
+	dasmOutput.resize(19, ' ');
 	result.addListElement(dasmOutput);
 	std::array<char, 3> tmp; tmp[2] = 0;
 	for (auto i : xrange(len)) {
@@ -594,7 +599,7 @@ NEVER_INLINE byte CPUCore<T>::RDMEMslow(unsigned address, unsigned cc)
 		}
 	}
 	// uncacheable
-	readCacheLine[high] = reinterpret_cast<const byte*>(1);
+	readCacheLine[high] = std::bit_cast<const byte*>(uintptr_t(1));
 	T::template PRE_MEM<PRE_PB, POST_PB>(address);
 	EmuTime time = T::getTimeFast(cc);
 	scheduler.schedule(time);
@@ -699,7 +704,7 @@ NEVER_INLINE void CPUCore<T>::WRMEMslow(unsigned address, byte value, unsigned c
 		}
 	}
 	// uncacheable
-	writeCacheLine[high] = reinterpret_cast<byte*>(1);
+	writeCacheLine[high] = std::bit_cast<byte*>(uintptr_t(1));
 	T::template PRE_MEM<PRE_PB, POST_PB>(address);
 	EmuTime time = T::getTimeFast(cc);
 	scheduler.schedule(time);
@@ -849,7 +854,7 @@ void CPUCore<T>::executeInstructions()
 #ifdef USE_COMPUTED_GOTO
 	// Addresses of all main-opcode routines,
 	// Note that 40/49/53/5B/64/6D/7F is replaced by 00 (ld r,r == nop)
-	static void* opcodeTable[256] = {
+	static std::array<void*, 256> opcodeTable = {
 		&&op00, &&op01, &&op02, &&op03, &&op04, &&op05, &&op06, &&op07,
 		&&op08, &&op09, &&op0A, &&op0B, &&op0C, &&op0D, &&op0E, &&op0F,
 		&&op10, &&op11, &&op12, &&op13, &&op14, &&op15, &&op16, &&op17,
@@ -1491,7 +1496,7 @@ CASE(CB) {
 		case 0xee: { II ii = set_N_xhl<5>(); NEXT; }
 		case 0xf6: { II ii = set_N_xhl<6>(); NEXT; }
 		case 0xfe: { II ii = set_N_xhl<7>(); NEXT; }
-		default: UNREACHABLE; return;
+		default: UNREACHABLE;
 	}
 }
 CASE(ED) {
@@ -1631,7 +1636,7 @@ CASE(ED) {
 		case 0xd9: { II ii = T::IS_R800 ? mulub_a_R<E>() : nop(); NEXT; }
 		case 0xc3: { II ii = T::IS_R800 ? muluw_hl_SS<BC>() : nop(); NEXT; }
 		case 0xf3: { II ii = T::IS_R800 ? muluw_hl_SS<SP>() : nop(); NEXT; }
-		default: UNREACHABLE; return;
+		default: UNREACHABLE;
 	}
 }
 MAYBE_UNUSED_LABEL opDD_2:
@@ -1924,7 +1929,7 @@ CASE(DD) {
 			} else {
 				T::add(T::CC_DD); goto opFD_2;
 			}
-		default: UNREACHABLE; return;
+		default: UNREACHABLE;
 	}
 }
 MAYBE_UNUSED_LABEL opFD_2:
@@ -2217,11 +2222,11 @@ CASE(FD) {
 			} else {
 				T::add(T::CC_DD); goto opFD_2;
 			}
-		default: UNREACHABLE; return;
+		default: UNREACHABLE;
 	}
 }
 #ifndef USE_COMPUTED_GOTO
-	default: UNREACHABLE; return;
+	default: UNREACHABLE;
 }
 #endif
 
@@ -2470,6 +2475,7 @@ template<typename T> void CPUCore<T>::cpuTracePost_slow()
 	std::array<byte, 4> opBuf;
 	std::string dasmOutput;
 	dasm(*interface, start_pc, opBuf, dasmOutput, T::getTimeFast());
+	dasmOutput.resize(19, ' '); // alternative: print fixed-size field
 	std::cout << strCat(hex_string<4>(start_pc),
 	                    " : ", dasmOutput,
 	                    " AF=", hex_string<4>(getAF()),
@@ -2679,7 +2685,7 @@ template<typename T> template<Reg8 R8> ALWAYS_INLINE byte CPUCore<T>::get8() con
 	else if constexpr (R8 == REG_I) { return getI(); }
 	else if constexpr (R8 == REG_R) { return getR(); }
 	else if constexpr (R8 == DUMMY) { return 0; }
-	else { UNREACHABLE; return 0; }
+	else { UNREACHABLE; }
 }
 template<typename T> template<Reg16 R16> ALWAYS_INLINE word CPUCore<T>::get16() const {
 	if      constexpr (R16 == AF) { return getAF(); }
@@ -2689,7 +2695,7 @@ template<typename T> template<Reg16 R16> ALWAYS_INLINE word CPUCore<T>::get16() 
 	else if constexpr (R16 == IX) { return getIX(); }
 	else if constexpr (R16 == IY) { return getIY(); }
 	else if constexpr (R16 == SP) { return getSP(); }
-	else { UNREACHABLE; return 0; }
+	else { UNREACHABLE; }
 }
 template<typename T> template<Reg8 R8> ALWAYS_INLINE void CPUCore<T>::set8(byte x) {
 	if      constexpr (R8 == A)     { setA(x); }

@@ -38,14 +38,17 @@
  */
 
 #include "YMF262.hh"
+
 #include "DeviceConfig.hh"
 #include "MSXMotherBoard.hh"
+#include "serialize.hh"
+
 #include "Math.hh"
 #include "cstd.hh"
 #include "narrow.hh"
 #include "outer.hh"
-#include "serialize.hh"
 #include "xrange.hh"
+
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -368,7 +371,7 @@ static constexpr auto tlTab = [] {
 
 		// we never reach (1<<16) here due to the (x+1)
 		// result fits within 16 bits at maximum
-		int n = int(m);         // 16 bits here
+		auto n = int(m);        // 16 bits here
 		n >>= 4;                // 12 bits here
 		n = (n >> 1) + (n & 1); // round to nearest
 		// 11 bits here (rounded)
@@ -407,7 +410,7 @@ static constexpr SinTab getSinTab()
 		double o = -8.0 * cstd::log2<11, 3>(m); // convert to 'decibels'
 		o = o / (double(ENV_STEP) / 4);
 
-		int n = int(2 * o);
+		auto n = int(2 * o);
 		n = (n >> 1) + (n & 1); // round to nearest
 		sin.tab[0][i] = 2 * n;
 	}
@@ -535,26 +538,27 @@ void YMF262::changeStatusMask(uint8_t flag)
 void YMF262::Slot::advanceEnvelopeGenerator(unsigned egCnt)
 {
 	switch (state) {
-	case EG_ATTACK:
+	using enum EnvelopeState;
+	case ATTACK:
 		if (!(egCnt & eg_m_ar)) {
 			volume += (~volume * eg_inc[eg_sel_ar + ((egCnt >> eg_sh_ar) & 7)]) >> 3;
 			if (volume <= MIN_ATT_INDEX) {
 				volume = MIN_ATT_INDEX;
-				state = EG_DECAY;
+				state = DECAY;
 			}
 		}
 		break;
 
-	case EG_DECAY:
+	case DECAY:
 		if (!(egCnt & eg_m_dr)) {
 			volume += eg_inc[eg_sel_dr + ((egCnt >> eg_sh_dr) & 7)];
 			if (volume >= sl) {
-				state = EG_SUSTAIN;
+				state = SUSTAIN;
 			}
 		}
 		break;
 
-	case EG_SUSTAIN:
+	case SUSTAIN:
 		// this is important behaviour:
 		// one can change percussive/non-percussive
 		// modes on the fly and the chip will remain
@@ -576,12 +580,12 @@ void YMF262::Slot::advanceEnvelopeGenerator(unsigned egCnt)
 		}
 		break;
 
-	case EG_RELEASE:
+	case RELEASE:
 		if (!(egCnt & eg_m_rr)) {
 			volume += eg_inc[eg_sel_rr + ((egCnt >> eg_sh_rr) & 7)];
 			if (volume >= MAX_ATT_INDEX) {
 				volume = MAX_ATT_INDEX;
-				state = EG_OFF;
+				state = OFF;
 			}
 		}
 		break;
@@ -591,7 +595,7 @@ void YMF262::Slot::advanceEnvelopeGenerator(unsigned egCnt)
 	}
 }
 
-void YMF262::Slot::advancePhaseGenerator(Channel& ch, unsigned lfo_pm)
+void YMF262::Slot::advancePhaseGenerator(const Channel& ch, unsigned lfo_pm)
 {
 	if (vib) {
 		// LFO phase modulation active
@@ -836,7 +840,7 @@ void YMF262::chan_calc_rhythm(unsigned lfo_am)
 	mod6.op1_out[0] = mod6.op1_out[1];
 	int pm = mod6.CON ? 0 : mod6.op1_out[0];
 	mod6.op1_out[1] = mod6.op_calc(mod6.Cnt.toInt() + (out >> mod6.fb_shift), lfo_am);
-	auto& car6 = channel[6].slot[CAR];
+	const auto& car6 = channel[6].slot[CAR];
 	chanOut[6] += 2 * car6.op_calc(car6.Cnt.toInt() + pm, lfo_am);
 
 	// Phase generation is based on:
@@ -852,13 +856,13 @@ void YMF262::chan_calc_rhythm(unsigned lfo_am)
 	// SD  channel 7->slot2
 	// TOM channel 8->slot1
 	// TOP channel 8->slot2
-	auto& mod7 = channel[7].slot[MOD];
+	const auto& mod7 = channel[7].slot[MOD];
 	chanOut[7] += 2 * mod7.op_calc(genPhaseHighHat(), lfo_am);
-	auto& car7 = channel[7].slot[CAR];
+	const auto& car7 = channel[7].slot[CAR];
 	chanOut[7] += 2 * car7.op_calc(genPhaseSnare(),   lfo_am);
-	auto& mod8 = channel[8].slot[MOD];
+	const auto& mod8 = channel[8].slot[MOD];
 	chanOut[8] += 2 * mod8.op_calc(mod8.Cnt.toInt(),  lfo_am);
-	auto& car8 = channel[8].slot[CAR];
+	const auto& car8 = channel[8].slot[CAR];
 	chanOut[8] += 2 * car8.op_calc(genPhaseCymbal(),  lfo_am);
 }
 
@@ -868,7 +872,7 @@ void YMF262::Slot::FM_KEYON(uint8_t key_set)
 		// restart Phase Generator
 		Cnt = FreqIndex(0);
 		// phase -> Attack
-		state = EG_ATTACK;
+		state = EnvelopeState::ATTACK;
 	}
 	key |= key_set;
 }
@@ -879,8 +883,8 @@ void YMF262::Slot::FM_KEYOFF(uint8_t key_clr)
 		key &= ~key_clr;
 		if (!key) {
 			// phase -> Release
-			if (state != EG_OFF) {
-				state = EG_RELEASE;
+			if (state != EnvelopeState::OFF) {
+				state = EnvelopeState::RELEASE;
 			}
 		}
 	}
@@ -987,7 +991,7 @@ void YMF262::set_ksl_tl(unsigned sl, uint8_t v)
 
 	if (isExtended(chan_no)) {
 		// update this slot using frequency data for 1st channel of a pair
-		auto& ch0 = getFirstOfPair(chan_no);
+		const auto& ch0 = getFirstOfPair(chan_no);
 		slot.TLL = slot.TL + (ch0.ksl_base >> slot.ksl);
 	} else {
 		// normal
@@ -1017,7 +1021,7 @@ void YMF262::set_sl_rr(unsigned sl, uint8_t v)
 	slot.update_rr();
 }
 
-uint8_t YMF262::readReg(unsigned r)
+uint8_t YMF262::readReg(unsigned r) const
 {
 	// no need to call updateStream(time)
 	return peekReg(r);
@@ -1045,59 +1049,23 @@ void YMF262::writeRegDirect(unsigned r, uint8_t v, EmuTime::param time)
 {
 	reg[r] = v;
 
-	switch (r) {
-	case 0x104:
-		// 6 channels enable
-		channel[ 0].extended = (v & 0x01) != 0;
-		channel[ 1].extended = (v & 0x02) != 0;
-		channel[ 2].extended = (v & 0x04) != 0;
-		channel[ 9].extended = (v & 0x08) != 0;
-		channel[10].extended = (v & 0x10) != 0;
-		channel[11].extended = (v & 0x20) != 0;
-		return;
-
-	case 0x105:
-		// OPL3 mode when bit0=1 otherwise it is OPL2 mode
-		OPL3_mode = v & 0x01;
-
-		// Verified on real YMF278: When NEW2 bit is first set, a read
-		// from the status register (once) returns bit 1 set (0x02).
-		// This only happens once after reset, so clearing NEW2 and
-		// setting it again doesn't cause another change in the status
-		// register. Also, only bit 1 changes.
-		if ((v & 0x02) && !alreadySignaledNEW2 && isYMF278) {
-			status2 = 0x02;
-			alreadySignaledNEW2 = true;
-		}
-
-		// following behaviour was tested on real YMF262,
-		// switching OPL3/OPL2 modes on the fly:
-		//  - does not change the waveform previously selected
-		//    (unless when ....)
-		//  - does not update CH.A, CH.B, CH.C and CH.D output
-		//    selectors (registers c0-c8) (unless when ....)
-		//  - does not disable channels 9-17 on OPL3->OPL2 switch
-		//  - does not switch 4 operator channels back to 2
-		//    operator channels
-		return;
-	}
-
 	unsigned ch_offset = (r & 0x100) ? 9 : 0;
 	switch (r & 0xE0) {
-	case 0x00: // 00-1F:control
-		switch (r & 0x1F) {
-		case 0x01: // test register
+	case 0x00: // 000-01F,100-11F: control
+		switch (r) {
+		case 0x000: // test register
+		case 0x001: // test register
 			break;
 
-		case 0x02: // Timer 1
+		case 0x002: // Timer 1
 			timer1->setValue(v);
 			break;
 
-		case 0x03: // Timer 2
+		case 0x003: // Timer 2
 			timer2->setValue(v);
 			break;
 
-		case 0x04: // IRQ clear / mask and Timer enable
+		case 0x004: // IRQ clear / mask and Timer enable
 			if (v & 0x80) {
 				// IRQ flags clear
 				resetStatus(0x60);
@@ -1108,9 +1076,48 @@ void YMF262::writeRegDirect(unsigned r, uint8_t v, EmuTime::param time)
 			}
 			break;
 
-		case 0x08: // x,NTS,x,x, x,x,x,x
+		case 0x008: // x,NTS,x,x, x,x,x,x
 			nts = (v & 0x40) != 0;
 			break;
+
+		case 0x100: // test register
+		case 0x101: // test register
+			break;
+
+		case 0x104:
+			// 6 channels enable
+			channel[ 0].extended = (v & 0x01) != 0;
+			channel[ 1].extended = (v & 0x02) != 0;
+			channel[ 2].extended = (v & 0x04) != 0;
+			channel[ 9].extended = (v & 0x08) != 0;
+			channel[10].extended = (v & 0x10) != 0;
+			channel[11].extended = (v & 0x20) != 0;
+			return;
+
+		case 0x105:
+			// OPL3 mode when bit0=1 otherwise it is OPL2 mode
+			OPL3_mode = v & 0x01;
+
+			// Verified on real YMF278: When NEW2 bit is first set, a read
+			// from the status register (once) returns bit 1 set (0x02).
+			// This only happens once after reset, so clearing NEW2 and
+			// setting it again doesn't cause another change in the status
+			// register. Also, only bit 1 changes.
+			if ((v & 0x02) && !alreadySignaledNEW2 && isYMF278) {
+				status2 = 0x02;
+				alreadySignaledNEW2 = true;
+			}
+
+			// following behaviour was tested on real YMF262,
+			// switching OPL3/OPL2 modes on the fly:
+			//  - does not change the waveform previously selected
+			//    (unless when ....)
+			//  - does not update CH.A, CH.B, CH.C and CH.D output
+			//    selectors (registers c0-c8) (unless when ....)
+			//  - does not disable channels 9-17 on OPL3->OPL2 switch
+			//  - does not switch 4 operator channels back to 2
+			//    operator channels
+			return;
 
 		default:
 			break;
@@ -1415,7 +1422,7 @@ void YMF262::reset(EmuTime::param time)
 	// reset operator parameters
 	for (auto& ch : channel) {
 		for (auto& sl : ch.slot) {
-			sl.state  = EG_OFF;
+			sl.state  = EnvelopeState::OFF;
 			sl.volume = MAX_ATT_INDEX;
 		}
 	}
@@ -1476,13 +1483,13 @@ uint8_t YMF262::peekStatus() const
 	return status | status2;
 }
 
-bool YMF262::checkMuteHelper()
+bool YMF262::checkMuteHelper() const
 {
 	// TODO this doesn't always mute when possible
 	for (auto& ch : channel) {
 		for (auto& sl : ch.slot) {
-			if (!((sl.state == EG_OFF) ||
-			      ((sl.state == EG_RELEASE) &&
+			if (!((sl.state == EnvelopeState::OFF) ||
+			      ((sl.state == EnvelopeState::RELEASE) &&
 			       ((narrow<int>(sl.TLL) + sl.volume) >= ENV_QUIET)))) {
 				return false;
 			}
@@ -1503,7 +1510,7 @@ void YMF262::setMixLevel(uint8_t x, EmuTime::param time)
 		(1.00f / 4), // -12dB
 		(0.75f / 4), // -15dB (approx)
 		(1.00f / 8), // -18dB
-		(0.00f    ), // -inf dB
+		 0.00f       // -inf dB
 	};
 	setSoftwareVolume(level[x & 7], level[(x >> 3) & 7], time);
 }
@@ -1586,11 +1593,11 @@ void YMF262::generateChannels(std::span<float*> bufs, unsigned num)
 
 
 static constexpr std::initializer_list<enum_string<YMF262::EnvelopeState>> envelopeStateInfo = {
-	{ "ATTACK",  YMF262::EG_ATTACK  },
-	{ "DECAY",   YMF262::EG_DECAY   },
-	{ "SUSTAIN", YMF262::EG_SUSTAIN },
-	{ "RELEASE", YMF262::EG_RELEASE },
-	{ "OFF",     YMF262::EG_OFF     }
+	{ "ATTACK",  YMF262::EnvelopeState::ATTACK  },
+	{ "DECAY",   YMF262::EnvelopeState::DECAY   },
+	{ "SUSTAIN", YMF262::EnvelopeState::SUSTAIN },
+	{ "RELEASE", YMF262::EnvelopeState::RELEASE },
+	{ "OFF",     YMF262::EnvelopeState::OFF     }
 };
 SERIALIZE_ENUM(YMF262::EnvelopeState, envelopeStateInfo);
 
@@ -1703,7 +1710,7 @@ YMF262::Debuggable::Debuggable(MSXMotherBoard& motherBoard_,
 
 uint8_t YMF262::Debuggable::read(unsigned address)
 {
-	auto& ymf262 = OUTER(YMF262, debuggable);
+	const auto& ymf262 = OUTER(YMF262, debuggable);
 	return ymf262.peekReg(address);
 }
 

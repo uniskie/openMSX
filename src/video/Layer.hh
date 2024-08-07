@@ -1,6 +1,8 @@
 #ifndef LAYER_HH
 #define LAYER_HH
 
+#include "stl.hh"
+
 namespace openmsx {
 
 class OutputSurface;
@@ -14,29 +16,29 @@ public:
 	/** Determines stacking order of layers:
 	  * layers with higher Z-indices are closer to the viewer.
 	  */
-	enum ZIndex {
-		Z_DUMMY = -1,
-		Z_BACKGROUND = 0,
-		Z_MSX_PASSIVE = 30,
-		Z_MSX_ACTIVE = 40,
-		Z_OSDGUI = 50,
-		Z_CONSOLE = 100
+	enum class ZIndex {
+		BACKGROUND,
+		MSX_PASSIVE,
+		MSX_ACTIVE,
+		OSDGUI,
+		IMGUI,
 	};
+	[[nodiscard]] friend auto operator<=>(ZIndex x, ZIndex y) { return to_underlying(x) <=> to_underlying(y); }
 
 	/** Describes how much of the screen is currently covered by a particular
 	  * layer.
 	  */
-	enum Coverage {
+	enum class Coverage {
 		/** Layer fully covers the screen: any underlying layers are invisible.
 		  */
-		COVER_FULL,
+		FULL,
 		/** Layer partially covers the screen: it may cover only part of the
 		  * screen area, or it may be (semi-)transparent in places.
 		  */
-		COVER_PARTIAL,
+		PARTIAL,
 		/** Layer is not visible, that is completely transparent.
 		  */
-		COVER_NONE
+		NONE
 	};
 
 	virtual ~Layer() = default;
@@ -48,7 +50,7 @@ public:
 	/** Query the Z-index of this layer.
 	  */
 	[[nodiscard]] ZIndex getZ() const { return z; }
-	[[nodiscard]] bool isActive() const { return getZ() == Z_MSX_ACTIVE; }
+	[[nodiscard]] bool isActive() const { return getZ() == ZIndex::MSX_ACTIVE; }
 
 	/** Query the coverage of this layer.
 	 */
@@ -61,7 +63,7 @@ public:
 
 protected:
 	/** Construct a layer. */
-	explicit Layer(Coverage coverage_ = COVER_NONE, ZIndex z_ = Z_DUMMY)
+	explicit Layer(Coverage coverage_, ZIndex z_)
 		: coverage(coverage_), z(z_)
 	{
 	}
@@ -94,6 +96,10 @@ class ScopedLayerHider
 {
 public:
 	explicit ScopedLayerHider(Layer& layer);
+	ScopedLayerHider(const ScopedLayerHider&) = delete;
+	ScopedLayerHider(ScopedLayerHider&&) = delete;
+	ScopedLayerHider& operator=(const ScopedLayerHider&) = delete;
+	ScopedLayerHider& operator=(ScopedLayerHider&&) = delete;
 	~ScopedLayerHider();
 private:
 	Layer& layer;

@@ -1,4 +1,5 @@
 #include "XMLElement.hh"
+
 #include "ConfigException.hh"
 #include "File.hh"
 #include "FileContext.hh" // for bw compat
@@ -10,6 +11,7 @@
 #include "serialize.hh"
 #include "serialize_meta.hh"
 #include "serialize_stl.hh"
+
 #include <cassert>
 #include <vector>
 
@@ -82,8 +84,7 @@ int XMLElement::getChildDataAsInt(std::string_view childName, int defaultValue) 
 {
 	const auto* child = findChild(childName);
 	if (!child) return defaultValue;
-	auto r = StringOp::stringTo<int>(child->getData());
-	return r ? *r : defaultValue;
+	return StringOp::stringTo<int>(child->getData()).value_or(defaultValue);
 }
 
 size_t XMLElement::numChildren() const
@@ -105,8 +106,9 @@ const XMLAttribute* XMLElement::findAttribute(std::string_view attrName) const
 // Throws when not found.
 const XMLAttribute& XMLElement::getAttribute(std::string_view attrName) const
 {
-	const auto* result = findAttribute(attrName);
-	if (result) return *result;
+	if (const auto* result = findAttribute(attrName)) {
+		return *result;
+	}
 	throw ConfigException("Missing attribute \"", attrName, "\".");
 }
 
@@ -136,8 +138,7 @@ int XMLElement::getAttributeValueAsInt(std::string_view attrName,
 {
 	const auto* attr = findAttribute(attrName);
 	if (!attr) return defaultValue;
-	auto r = StringOp::stringTo<int>(attr->getValue());
-	return r ? *r : defaultValue;
+	return StringOp::stringTo<int>(attr->getValue()).value_or(defaultValue);
 }
 
 // Like findAttribute(), but returns a pointer-to-the-XMLAttribute-pointer.
@@ -228,7 +229,7 @@ void XMLDocument::setAttribute(XMLElement& elem, const char* attrName, const cha
 class XMLDocumentHandler : public rapidsax::NullHandler
 {
 public:
-	XMLDocumentHandler(XMLDocument& doc_)
+	explicit XMLDocumentHandler(XMLDocument& doc_)
 		: doc(doc_)
 		, nextElement(&doc.root) {}
 
@@ -411,7 +412,7 @@ static void saveElement(MemOutputArchive& ar, const XMLElement& elem)
 	}
 }
 
-void XMLDocument::serialize(MemOutputArchive& ar, unsigned /*version*/)
+void XMLDocument::serialize(MemOutputArchive& ar, unsigned /*version*/) const
 {
 	if (root) {
 		saveElement(ar, *root);
@@ -459,21 +460,21 @@ void XMLDocument::serialize(XmlInputArchive& ar, unsigned /*version*/)
 
 static void saveElement(XMLOutputStream<XmlOutputArchive>& stream, const XMLElement& elem)
 {
-	stream.begin(elem.getName());
-	for (const auto& attr : elem.getAttributes()) {
-		stream.attribute(attr.getName(), attr.getValue());
-	}
-	if (elem.hasChildren()) {
-		for (const auto& child : elem.getChildren()) {
-			saveElement(stream, child);
+	stream.with_tag(elem.getName(), [&]{
+		for (const auto& attr : elem.getAttributes()) {
+			stream.attribute(attr.getName(), attr.getValue());
 		}
-	} else {
-		stream.data(elem.getData());
-	}
-	stream.end(elem.getName());
+		if (elem.hasChildren()) {
+			for (const auto& child : elem.getChildren()) {
+				saveElement(stream, child);
+			}
+		} else {
+			stream.data(elem.getData());
+		}
+	});
 }
 
-void XMLDocument::serialize(XmlOutputArchive& ar, unsigned /*version*/)
+void XMLDocument::serialize(XmlOutputArchive& ar, unsigned /*version*/) const
 {
 	auto& stream = ar.getXMLOutputStream();
 	if (root) {
@@ -508,7 +509,7 @@ XMLElement* XMLDocument::clone(const OldXMLElement& inElem)
 	return outElem;
 }
 
-void XMLDocument::load(OldXMLElement& elem)
+void XMLDocument::load(const OldXMLElement& elem)
 {
 	root = clone(elem);
 }

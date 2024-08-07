@@ -13,7 +13,7 @@ namespace openmsx {
 class MusicalMemoryMapper final : public MSXMemoryMapperBase
 {
 public:
-	MusicalMemoryMapper(const DeviceConfig& config);
+	explicit MusicalMemoryMapper(const DeviceConfig& config);
 
 	void reset(EmuTime::param time) override;
 	[[nodiscard]] byte readIO(word port, EmuTime::param time) override;
@@ -23,7 +23,7 @@ public:
 	[[nodiscard]] byte readMem(word address, EmuTime::param time) override;
 	void writeMem(word address, byte value, EmuTime::param time) override;
 	[[nodiscard]] const byte* getReadCacheLine(word start) const override;
-	[[nodiscard]] byte* getWriteCacheLine(word start) const override;
+	[[nodiscard]] byte* getWriteCacheLine(word start) override;
 
 	template<typename Archive>
 	void serialize(Archive& ar, unsigned version);

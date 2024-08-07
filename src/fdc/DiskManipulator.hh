@@ -2,8 +2,10 @@
 #define FILEMANIPULATOR_HH
 
 #include "Command.hh"
-#include <array>
+#include "DiskPartition.hh"
+
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -15,7 +17,6 @@ class SectorAccessibleDisk;
 class DiskPartition;
 class MSXtar;
 class Reactor;
-class MsxChar2Unicode;
 enum class MSXBootSectorType;
 
 class DiskManipulator final : public Command
@@ -27,6 +28,16 @@ public:
 
 	void registerDrive(DiskContainer& drive, std::string_view prefix);
 	void unregisterDrive(DiskContainer& drive);
+
+	// for use in ImGuiDiskManipulator
+	[[nodiscard]] std::vector<std::string> getDriveNamesForCurrentMachine() const;
+	struct DriveAndPartition {
+		DiskContainer* drive;
+		std::unique_ptr<DiskPartition> partition; // will often be the full disk
+	};
+	[[nodiscard]] DiskContainer* getDrive(std::string_view driveName) const;
+	[[nodiscard]] std::optional<DriveAndPartition> getDriveAndDisk(std::string_view driveName) const;
+	void create(const std::string& filename_, MSXBootSectorType bootType, const std::vector<unsigned>& sizes) const;
 
 private:
 	struct DriveSettings
@@ -50,26 +61,27 @@ private:
 	void tabCompletion(std::vector<std::string>& tokens) const override;
 
 	[[nodiscard]] std::string getMachinePrefix() const;
-	[[nodiscard]] const MsxChar2Unicode& getMsxChar2Unicode() const;
 	[[nodiscard]] Drives::iterator findDriveSettings(DiskContainer& drive);
 	[[nodiscard]] Drives::iterator findDriveSettings(std::string_view driveName);
 	[[nodiscard]] DriveSettings& getDriveSettings(std::string_view diskName);
 	[[nodiscard]] static DiskPartition getPartition(
 		const DriveSettings& driveData);
 	[[nodiscard]] MSXtar getMSXtar(SectorAccessibleDisk& disk,
-	                                      DriveSettings& driveData);
+	                               DriveSettings& driveData) const;
 
-	void create(std::span<const TclObject> tokens);
+	void create(std::span<const TclObject> tokens) const;
 	void partition(std::span<const TclObject> tokens);
-	void savedsk(const DriveSettings& driveData, std::string filename);
+	void savedsk(const DriveSettings& driveData, std::string filename) const;
 	void format(std::span<const TclObject> tokens);
-	std::string chdir(DriveSettings& driveData, std::string_view filename);
-	void mkdir(DriveSettings& driveData, std::string_view filename);
-	[[nodiscard]] std::string dir(DriveSettings& driveData);
-	std::string import(DriveSettings& driveData,
-	                   std::span<const TclObject> lists);
+	std::string chdir(DriveSettings& driveData, std::string_view filename) const;
+	void mkdir(DriveSettings& driveData, std::string_view filename) const;
+	[[nodiscard]] std::string dir(DriveSettings& driveData) const;
+	[[nodiscard]] std::string deleteEntry(DriveSettings& driveData, std::string_view entry) const;
+	[[nodiscard]] std::string rename(DriveSettings& driveData, std::string_view oldName, std::string_view newName) const;
+	std::string imprt(DriveSettings& driveData,
+	                  std::span<const TclObject> lists, bool overwrite) const;
 	void exprt(DriveSettings& driveData, std::string_view dirname,
-	           std::span<const TclObject> lists);
+	           std::span<const TclObject> lists) const;
 
 	Reactor& reactor;
 };

@@ -7,7 +7,7 @@
 
 TEST_CASE("join: vector<string_view>, char")
 {
-	auto check = [](const std::vector<std::string_view>& v, const std::string& expected) {
+	auto check = [](const std::vector<std::string_view>& v, std::string_view expected) {
 		std::string result = join(v, '-');
 		CHECK(result == expected);
 	};
@@ -28,14 +28,14 @@ TEST_CASE("join: various types")
 {
 	std::vector<std::string> vs = {"foo", "bar", "qux"};
 	std::vector<int> vi = {1, -89, 673, 0};
-	const char* ac[] = {"blabla", "xyz", "4567"};
+	std::array ac = {"blabla", "xyz", "4567"};
 
 	char sep1 = '-';
 	const char* sep2 = ", ";
 	std::string sep3 = "<-->";
 	int sep4 = 123;
 
-	auto check = [](const auto& range, const auto& sep, const std::string& expected) {
+	auto check = [](const auto& range, const auto& sep, std::string_view expected) {
 		std::string result1 = join(range, sep);
 		CHECK(result1 == expected);
 

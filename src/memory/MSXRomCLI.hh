@@ -10,6 +10,9 @@ class CommandLineParser;
 class MSXRomCLI final : public CLIOption, public CLIFileType
 {
 public:
+	static std::span<const std::string_view> getExtensions();
+
+public:
 	explicit MSXRomCLI(CommandLineParser& cmdLineParser);
 
 	void parseOption(const std::string& option,
@@ -23,7 +26,7 @@ public:
 
 private:
 	void parse(const std::string& arg, const std::string& slotName,
-	           std::span<std::string>& cmdLine);
+	           std::span<std::string>& cmdLine) const;
 
 private:
 	CommandLineParser& cmdLineParser;

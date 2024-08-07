@@ -26,7 +26,7 @@
 #include "MSXException.hh"
 #include "xrange.hh"
 #include "zstring_view.hh"
-#include <windows.h>
+#include <Windows.h>
 #include <cstring>
 #include <cstdlib>
 #include <exception>
@@ -52,7 +52,7 @@ DIR* opendir(const char* name)
 		return nullptr;
 	}
 
-	DIR* dir = new DIR;
+	auto* dir = new DIR;
 	dir->mask = nameW;
 	dir->fd = reinterpret_cast<INT_PTR>(hnd);
 	dir->data = new WIN32_FIND_DATAW;
@@ -105,12 +105,12 @@ void rewinddir(DIR* dir)
 void seekdir(DIR* dir, off_t offset)
 {
 	rewinddir(dir);
-	for (auto n : xrange(offset)) {
+	repeat(offset, [&]{
 		if (FindNextFileW(reinterpret_cast<HANDLE>(dir->fd),
 		                  static_cast<WIN32_FIND_DATAW*>(dir->data))) {
 			dir->filepos++;
 		}
-	}
+	});
 }
 
 off_t telldir(DIR* dir)
