@@ -1,18 +1,22 @@
 #include "MSXCPU.hh"
+
+#include "CPUCore.hh"
 #include "MSXCPUInterface.hh"
+#include "R800.hh"
+#include "Z80.hh"
+
 #include "MSXMotherBoard.hh"
 #include "Debugger.hh"
 #include "Scheduler.hh"
 #include "IntegerSetting.hh"
-#include "CPUCore.hh"
-#include "Z80.hh"
-#include "R800.hh"
 #include "TclObject.hh"
+#include "serialize.hh"
+
 #include "outer.hh"
 #include "ranges.hh"
-#include "serialize.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
 #include <cassert>
 #include <memory>
 
@@ -350,16 +354,6 @@ void MSXCPU::update(const Setting& setting) noexcept
 	          z80 ->update(setting);
 	if (r800) r800->update(setting);
 	exitCPULoopSync();
-}
-
-// Command
-
-void MSXCPU::disasmCommand(
-	Interpreter& interp, std::span<const TclObject> tokens,
-	TclObject& result) const
-{
-	z80Active ? z80 ->disasmCommand(interp, tokens, result)
-	          : r800->disasmCommand(interp, tokens, result);
 }
 
 void MSXCPU::setPaused(bool paused)

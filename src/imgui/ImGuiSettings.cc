@@ -190,6 +190,7 @@ void ImGuiSettings::showMenu(MSXMotherBoard* motherBoard)
 				Checkbox(hotKey, "Disable sprites", renderSettings.getDisableSpritesSetting());
 				ComboBox("Way to handle too fast VDP access", renderSettings.getTooFastAccessSetting());
 				ComboBox("Emulate VDP command timing", renderSettings.getCmdTimingSetting());
+				ComboBox("Rendering accuracy", renderSettings.getAccuracySetting());
 			});
 		});
 		im::Menu("Sound", [&]{
@@ -433,18 +434,8 @@ void ImGuiSettings::showMenu(MSXMotherBoard* motherBoard)
 					assert(false);
 				}
 			}
-			if (!Version::RELEASE) {
-				ImGui::Separator();
-				ImGui::Checkbox("ImGui Demo Window", &showDemoWindow);
-				HelpMarker("Show the ImGui demo window.\n"
-					"This is purely to demonstrate the ImGui capabilities.\n"
-					"There is no connection with any openMSX functionality.");
-			}
 		});
 	});
-	if (showDemoWindow) {
-		ImGui::ShowDemoWindow(&showDemoWindow);
-	}
 
 	const auto confirmTitle = "Confirm##settings";
 	if (openConfirmPopup) {
