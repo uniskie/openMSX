@@ -124,7 +124,8 @@ SCC::SCC(const std::string& name_, const DeviceConfig& config,
 		config.getMotherBoard(), name_, calcDescription(mode), 5, INPUT_RATE, false)
 	, debuggable(config.getMotherBoard(), getName())
 	, deformTimer(time)
-	, currentMode(mode) //, currentChipMode(mode)
+	//, currentChipMode(mode)
+	, currentMode(mode)
 	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	// Make valgrind happy
@@ -302,7 +303,8 @@ void SCC::writeMem(uint8_t address, uint8_t value, EmuTime::param time)
 		if (m_rpcClient)
 		{
 			//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
-			if(currentChipMode != SCC_plusmode)
+			// if(currentChipMode != SCC_plusmode)
+			if (currentMode != Mode::Plus)
 				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)address, (unsigned int)value);
 			else
 				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)(0x100 + address), (unsigned int)value);

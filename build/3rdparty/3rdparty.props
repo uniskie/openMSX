@@ -23,6 +23,7 @@
     <LibNameTheora>libtheora-1.1.1</LibNameTheora>
     <LibNameVorbis>libvorbis-1.3.7</LibNameVorbis>
     <LibNameZlib>zlib-1.2.11</LibNameZlib>
+    <LibNameRpc>rpclib</LibNameRpc>
   </PropertyGroup>
   <PropertyGroup>
     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
@@ -114,6 +115,10 @@
     </BuildMacro>
     <BuildMacro Include="LibNameZlib">
       <Value>$(LibNameZlib)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="LibNameRpc">
+      <Value>$(LibNameRpc)</Value>
       <EnvironmentVariable>true</EnvironmentVariable>
     </BuildMacro>
   </ItemGroup>

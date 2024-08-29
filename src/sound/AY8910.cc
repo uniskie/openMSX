@@ -496,7 +496,7 @@ AY8910::AY8910(const std::string& name_, AY8910Periphery& periphery_,
 	, envelope(amplitude.getEnvVolTable())
 	, isAY8910(checkAY8910(config))
 	, ignorePortDirections(config.getChildDataAsBool("ignorePortDirections", true))
-	, detuneInitialized(false) // (lazily) initialize detune stuff
+	//, detuneInitialized(false) // (lazily) initialize detune stuff
 	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	update(vibratoPercent);

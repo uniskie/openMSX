@@ -979,21 +979,21 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 		      keyEvent.getUnicode(),
 			  keyEvent.getKeyCode(),
 			  keyEvent.getScanCode(),
-		      Keys::getName(keyEvent.getKeyCode()).c_str());
+		      //Keys::getName(keyEvent.getKeyCode()).c_str());
+		      key.toString().c_str());
 		debug("Key pressed, unicode: 0x%04x, keyCode: 0x%05x, scanCode: 0x%03x, keyName: %s\n",
 		      keyEvent.getUnicode(),
 		      keyEvent.getKeyCode(),
-		      key.toString().c_str());
-		debug("Key pressed, unicode: 0x%04x, keyCode: 0x%05x, keyName: %s\n",
-		      keyEvent.getUnicode(),
-		      keyEvent.getKeyCode(),
+			  keyEvent.getScanCode(),
 		      key.toString().c_str());
 	} else {
 		ad_printf("Key released, keyCode: 0x%05x, scanCode: 0x%03x, keyName: %s\n",
 		      keyEvent.getKeyCode(),
+			  keyEvent.getScanCode(),
 		      key.toString().c_str());
-		debug("Key released, keyCode: 0x%05x, keyName: %s\n",
+		debug("Key released, keyCode: 0x%05x, scanCode: 0x%03x, keyName: %s\n",
 		      keyEvent.getKeyCode(),
+			  keyEvent.getScanCode(),
 		      key.toString().c_str());
 	}
 
