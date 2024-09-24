@@ -493,7 +493,9 @@ void ImGuiMedia::showMenu(MSXMotherBoard* motherBoard)
 		for (auto i : xrange(CartridgeSlotManager::MAX_SLOTS)) {
 			if (!slotManager.slotExists(i)) continue;
 			anySlot = true;
-			auto displayName = strCat("Cartridge Slot ", char('A' + i));
+			auto [ps, ss] = slotManager.getPsSs(i);
+			std::string extraInfo = ss == -1 ? "" : strCat(" (", slotManager.getPsSsString(i), ")");
+			auto displayName = strCat("Cartridge Slot ", char('A' + i), extraInfo);
 			ImGui::MenuItem(displayName.c_str(), nullptr, &cartridgeMediaInfo[i].show);
 			simpleToolTip([&]{ return displayNameForSlotContent(slotManager, i); });
 		}
@@ -1520,11 +1522,11 @@ void ImGuiMedia::addRecent(const TclObject& cmd)
 				return &diskMediaInfo[i].groups[SelectDiskType::IMAGE];
 			}
 		} else if (mediaName.starts_with("hd")) {
-			if (int i = mediaName[4] - 'a'; 0 <= i && i < int(HD::MAX_HD)) {
+			if (int i = mediaName[2] - 'a'; 0 <= i && i < int(HD::MAX_HD)) {
 				return &hdMediaInfo[i];
 			}
 		} else if (mediaName.starts_with("cd")) {
-			if (int i = mediaName[4] - 'a'; 0 <= i && i < int(IDECDROM::MAX_CD)) {
+			if (int i = mediaName[2] - 'a'; 0 <= i && i < int(IDECDROM::MAX_CD)) {
 				return &cdMediaInfo[i];
 			}
 		} else if (mediaName == "cassetteplayer") {

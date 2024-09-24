@@ -31,7 +31,7 @@ jobs:
 #            cpu: aarch64
 #            os: linux
 #            flavour: opt
-          - image: ubuntu-22.04
+          - image: ubuntu-24.04
             name: Windows
             cpu: x86_64
             os: mingw-w64
@@ -79,7 +79,7 @@ jobs:
     - name: Upload tarball as artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ steps.get_dist_name.outputs.tarball_name }}
+        name: ${{ matrix.os }}-${{ matrix.cpu }}-${{ matrix.flavour }}_${{ steps.get_dist_name.outputs.tarball_name }}
         path: ${{ steps.get_dist_name.outputs.tarball_name }}
     - name: Remove everything except tarball from root
       shell: bash
@@ -87,7 +87,7 @@ jobs:
         shopt -s extglob
         rm -rf -v !("${{ steps.get_dist_name.outputs.tarball_name }}")
     - name: Extract tarball
-      uses: a7ul/tar-action@v1.1.3
+      uses: a7ul/tar-action@v1.2.0
       id: extract
       with:
         command: x

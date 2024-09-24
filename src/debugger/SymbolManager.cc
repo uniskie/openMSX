@@ -23,13 +23,14 @@ zstring_view SymbolFile::toString(Type type)
 {
 	switch (type) {
 		using enum Type;
-		case AUTO_DETECT: return "auto-detect";
-		case ASMSX:       return "asMSX";
-		case GENERIC:     return "generic";
-		case HTC:         return "htc";
-		case LINKMAP:     return "linkmap";
-		case NOICE:       return "NoICE";
-		case VASM:        return "vasm";
+		case AUTO_DETECT:   return "auto-detect";
+		case ASMSX:         return "asMSX";
+		case GENERIC:       return "generic";
+		case HTC:           return "htc";
+		case LINKMAP:       return "linkmap";
+		case NOICE:         return "NoICE";
+		case VASM:          return "vasm";
+		case WLALINK_NOGMB: return "wlalink";
 		default: UNREACHABLE;
 	}
 }
@@ -44,6 +45,7 @@ std::optional<SymbolFile::Type> SymbolFile::parseType(std::string_view str)
 	if (str == "linkmap")     return LINKMAP;
 	if (str == "NoICE")       return NOICE;
 	if (str == "vasm")        return VASM;
+	if (str == "wlalink")     return WLALINK_NOGMB;
 	return {};
 }
 
@@ -63,8 +65,13 @@ SymbolManager::SymbolManager(CommandController& commandController_)
 		// NoICE command file
 		return NOICE;
 	} else if (fname.ends_with(".map")) {
-		// HiTech link map file
-		return LINKMAP;
+		auto [line, _] = StringOp::splitOnFirst(buffer, "\n\r");
+		if (StringOp::containsCaseInsensitive(line, "hi-tech")) {
+			// HiTech link map file
+			return LINKMAP;
+		}
+		// map file output by the Z80ASM from Z88DK
+		return GENERIC;
 	} else if (fname.ends_with(".sym")) {
 		// auto detect which sym file
 		auto [line, _] = StringOp::splitOnFirst(buffer, "\n\r");
@@ -76,6 +83,8 @@ SymbolManager::SymbolManager(CommandController& commandController_)
 			return GENERIC;
 		} else if (StringOp::containsCaseInsensitive(line, "Sections:")) {
 			return VASM;
+		} else if (line.starts_with("; this file was created with wlalink")) {
+			return WLALINK_NOGMB;
 		} else {
 			// this is a blunt conclusion but I don't know a way
 			// to detect this file type
@@ -173,8 +182,9 @@ template std::optional<uint32_t> SymbolManager::parseValue<uint32_t>(std::string
 		auto equ   = tokens[1];
 		auto value = tokens[2];
 		StringOp::casecmp cmp;
-		if (!cmp(equ, "equ") &&         // TNIASM0, PASMO, SJASM, ...
-		    !cmp(equ, "%equ")) return {};  // TNIASM1
+		if (!cmp(equ, "equ") &&      // TNIASM0, PASMO, SJASM, ...
+		    !cmp(equ, "%equ") &&     // TNIASM1
+		    (equ != "=")) return {}; // Z80ASM map file (Z88DK)
 		return checkLabelAndValue(label, value);
 	};
 	return loadLines(filename, buffer, SymbolFile::Type::GENERIC, parseLine);
@@ -251,6 +261,20 @@ template std::optional<uint32_t> SymbolManager::parseValue<uint32_t>(std::string
 	}
 
 	return result;
+}
+
+[[nodiscard]] SymbolFile SymbolManager::loadNoGmb(std::string_view filename, std::string_view buffer)
+{
+	auto parseLine = [](std::span<std::string_view> tokens) -> std::optional<Symbol> {
+		if (tokens.size() != 2) return {};
+		auto value = tokens[0];
+		auto label = tokens[1];
+		if (!value.starts_with("00:")) return {};
+		std::optional<uint16_t> num = StringOp::stringToBase<16, uint16_t>(value.substr(3));
+		if (!num.has_value()) return {};
+		return checkLabel(label, num.value());
+	};
+	return loadLines(filename, buffer, SymbolFile::Type::WLALINK_NOGMB, parseLine);
 }
 
 [[nodiscard]] SymbolFile SymbolManager::loadASMSX(std::string_view filename, std::string_view buffer)
@@ -391,6 +415,8 @@ template std::optional<uint32_t> SymbolManager::parseValue<uint32_t>(std::string
 				return loadNoICE(filename, buffer);
 			case VASM:
 				return loadVASM(filename, buffer);
+			case WLALINK_NOGMB:
+				return loadNoGmb(filename, buffer);
 			default: UNREACHABLE;
 		}
 	}();
@@ -508,7 +534,8 @@ std::string SymbolManager::getFileFilters()
 	       "pasmo symbol files (*.symbol *.publics *.sys){.symbol,.publics,.sys},"
 	       "tniASM 0.x symbol files (*.sym){.sym},"
 	       "tniASM 1.x symbol files (*.sym){.sym},"
-	       "vasm symbol files (*.sym){.sym}";
+	       "vasm symbol files (*.sym){.sym},"
+	       "wlalink no$gmb symbol files (*.sym){.sym}";
 }
 
 SymbolFile::Type SymbolManager::getTypeForFilter(std::string_view filter)
@@ -526,6 +553,8 @@ SymbolFile::Type SymbolManager::getTypeForFilter(std::string_view filter)
 		return NOICE;
 	} else if (filter.starts_with("vasm")) {
 		return VASM;
+	} else if (filter.starts_with("wlalink")) {
+		return WLALINK_NOGMB;
 	} else {
 		return GENERIC;
 	}

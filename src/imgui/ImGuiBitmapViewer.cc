@@ -36,7 +36,7 @@ void ImGuiBitmapViewer::paint(MSXMotherBoard* motherBoard)
 	ImGui::SetNextWindowSize({528, 618}, ImGuiCond_FirstUseEver);
 	im::Window("Bitmap viewer", &showBitmapViewer, [&]{
 		auto* vdp = dynamic_cast<VDP*>(motherBoard->findDevice("VDP")); // TODO name based OK?
-		if (!vdp) return;
+		if (!vdp || vdp->isMSX1VDP()) return;
 
 		auto parseMode = [](DisplayMode mode) {
 			auto base = mode.getBase();
@@ -201,7 +201,7 @@ void ImGuiBitmapViewer::paint(MSXMotherBoard* motherBoard)
 			[](uint16_t msx) { return ImGuiPalette::toRGBA(msx); });
 		if (color0 < 16) palette[0] = palette[color0];
 
-		MemBuffer<uint32_t> pixels(512 * 256 * 2); // max size:  512*256*2  or  256*256*4
+		MemBuffer<uint32_t> pixels(512 * 256 * 4); // max size: screen 6/7, show all pages
 		renderBitmap(vram.getData(), palette, mode, height, page,
 				pixels.data());
 		if (!bitmapTex) {
