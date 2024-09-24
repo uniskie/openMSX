@@ -16,7 +16,9 @@
 
 #include <memory>
 
+#if 1 // uniskie test
 #include "debugprint.h"
+#endif // uniskie test
 
 namespace openmsx {
 
@@ -99,7 +101,7 @@ void InputEventGenerator::poll()
 				if (unicode) { // possibly there are more characters
 					splitText(curr->text.timestamp, utf8);
 				}
-#if 0 // uniskie test
+#if 1 // uniskie test
 				DEBUGPRINT(false, L"TEXTINPUT '%c' - "
 					//"type:0x%08x, state:%d, "
 					"sym:0x%08x, mod:0x%04x, "
@@ -118,12 +120,13 @@ void InputEventGenerator::poll()
 			}
 		}
 		if (curr->type == SDL_KEYDOWN) {
+#if 1 // uniskie test
 			DEBUGPRINT(false, L"KEYDOWN   - type:0x%08x, state:%d, scancode:0x%04x, sym:0x%08x, mod:0x%04x %s\n",
 				curr->key.type, curr->key.state,
 				curr->key.keysym.scancode, curr->key.keysym.sym, curr->key.keysym.mod,
 				SdlScanCodeString(curr->key.keysym.scancode)
 			);	::Sleep(0);
-
+#endif // uniskie test
 			pending = true;
 			std::swap(curr, prev);
 		} else {
