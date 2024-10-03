@@ -107,6 +107,9 @@
 #include "xrange.hh"
 #include <array>
 #include <cmath>
+#if defined(FOR_MAMI)
+#include "MSXMotherBoard.hh"
+#endif
 
 namespace openmsx {
 
@@ -124,9 +127,7 @@ SCC::SCC(const std::string& name_, const DeviceConfig& config,
 		config.getMotherBoard(), name_, calcDescription(mode), 5, INPUT_RATE, false)
 	, debuggable(config.getMotherBoard(), getName())
 	, deformTimer(time)
-	//, currentChipMode(mode)
 	, currentMode(mode)
-	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	// Make valgrind happy
 	ranges::fill(orgPeriod, 0);
@@ -134,12 +135,16 @@ SCC::SCC(const std::string& name_, const DeviceConfig& config,
 	powerUp(time);
 	registerSound(config);
 
+#if defined(FOR_MAMI)
 	//HACK: MAmi
+	if (!config.getMotherBoard().isTest()) {
 	try {
 		m_rpcClient = new rpc::client("localhost", 30000);
 	} catch (...) {
 		// pass through
 	}
+	}
+#endif
 
 }
 
@@ -147,9 +152,11 @@ SCC::~SCC()
 {
 	unregisterSound();
 
+#if defined(FOR_MAMI)
 	//HACK: MAmi
-	if (m_rpcClient != NULL)
+	if (m_rpcClient != nullptr)
 		m_rpcClient->~client();
+#endif
 }
 
 void SCC::powerUp(EmuTime::param time)
@@ -298,20 +305,21 @@ uint8_t SCC::getFreqVol(unsigned address) const
 
 void SCC::writeMem(uint8_t address, uint8_t value, EmuTime::param time)
 {
+#if defined(FOR_MAMI)
 	//HACK: MAmi
+	if (m_rpcClient != nullptr) {
 	try {
-		if (m_rpcClient)
-		{
 			//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
 			// if(currentChipMode != SCC_plusmode)
 			if (currentMode != Mode::Plus)
 				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)address, (unsigned int)value);
 			else
 				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)(0x100 + address), (unsigned int)value);
-		}
 	} catch (...) {
 		// pass through
 	}
+	}
+#endif
 
 	updateStream(time);
 

@@ -975,25 +975,20 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 		// Once that is done, debug(...) can pass the c_str() version of that string
 		// to ad_printf(...) so that I don't have to make an explicit ad_printf(...)
 		// invocation for each debug(...) invocation
-		ad_printf("Key pressed, unicode: 0x%04x, keyCode: 0x%05x, scanCode: 0x%03x, keyName: %s\n",
-		      keyEvent.getUnicode(),
-			  keyEvent.getKeyCode(),
-			  keyEvent.getScanCode(),
-		      //Keys::getName(keyEvent.getKeyCode()).c_str());
-		      key.toString().c_str());
-		debug("Key pressed, unicode: 0x%04x, keyCode: 0x%05x, scanCode: 0x%03x, keyName: %s\n",
+		ad_printf("Key pressed, unicode: 0x%04x, keyCode: 0x%05x, keyName: %s\n",
 		      keyEvent.getUnicode(),
 		      keyEvent.getKeyCode(),
-			  keyEvent.getScanCode(),
+		      key.toString().c_str());
+		debug("Key pressed, unicode: 0x%04x, keyCode: 0x%05x, keyName: %s\n",
+		      keyEvent.getUnicode(),
+		      keyEvent.getKeyCode(),
 		      key.toString().c_str());
 	} else {
-		ad_printf("Key released, keyCode: 0x%05x, scanCode: 0x%03x, keyName: %s\n",
+		ad_printf("Key released, keyCode: 0x%05x, keyName: %s\n",
 		      keyEvent.getKeyCode(),
-			  keyEvent.getScanCode(),
 		      key.toString().c_str());
-		debug("Key released, keyCode: 0x%05x, scanCode: 0x%03x, keyName: %s\n",
+		debug("Key released, keyCode: 0x%05x, keyName: %s\n",
 		      keyEvent.getKeyCode(),
-			  keyEvent.getScanCode(),
 		      key.toString().c_str());
 	}
 

@@ -368,7 +368,7 @@ std::unique_ptr<RawFrame> PostProcessor::rotateFrames(
 
 	// Insert new frame in front of lastFrames[], shift older frames
 	std::move_backward(&lastFrames[0], &lastFrames[recycleIdx],
-	                   &lastFrames[recycleIdx + 1]);
+					   lastFrames.begin() +  (recycleIdx + 1) );
 	lastFrames[0] = std::move(finishedFrame);
 
 	// Are enough frames available?

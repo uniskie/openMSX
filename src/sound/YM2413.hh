@@ -8,10 +8,12 @@
 #include <memory>
 #include <string>
 
+#if defined(FOR_MAMI)
 //HACK: MAmi
 #include "rpc/server.h"
 #include "rpc/client.h"
 #include <WinSock2.h>
+#endif
 
 namespace openmsx {
 
@@ -38,8 +40,10 @@ private:
 
 private:
 	const std::unique_ptr<YM2413Core> core;
-	rpc::client* m_rpcClient;	//HACK: MAmi
-	byte address;
+#if defined(FOR_MAMI)
+	rpc::client* m_rpcClient = nullptr;	//HACK: MAmi
+	char reg_address = -1;
+#endif
 
 	struct Debuggable final : SimpleDebuggable {
 		Debuggable(MSXMotherBoard& motherBoard, const std::string& name);

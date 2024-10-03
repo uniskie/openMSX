@@ -3104,7 +3104,6 @@
     <None Include="$(OpenMSXSrcDir)\video\SuperImposedFrame.hh" />
     <None Include="$(OpenMSXSrcDir)\SC3000PPI.hh" />
     <None Include="$(OpenMSXSrcDir)\SG1000Pause.hh" />
-    <None Include="$(OpenMSXSrcDir)\video\SuperImposedFrame.hh" />
     <None Include="$(OpenMSXSrcDir)\3rdparty\ImGuiFileDialog/CustomFont.h" />
     <None Include="$(OpenMSXSrcDir)\3rdparty\ImGuiFileDialog/ImGuiFileDialog.h" />
     <None Include="$(OpenMSXSrcDir)\3rdparty\ImGuiFileDialog/ImGuiFileDialogConfig.h" />

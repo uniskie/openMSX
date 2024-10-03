@@ -195,6 +195,23 @@ class ZLib(DownloadablePackage):
 			'c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1',
 		}
 
+# --> FOR_MAMI
+class Rpclib(DownloadablePackage):
+	downloadURL = 'https://github.com/rpclib/rpclib/archive/refs/tags' #v2.3.0.tar.gz
+	niceName = 'rpclib'
+	sourceName = 'rpclib'
+	version = '2.3.0'
+	fileLength = 1630737
+	checksums = {
+		'sha256':
+			'eb9e6fa65e1a79b37097397f60599b93cb443d304fbc0447c50851bc3452fdef',
+		}
+
+	@classmethod
+	def getURL(cls):
+		return urljoin(cls.downloadURL + '/', 'v' + cls.version + '.tar.gz')
+# <-- FOR_MAMI
+
 # Build a dictionary of packages using introspection.
 _packagesByName = {
 	obj.getMakeName(): obj

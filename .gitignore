@@ -1,4 +1,4 @@
-﻿/derived
+/derived
 /*.diff
 /*.log
 *.swp
@@ -14,16 +14,4 @@ core
 *.VC.VC.opendb
 .vscode/
 __pycache__/
-*.user
-build/3rdparty/.vs/3rdparty/FileContentIndex/be428a9a-f93a-44f3-8ab2-adc785d6505b.vsidx
-build/3rdparty/.vs/3rdparty/FileContentIndex/read.lock
-build/3rdparty/.vs/3rdparty/v17/fileList.bin
-build/3rdparty/Win32_LIB_ASM_Debug/
-build/3rdparty/Win32_LIB_ASM_Release/
-*.vsidx
-build/msvc/.vs/
-build_3rdpirty.bat
-build_openmsx.bat
-Developer Command Prompt for VS 2022.lnk
-setup_3rdpirty.bat
 .DS_Store

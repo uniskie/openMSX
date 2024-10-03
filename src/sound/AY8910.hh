@@ -9,10 +9,12 @@
 #include <array>
 #include <cstdint>
 
+#if defined(FOR_MAMI)
 //HACK: MAmi
 #include "rpc/server.h"
 #include "rpc/client.h"
 #include <WinSock2.h>
+#endif
 
 namespace openmsx {
 
@@ -176,7 +178,9 @@ private:
 	void wrtReg(unsigned reg, uint8_t value, EmuTime::param time);
 
 private:
-	rpc::client* m_rpcClient;	//HACK: MAmi
+#if defined(FOR_MAMI)
+	rpc::client* m_rpcClient = nullptr;	//HACK: MAmi
+#endif
 	AY8910Periphery& periphery;
 
 	struct Debuggable final : SimpleDebuggable {

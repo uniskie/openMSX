@@ -25,6 +25,9 @@
 #include <array>
 #include <cassert>
 #include <iostream>
+#if defined(FOR_MAMI)
+#include "MSXMotherBoard.hh"
+#endif
 
 namespace openmsx {
 
@@ -497,7 +500,6 @@ AY8910::AY8910(const std::string& name_, AY8910Periphery& periphery_,
 	, isAY8910(checkAY8910(config))
 	, ignorePortDirections(config.getChildDataAsBool("ignorePortDirections", true))
 	//, detuneInitialized(false) // (lazily) initialize detune stuff
-	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	update(vibratoPercent);
 
@@ -511,12 +513,18 @@ AY8910::AY8910(const std::string& name_, AY8910Periphery& periphery_,
 	vibratoPercent.attach(*this);
 	detunePercent .attach(*this);
 
+#if defined(FOR_MAMI)
 	//HACK: MAmi
+	if (!config.getMotherBoard().isTest())
+	{
 	try {
 		m_rpcClient = new rpc::client("localhost", 30000);
 	} catch (...) {
 		// pass through
 	}
+	}
+#endif
+
 }
 
 AY8910::~AY8910()
@@ -526,9 +534,11 @@ AY8910::~AY8910()
 
 	unregisterSound();
 
+#if defined(FOR_MAMI)
 	//HACK: MAmi
-	if (m_rpcClient != NULL)
+	if (m_rpcClient != nullptr)
 		m_rpcClient->~client();
+#endif
 }
 
 void AY8910::reset(EmuTime::param time)
@@ -599,16 +609,18 @@ void AY8910::writeRegister(unsigned reg, uint8_t value, EmuTime::param time)
 }
 void AY8910::wrtReg(unsigned reg, uint8_t value, EmuTime::param time)
 {
+#if defined(FOR_MAMI)
 	//HACK: MAmi
+	if (m_rpcClient != nullptr) {
 	try  {
-		if (m_rpcClient)
-		{
 			//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
 			m_rpcClient->async_call("DirectAccessToChip", (unsigned char)11, (unsigned char)0, (unsigned int)reg, (unsigned int)value);
-		}
+		
 	} catch(...) {
 		// pass through
 	}
+	}
+#endif
 
 	// Warn/force port directions
 	if (reg == AY_ENABLE) {

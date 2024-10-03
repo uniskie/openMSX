@@ -11,6 +11,9 @@
 #include "outer.hh"
 #include <cmath>
 #include <memory>
+#if defined(FOR_MAMI)
+#include "MSXMotherBoard.hh"
+#endif
 
 namespace openmsx {
 
@@ -68,25 +71,30 @@ YM2413::YM2413(const std::string& name_, const DeviceConfig& config)
 	: ResampledSoundDevice(config.getMotherBoard(), name_, "MSX-MUSIC", 9 + 5, INPUT_RATE, false)
 	, core(createCore(config))
 	, debuggable(config.getMotherBoard(), getName())
-	, m_rpcClient(nullptr) //HACK: MAmi
 {
 	registerSound(config);
 
+#if defined(FOR_MAMI)
 	//HACK: MAmi
+	if (!config.getMotherBoard().isTest()) {
 	try {
 		m_rpcClient = new rpc::client("localhost", 30000);
 	} catch (...) {
 		// pass through
 	}
+	}
+#endif
 }
 
 YM2413::~YM2413()
 {
 	unregisterSound();
 
+#if defined(FOR_MAMI)
 	//HACK: MAmi
-	if (m_rpcClient != NULL)
+	if (m_rpcClient != nullptr)
 		m_rpcClient->~client();
+#endif
 }
 
 void YM2413::reset(EmuTime::param time)
@@ -97,22 +105,23 @@ void YM2413::reset(EmuTime::param time)
 
 void YM2413::writePort(bool port, byte value, EmuTime::param time)
 {
+#if defined(FOR_MAMI)
+	//HACK: MAmi
+	if (m_rpcClient != nullptr) {
 	if (port == 0)
 	{
-		address = value;
-	}else 
+			reg_address = value;
+		}else if( 0 <= reg_address )
 	{
-		//HACK: MAmi
 		try {
-			if (m_rpcClient) 
-			{
 				//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
-				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)address, (unsigned int)value);
-			}
+				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg_address, (unsigned int)value);
 		} catch (...) {
 			// pass through
 		}
 	}
+	}
+#endif
 
 	updateStream(time);
 
@@ -127,9 +136,13 @@ void YM2413::writePort(bool port, byte value, EmuTime::param time)
 
 void YM2413::pokeReg(byte reg, byte value, EmuTime::param time)
 {
+#if defined(FOR_MAMI)
 	//HACK: MAmi
+	if (m_rpcClient != nullptr) {
 	//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
 	m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg, (unsigned int)value);
+	}
+#endif
 
 	updateStream(time);
 	core->pokeReg(reg, value);
