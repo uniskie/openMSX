@@ -73,6 +73,19 @@ static void initializeSDL()
 #ifndef NDEBUG
 	flags |= SDL_INIT_NOPARACHUTE;
 #endif
+
+	// --> disable Windows IME trouble
+	//     from t.hara fix 09/26th/2024
+#if defined(_WIN32)
+	// Windows IME cause some troubles.
+	// Key events are not processed correctly,
+	// causing problems such as keys being held down.
+	if (!ImmDisableIME(0)) {
+		MessageBox(NULL, L"ImmDisableIME", L"error", MB_OK);
+	}
+#endif
+	// <--
+
 	if (SDL_Init(flags) < 0) {
 		throw FatalError("Couldn't init SDL: ", SDL_GetError());
 	}

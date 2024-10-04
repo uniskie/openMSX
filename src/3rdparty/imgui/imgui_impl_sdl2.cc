@@ -396,6 +396,16 @@ bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)
         case SDL_KEYDOWN:
         case SDL_KEYUP:
         {
+            // --> disable Windows IME trouble
+            //     from t.hara fix 09/26th/2024
+        #if defined(_WIN32)
+            if (event->key.keysym.scancode == SDL_SCANCODE_GRAVE) {
+                // Ignore Japanexe ZEN/HAN key
+                // This key can not handle KEYUP event.
+                return true;
+            }
+        #endif
+            // <--
             ImGui_ImplSDL2_UpdateKeyModifiers((SDL_Keymod)event->key.keysym.mod);
             ImGuiKey key = ImGui_ImplSDL2_KeyEventToImGuiKey(event->key.keysym.sym, event->key.keysym.scancode);
             io.AddKeyEvent(key, (event->type == SDL_KEYDOWN));
