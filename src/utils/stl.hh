@@ -13,6 +13,9 @@
 #include <variant>
 #include <vector>
 
+// shared between various other classes
+struct uninitialized_tag {};
+
 // Predicate that can be called with any number of parameters (of any type) and
 // just always returns 'true'. This can be useful as a default parameter value.
 struct always_true {
@@ -501,4 +504,20 @@ public:
 
 	[[nodiscard]] friend constexpr auto operator<=>(const array_with_enum_index& x, const array_with_enum_index& y) = default;
 };
+
+template<typename Iterator, typename Sentinel>
+class iterator_range
+{
+public:
+	iterator_range(Iterator first_, Sentinel last_)
+		: first(first_), last(last_) {}
+
+	Iterator begin() const { return first; }
+	Sentinel end()   const { return last; }
+
+private:
+	Iterator first;
+	Sentinel last;
+};
+
 #endif

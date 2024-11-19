@@ -24,11 +24,11 @@
 
 #include "MemBuffer.hh"
 #include "aligned.hh"
+#include "inplace_buffer.hh"
 #include "narrow.hh"
 #include "random.hh"
 #include "ranges.hh"
 #include "stl.hh"
-#include "vla.hh"
 #include "xrange.hh"
 
 #include <algorithm>
@@ -165,7 +165,7 @@ void PostProcessor::takeRawScreenShot(unsigned height2, const std::string& filen
 		throw CommandException("TODO");
 	}
 
-	VLA(const FrameSource::Pixel*, lines, height2);
+	inplace_buffer<const FrameSource::Pixel*, 480> lines(uninitialized_tag{}, height2);
 	WorkBuffer workBuffer;
 	getScaledFrame(*paintFrame, lines, workBuffer);
 	unsigned width = (height2 == 240) ? 320 : 640;
@@ -370,7 +370,7 @@ std::unique_ptr<RawFrame> PostProcessor::rotateFrames(
 
 	// Insert new frame in front of lastFrames[], shift older frames
 	std::move_backward(&lastFrames[0], &lastFrames[recycleIdx],
-					   lastFrames.begin() +  (recycleIdx + 1) );
+					   lastFrames.begin() +  (recycleIdx + 1) ); // fix: compile bug?
 	lastFrames[0] = std::move(finishedFrame);
 
 	// Are enough frames available?

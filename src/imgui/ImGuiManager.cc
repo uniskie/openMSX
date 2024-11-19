@@ -1,8 +1,6 @@
 #include "ImGuiManager.hh"
 
-#include "ImGuiBitmapViewer.hh"
 #include "ImGuiBreakPoints.hh"
-#include "ImGuiCharacter.hh"
 #include "ImGuiCheatFinder.hh"
 #include "ImGuiConnector.hh"
 #include "ImGuiConsole.hh"
@@ -21,7 +19,6 @@
 #include "ImGuiSCCViewer.hh"
 #include "ImGuiSettings.hh"
 #include "ImGuiSoundChip.hh"
-#include "ImGuiSpriteViewer.hh"
 #include "ImGuiSymbols.hh"
 #include "ImGuiTools.hh"
 #include "ImGuiTrainer.hh"
@@ -180,9 +177,6 @@ ImGuiManager::ImGuiManager(Reactor& reactor_)
 	breakPoints = std::make_unique<ImGuiBreakPoints>(*this);
 	symbols = std::make_unique<ImGuiSymbols>(*this);
 	watchExpr = std::make_unique<ImGuiWatchExpr>(*this);
-	bitmap = std::make_unique<ImGuiBitmapViewer>(*this);
-	character = std::make_unique<ImGuiCharacter>(*this);
-	sprite = std::make_unique<ImGuiSpriteViewer>(*this);
 	vdpRegs = std::make_unique<ImGuiVdpRegs>(*this);
 	palette = std::make_unique<ImGuiPalette>(*this);
 	osdIcons = std::make_unique<ImGuiOsdIcons>(*this);
@@ -314,8 +308,8 @@ static gl::ivec2 ensureVisible(gl::ivec2 windowPos, gl::ivec2 windowSize)
 		       windowBR.y > monitorTL.y;
 	};
 
-	const auto& monitors = ImGui::GetPlatformIO().Monitors;
-	if (!monitors.empty() && ranges::none_of(monitors, overlaps)) {
+	if (const auto& monitors = ImGui::GetPlatformIO().Monitors;
+	    !monitors.empty() && ranges::none_of(monitors, overlaps)) {
 		// window isn't visible in any of the monitors
 		// -> place centered on primary monitor
 		return gl::ivec2(SDL_WINDOWPOS_CENTERED);
@@ -746,7 +740,7 @@ void ImGuiManager::drawStatusBar(MSXMotherBoard* motherBoard)
 			simpleToolTip("refresh rate");
 			ImGui::Separator();
 
-			auto [modeStr, extendedStr] = [&] { // TODO: remove duplication with VDP debugger code
+			auto [modeStr, extendedStr_] = [&] { // TODO: remove duplication with VDP debugger code
 				if (!motherBoard) return std::pair{"-", ""};
 				const auto* vdp = dynamic_cast<const VDP*>(motherBoard->findDevice("VDP"));
 				if (!vdp) return std::pair{"-", ""};
@@ -767,6 +761,7 @@ void ImGuiManager::drawStatusBar(MSXMotherBoard* motherBoard)
 					? (mode.getByte() & DisplayMode::YAE) ? std::pair{"11", "GRAPHIC 7 (YJK/YAE mode)"} : std::pair{"12", "GRAPHIC 7 (YJK mode)"}
 					: std::pair{"8", "GRAPHIC 7"};
 			}();
+			auto extendedStr = extendedStr_; // pre-clang-16 workaround
 			ImGui::RightAlignText(modeStr, "0 (80)");
 			simpleToolTip([&]{
 				std::string result = "screen mode as used in MSX-BASIC";
@@ -797,7 +792,7 @@ void ImGuiManager::drawStatusBar(MSXMotherBoard* motherBoard)
 						: (boardTime - prevBoardTime).toDouble();
 					prevBoardTime = boardTime;
 
-					speed = 100.0f * boardTimePassed / realTimePassed;
+					speed = 100.0f * float(boardTimePassed) / realTimePassed;
 				}
 			} else {
 				speed = 0.0f;

@@ -2,7 +2,9 @@
 #define TCLOBJECT_HH
 
 #include "narrow.hh"
-#include "vla.hh"
+#include "small_buffer.hh"
+#include "stl.hh"
+#include "view.hh"
 #include "xxhash.hh"
 #include "zstring_view.hh"
 
@@ -269,11 +271,9 @@ private:
 	}
 	template<typename ITER>
 	void addListElementsImpl(ITER first, ITER last, std::random_access_iterator_tag) {
-		auto objc = last - first;
-		if (objc == 0) return; // because 0-length VLAs are not allowed (but gcc/clang allow it as an extension)
-		VLA(Tcl_Obj*, objv, objc);
-		std::transform(first, last, objv.data(), [](const auto& t) { return newObj(t); });
-		addListElementsImpl(narrow<int>(objc), objv.data());
+		small_buffer<Tcl_Obj*, 128> objv(view::transform(iterator_range(first, last),
+			[](const auto& t) { return newObj(t); }));
+		addListElementsImpl(narrow<int>(objv.size()), objv.data());
 	}
 
 	void addListElement(Tcl_Obj* element);

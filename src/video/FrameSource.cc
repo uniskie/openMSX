@@ -1,12 +1,13 @@
 #include "FrameSource.hh"
+
 #include "LineScalers.hh"
-#include "MemoryOps.hh"
+
 #include "aligned.hh"
+#include "inplace_buffer.hh"
 #include "ranges.hh"
 #include "unreachable.hh"
-#include "vla.hh"
+
 #include <array>
-#include <cstdint>
 #include <span>
 
 namespace openmsx {
@@ -67,7 +68,7 @@ std::span<const Pixel, 960> FrameSource::getLinePtr960_720(unsigned line, std::s
 void FrameSource::scaleLine(
 	std::span<const Pixel> in, std::span<Pixel> out) const
 {
-	VLA_SSE_ALIGNED(Pixel, tmpBuf, in.size());
+	inplace_buffer<Pixel, 1280> tmpBuf(uninitialized_tag{}, in.size());
 	if (in.data() == out.data()) [[unlikely]] {
 		// Only happens in case getLineInfo() already used buf.
 		// E.g. when a line of a SuperImposedFrame also needs to be
@@ -81,8 +82,7 @@ void FrameSource::scaleLine(
 	// TODO is there a better way to implement this?
 	switch (in.size()) {
 	case 1:  // blank
-		MemoryOps::MemSet<Pixel> memset;
-		memset(out, in[0]);
+		ranges::fill(out, in[0]);
 		break;
 	case 213:
 		switch (out.size()) {

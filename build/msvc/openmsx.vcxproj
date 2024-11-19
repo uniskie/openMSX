@@ -327,6 +327,7 @@
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\CassetteImage.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\CassettePlayer.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\CassettePlayerCLI.cc" />
+    <ClCompile Include="$(OpenMSXSrcDir)\cassette\CassettePlayerCommand.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\CassettePort.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\DummyCassetteDevice.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\WavImage.cc" />
@@ -437,6 +438,7 @@
     <ClCompile Include="$(OpenMSXSrcDir)\fdc\WD2793.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\fdc\WD2793BasedFDC.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\fdc\XSADiskImage.cc" />
+    <ClCompile Include="$(OpenMSXSrcDir)\fdc\XSAExtractor.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\file\CompressedFileAdapter.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\file\File.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\file\FileBase.cc" />
@@ -656,7 +658,6 @@
     <ClCompile Include="$(OpenMSXSrcDir)\sound\ResampledSoundDevice.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\sound\ResampleBlip.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\sound\ResampleHQ.cc" />
-    <ClCompile Include="$(OpenMSXSrcDir)\sound\ResampleLQ.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\sound\ResampleTrivial.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\sound\SamplePlayer.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\sound\SCC.cc" />
@@ -711,7 +712,6 @@
     <ClCompile Include="$(OpenMSXSrcDir)\video\DummyRenderer.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\video\DummyVideoSystem.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\video\FrameSource.cc" />
-    <ClCompile Include="$(OpenMSXSrcDir)\video\scalers\GLHQLiteScaler.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\video\scalers\GLHQScaler.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\video\GLImage.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\video\scalers\GLRGBScaler.cc" />
@@ -888,6 +888,7 @@
     <None Include="$(OpenMSXSrcDir)\cassette\CassetteImage.hh" />
     <None Include="$(OpenMSXSrcDir)\cassette\CassettePlayer.hh" />
     <None Include="$(OpenMSXSrcDir)\cassette\CassettePlayerCLI.hh" />
+    <None Include="$(OpenMSXSrcDir)\cassette\CassettePlayerCommand.hh" />
     <None Include="$(OpenMSXSrcDir)\cassette\CassettePort.hh" />
     <None Include="$(OpenMSXSrcDir)\cassette\DummyCassetteDevice.hh" />
     <None Include="$(OpenMSXSrcDir)\cassette\WavImage.hh" />
@@ -1010,6 +1011,7 @@
     <None Include="$(OpenMSXSrcDir)\fdc\WD2793.hh" />
     <None Include="$(OpenMSXSrcDir)\fdc\WD2793BasedFDC.hh" />
     <None Include="$(OpenMSXSrcDir)\fdc\XSADiskImage.hh" />
+    <None Include="$(OpenMSXSrcDir)\fdc\XSAExtractor.hh" />
     <None Include="$(OpenMSXSrcDir)\file\CompressedFileAdapter.hh" />
     <None Include="$(OpenMSXSrcDir)\file\File.hh" />
     <None Include="$(OpenMSXSrcDir)\file\FileBase.hh" />
@@ -1248,7 +1250,6 @@
     <None Include="$(OpenMSXSrcDir)\sound\ResampleBlip.hh" />
     <None Include="$(OpenMSXSrcDir)\sound\ResampleCoeffs.ii" />
     <None Include="$(OpenMSXSrcDir)\sound\ResampleHQ.hh" />
-    <None Include="$(OpenMSXSrcDir)\sound\ResampleLQ.hh" />
     <None Include="$(OpenMSXSrcDir)\sound\ResampleTrivial.hh" />
     <None Include="$(OpenMSXSrcDir)\sound\SamplePlayer.hh" />
     <None Include="$(OpenMSXSrcDir)\sound\SCC.hh" />
@@ -1326,7 +1327,6 @@
     <None Include="$(OpenMSXSrcDir)\utils\utf8_checked.hh" />
     <None Include="$(OpenMSXSrcDir)\utils\utf8_core.hh" />
     <None Include="$(OpenMSXSrcDir)\utils\utf8_unchecked.hh" />
-    <None Include="$(OpenMSXSrcDir)\utils\vla.hh" />
     <None Include="$(OpenMSXSrcDir)\utils\win32-arggen.hh" />
     <None Include="$(OpenMSXSrcDir)\utils\win32-dirent.hh" />
     <None Include="$(OpenMSXSrcDir)\utils\Poller.hh" />
@@ -1345,7 +1345,6 @@
     <None Include="$(OpenMSXSrcDir)\video\DummyVideoSystem.hh" />
     <None Include="$(OpenMSXSrcDir)\video\SuperImposedFrame.hh" />
     <None Include="$(OpenMSXSrcDir)\video\FrameSource.hh" />
-    <None Include="$(OpenMSXSrcDir)\video\scalers\GLHQLiteScaler.hh" />
     <None Include="$(OpenMSXSrcDir)\video\scalers\GLHQScaler.hh" />
     <None Include="$(OpenMSXSrcDir)\video\GLImage.hh" />
     <None Include="$(OpenMSXSrcDir)\video\scalers\GLRGBScaler.hh" />

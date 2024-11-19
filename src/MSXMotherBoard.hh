@@ -336,7 +336,9 @@ private:
 	bool active = false;
 	bool fastForwarding = false;
 
+#if defined(FOR_MAMI)
 	bool testMode = false;
+#endif
 };
 SERIALIZE_CLASS_VERSION(MSXMotherBoard, 5);
 

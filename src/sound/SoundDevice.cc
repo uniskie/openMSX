@@ -8,13 +8,12 @@
 #include "StringOp.hh"
 #include "MSXException.hh"
 
+#include "inplace_buffer.hh"
 #include "narrow.hh"
 #include "ranges.hh"
 #include "one_of.hh"
-#include "vla.hh"
 #include "xrange.hh"
 
-#include <array>
 #include <bit>
 #include <cassert>
 
@@ -193,8 +192,7 @@ bool SoundDevice::mixChannels(float* dataOut, size_t samples)
 	if (samples == 0) return true;
 	size_t outputStereo = isStereo() ? 2 : 1;
 
-	std::array<float*, MAX_CHANNELS> bufs_;
-	auto bufs = subspan(bufs_, 0, numChannels);
+	inplace_buffer<float*, MAX_CHANNELS> bufs(uninitialized_tag{}, numChannels);
 
 	// TODO optimization: All channels with the same balance (according to
 	// channelBalance[]) could use the same buffer when balanceCenter is
@@ -206,8 +204,8 @@ bool SoundDevice::mixChannels(float* dataOut, size_t samples)
 		    || !balanceCenter;
 	};
 	bool anySeparateChannel = false;
-	unsigned size = samples * stereo;
-	unsigned padded = (size + 3) & ~3; // round up to multiple of 4
+	auto size = narrow<unsigned>(samples * stereo);
+	auto padded = (size + 3) & ~3; // round up to multiple of 4
 	for (auto i : xrange(numChannels)) {
 		auto& cb = channelBuffers[i];
 		if (!needSeparateBuffer(i)) {
@@ -216,14 +214,14 @@ bool SoundDevice::mixChannels(float* dataOut, size_t samples)
 			cb.stopIdx = 0; // no valid last data
 		} else {
 			anySeparateChannel = true;
-			cb.requestCounter = std::max<int>(0, cb.requestCounter - samples);
+			cb.requestCounter = (cb.requestCounter < samples) ? 0 : (cb.requestCounter - samples);
 
-			unsigned remainingSize = cb.buffer.size() - cb.stopIdx;
-			if (remainingSize < padded) {
+			if (auto remainingSize = narrow<unsigned>(cb.buffer.size() - cb.stopIdx);
+			    remainingSize < padded) {
 				// not enough space at the tail of the buffer
 				unsigned lastBufferSize = getLastBufferSize();
-				auto allocateSize = 2 * std::max(lastBufferSize, padded);
-				if (cb.buffer.size() < allocateSize) [[unlikely]] {
+				if (auto allocateSize = 2 * std::max(lastBufferSize, padded);
+				    cb.buffer.size() < allocateSize) [[unlikely]] {
 					// increase buffer size
 					cb.buffer.resize(allocateSize);
 				}
@@ -289,7 +287,7 @@ bool SoundDevice::mixChannels(float* dataOut, size_t samples)
 	// remove muted channels (explicitly by user or by device itself)
 	bool anyUnmuted = false;
 	unsigned numMix = 0;
-	VLA(int, mixBalance, numChannels);
+	inplace_buffer<int, MAX_CHANNELS> mixBalance(uninitialized_tag{}, numChannels);
 	for (auto i : xrange(numChannels)) {
 		if (bufs[i] && !channelMuted[i]) {
 			anyUnmuted = true;
