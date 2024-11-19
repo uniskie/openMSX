@@ -82,6 +82,8 @@ PostProcessor::PostProcessor(
 	monitor3DProg.link();
 	preCalcMonitor3D(renderSettings.getHorizontalStretch());
 
+	pbo.allocate(maxWidth * height * 2); // *2 for interlace    TODO only when 'canDoInterlace'
+
 	renderSettings.getNoiseSetting().attach(*this);
 	renderSettings.getHorizontalStretchSetting().attach(*this);
 }
@@ -238,7 +240,7 @@ void PostProcessor::paint(OutputSurface& /*output*/)
 	if (auto algo = renderSettings.getScaleAlgorithm();
 	    scaleAlgorithm != algo) {
 		scaleAlgorithm = algo;
-		currScaler = GLScalerFactory::createScaler(renderSettings);
+		currScaler = GLScalerFactory::createScaler(renderSettings, maxWidth, height * 2); // *2 for interlace   TODO only when canDoInterlace
 
 		// Re-upload frame data, this is both
 		//  - Chunks of RawFrame with a specific line width, possibly
@@ -499,30 +501,28 @@ void PostProcessor::uploadFrame()
 void PostProcessor::uploadBlock(
 	unsigned srcStartY, unsigned srcEndY, unsigned lineWidth)
 {
-	// create texture/pbo if needed
+	// create texture on demand
 	auto it = ranges::find(textures, lineWidth, &TextureData::width);
 	if (it == end(textures)) {
 		TextureData textureData;
-
 		textureData.tex.resize(narrow<GLsizei>(lineWidth),
-		                       narrow<GLsizei>(height * 2)); // *2 for interlace
-		textureData.pbo.setImage(lineWidth, height * 2);
+		                       narrow<GLsizei>(height * 2)); // *2 for interlace   TODO only when canDoInterlace
 		textures.push_back(std::move(textureData));
 		it = end(textures) - 1;
 	}
 	auto& tex = it->tex;
-	auto& pbo = it->pbo;
 
 	// bind texture
 	tex.bind();
 
 	// upload data
 	pbo.bind();
-	uint32_t* mapped = pbo.mapWrite();
-	for (auto y : xrange(srcStartY, srcEndY)) {
-		auto* dest = mapped + y * size_t(lineWidth);
-		auto line = paintFrame->getLine(narrow<int>(y), std::span{dest, lineWidth});
-		if (line.data() != dest) {
+	auto mapped = pbo.mapWrite();
+	auto numLines = srcEndY - srcStartY;
+	for (auto yy : xrange(numLines)) {
+		auto dest = mapped.subspan(yy * size_t(lineWidth), lineWidth);
+		auto line = paintFrame->getLine(narrow<int>(yy + srcStartY), dest);
+		if (line.data() != dest.data()) {
 			ranges::copy(line, dest);
 		}
 	}
@@ -536,15 +536,15 @@ void PostProcessor::uploadBlock(
 	}
 #endif
 	glTexSubImage2D(
-		GL_TEXTURE_2D,                      // target
-		0,                                  // level
-		0,                                  // offset x
-		narrow<GLint>(srcStartY),           // offset y
-		narrow<GLint>(lineWidth),           // width
-		narrow<GLint>(srcEndY - srcStartY), // height
-		GL_RGBA,                            // format
-		GL_UNSIGNED_BYTE,                   // type
-		pbo.getOffset(0, srcStartY));       // data
+		GL_TEXTURE_2D,            // target
+		0,                        // level
+		0,                        // offset x
+		narrow<GLint>(srcStartY), // offset y
+		narrow<GLint>(lineWidth), // width
+		narrow<GLint>(numLines),  // height
+		GL_RGBA,                  // format
+		GL_UNSIGNED_BYTE,         // type
+		mapped.data());           // data
 	pbo.unbind();
 
 	// possibly upload scaler specific data
