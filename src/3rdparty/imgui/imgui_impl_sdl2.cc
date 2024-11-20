@@ -427,7 +427,8 @@ bool ImGui_ImplSDL2_ProcessEvent(const SDL_Event* event)
                 return false;
             // --> disable Windows IME trouble
             //     from t.hara fix 09/26th/2024
-        #if defined(_WIN32)
+            //     [disable] this fix causes trouble in imgui. 11/20th/2024
+        #if 0//defined(_WIN32)
             if (event->key.keysym.scancode == SDL_SCANCODE_GRAVE) {
                 // Ignore Japanexe ZEN/HAN key
                 // This key can not handle KEYUP event.

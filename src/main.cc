@@ -76,7 +76,8 @@ static void initializeSDL()
 
 	// --> disable Windows IME trouble
 	//     from t.hara fix 09/26th/2024
-#if defined(_WIN32)
+	//     [disable] this fix causes trouble in imgui. 11/20th/2024
+#if 0//defined(_WIN32)
 	// Windows IME cause some troubles.
 	// Key events are not processed correctly,
 	// causing problems such as keys being held down.
