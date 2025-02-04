@@ -1,12 +1,16 @@
 #include "V9990.hh"
+
 #include "Display.hh"
 #include "RendererFactory.hh"
 #include "V9990Renderer.hh"
 #include "Reactor.hh"
+
 #include "narrow.hh"
 #include "serialize.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <memory>
@@ -132,7 +136,7 @@ void V9990::reset(EmuTime::param time)
 	syncCmdEnd      .removeSyncPoint();
 
 	// Clear registers / ports
-	ranges::fill(regs, 0);
+	std::ranges::fill(regs, 0);
 	status = 0;
 	regSelect = 0xFF; // TODO check value for power-on and reset
 	vramWritePtr = 0;
@@ -750,6 +754,7 @@ void V9990::setHorizontalTiming()
 		break;
 	case B0: case B2: case B4:
 		horTiming = &V9990DisplayTiming::lineXTAL;
+		break;
 	case B5: case B6:
 		break;
 	default:
@@ -771,6 +776,7 @@ void V9990::setVerticalTiming()
 		verTiming = isPalTiming()
 		          ? &V9990DisplayTiming::displayPAL_XTAL
 		          : &V9990DisplayTiming::displayNTSC_XTAL;
+		break;
 	case B5: case B6:
 		break;
 	default:

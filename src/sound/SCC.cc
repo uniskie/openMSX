@@ -97,14 +97,17 @@
 //-----------------------------------------------------------------------------
 
 #include "SCC.hh"
+
 #include "DeviceConfig.hh"
+
 #include "cstd.hh"
 #include "enumerate.hh"
 #include "outer.hh"
-#include "ranges.hh"
 #include "serialize.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
+#include <algorithm>
 #include <array>
 #include <cmath>
 #if defined(FOR_MAMI)
@@ -130,7 +133,7 @@ SCC::SCC(const std::string& name_, const DeviceConfig& config,
 	, currentMode(mode)
 {
 	// Make valgrind happy
-	ranges::fill(orgPeriod, 0);
+	std::ranges::fill(orgPeriod, 0);
 
 	powerUp(time);
 	registerSound(config);
@@ -175,7 +178,7 @@ void SCC::powerUp(EmuTime::param time)
 
 	// Initialize waveforms (initialize before volumes)
 	for (auto& w1 : wave) {
-		ranges::fill(w1, ~0);
+		std::ranges::fill(w1, ~0);
 	}
 	// Initialize volume (initialize this before period)
 	for (auto i : xrange(5)) {
@@ -183,7 +186,7 @@ void SCC::powerUp(EmuTime::param time)
 	}
 	// Actual initial value is difficult to measure, assume zero
 	// (initialize before period)
-	ranges::fill(pos, 0);
+	std::ranges::fill(pos, 0);
 
 	// Initialize period (sets members orgPeriod, period, incr, count, out)
 	for (auto i : xrange(2 * 5)) {
@@ -465,12 +468,12 @@ void SCC::setDeformRegHelper(uint8_t value)
 	}
 	switch (value & 0xC0) {
 	case 0x00:
-		ranges::fill(rotate, false);
-		ranges::fill(readOnly, false);
+		std::ranges::fill(rotate, false);
+		std::ranges::fill(readOnly, false);
 		break;
 	case 0x40:
-		ranges::fill(rotate, true);
-		ranges::fill(readOnly, true);
+		std::ranges::fill(rotate, true);
+		std::ranges::fill(readOnly, true);
 		break;
 	case 0x80:
 		for (auto i : xrange(3)) {

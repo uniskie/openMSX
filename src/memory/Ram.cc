@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <bit>
-#include <memory>
 
 namespace openmsx {
 
@@ -22,7 +21,6 @@ Ram::Ram(const DeviceConfig& config, const std::string& name,
          static_string_view description, size_t size)
 	: xml(*config.getXML())
 	, ram(size)
-	, sz(size)
 	, debuggable(std::in_place,
 		config.getMotherBoard(), name, description, *this)
 {
@@ -32,7 +30,6 @@ Ram::Ram(const DeviceConfig& config, const std::string& name,
 Ram::Ram(const XMLElement& xml_, size_t size)
 	: xml(xml_)
 	, ram(size)
-	, sz(size)
 {
 	clear();
 }
@@ -44,23 +41,23 @@ void Ram::clear(byte c)
 		auto encoding = init->getAttributeValue("encoding");
 		size_t done = 0;
 		if (encoding == "gz-base64") {
-			auto [buf, bufSize] = Base64::decode(init->getData());
+			auto buf = Base64::decode(init->getData());
 			auto dstLen = narrow<uLongf>(size());
 			if (uncompress(std::bit_cast<Bytef*>(ram.data()), &dstLen,
-			               std::bit_cast<const Bytef*>(buf.data()), uLong(bufSize))
+			               std::bit_cast<const Bytef*>(buf.data()), uLong(buf.size()))
 			     != Z_OK) {
 				throw MSXException("Error while decompressing initialContent.");
 			}
 			done = dstLen;
 		} else if (encoding == one_of("hex", "base64")) {
-			auto [buf, bufSize] = (encoding == "hex")
+			auto buf = (encoding == "hex")
 			       ? HexDump::decode(init->getData())
 			       : Base64 ::decode(init->getData());
-			if (bufSize == 0) {
+			if (buf.empty()) {
 				throw MSXException("Zero-length initial pattern");
 			}
-			done = std::min(size(), bufSize);
-			ranges::copy(std::span{buf.data(), done}, ram.data());
+			done = std::min(size(), buf.size());
+			copy_to_range(buf.first(done), ram);
 		} else {
 			throw MSXException("Unsupported encoding \"", encoding,
 			                   "\" for initialContent");
@@ -70,18 +67,19 @@ void Ram::clear(byte c)
 		auto left = size() - done;
 		while (left) {
 			auto tmp = std::min(done, left);
-			ranges::copy(std::span{ram.data(), tmp}, &ram[done]);
+			copy_to_range(std::span{ram.data(), tmp}, subspan(ram, done));
 			done += tmp;
 			left -= tmp;
 		}
 	} else {
 		// no init pattern specified
-		ranges::fill(*this, c);
+		std::ranges::fill(*this, c);
 	}
 }
 
 const std::string& Ram::getName() const
 {
+	assert(debuggable);
 	return debuggable->getName();
 }
 

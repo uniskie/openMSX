@@ -122,8 +122,10 @@ private:
 	std::optional<unsigned> searchResult;
 	enum EditType { HEX, ASCII };
 	EditType dataEditingActive = HEX;
-	bool dataEditingTakeFocus = true;
+	bool dataEditingTakeFocus = false;
 	bool updateAddr = false;
+	bool switchedTab = false;
+	bool resetCursor = false;
 };
 
 } // namespace openmsx

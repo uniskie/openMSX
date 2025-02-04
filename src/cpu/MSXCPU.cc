@@ -17,6 +17,7 @@
 #include "unreachable.hh"
 #include "xrange.hh"
 
+#include <algorithm>
 #include <cassert>
 #include <memory>
 
@@ -120,8 +121,8 @@ void MSXCPU::execute(bool fastForward)
 		auto rCache = r800->getCacheLines();
 		auto from = z80Active ? rCache : zCache;
 		auto to   = z80Active ? zCache : rCache;
-		ranges::copy(from.read,  to.read);
-		ranges::copy(from.write, to.write);
+		copy_to_range(from.read,  to.read);
+		copy_to_range(from.write, to.write);
 	}
 	z80Active ? z80 ->execute(fastForward)
 	          : r800->execute(fastForward);
@@ -152,12 +153,12 @@ void MSXCPU::setNextSyncPoint(EmuTime::param time)
 
 void MSXCPU::invalidateMemCacheSlot()
 {
-	ranges::fill(slots, 0);
+	std::ranges::fill(slots, 0);
 
 	// nullptr: means not a valid entry and not yet attempted to fill this entry
 	for (auto i : xrange(16)) {
-		ranges::fill(slotReadLines[i], nullptr);
-		ranges::fill(slotWriteLines[i], nullptr);
+		std::ranges::fill(slotReadLines[i], nullptr);
+		std::ranges::fill(slotWriteLines[i], nullptr);
 	}
 }
 
@@ -189,12 +190,12 @@ void MSXCPU::invalidateAllSlotsRWCache(word start, unsigned size)
 
 	unsigned first = start / CacheLine::SIZE;
 	unsigned num = (size + CacheLine::SIZE - 1) / CacheLine::SIZE;
-	ranges::fill(subspan(cpuReadLines,  first, num), nullptr); // nullptr: means not a valid entry and not
-	ranges::fill(subspan(cpuWriteLines, first, num), nullptr); //   yet attempted to fill this entry
+	std::ranges::fill(subspan(cpuReadLines,  first, num), nullptr); // nullptr: means not a valid entry and not
+	std::ranges::fill(subspan(cpuWriteLines, first, num), nullptr); //   yet attempted to fill this entry
 
 	for (auto i : xrange(16)) {
-		ranges::fill(subspan(slotReadLines [i], first, num), nullptr);
-		ranges::fill(subspan(slotWriteLines[i], first, num), nullptr);
+		std::ranges::fill(subspan(slotReadLines [i], first, num), nullptr);
+		std::ranges::fill(subspan(slotWriteLines[i], first, num), nullptr);
 	}
 }
 

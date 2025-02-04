@@ -53,6 +53,9 @@ public:
 	[[nodiscard]] constexpr auto find(char c, size_type pos = 0) const {
 		return view().find(c, pos);
 	}
+	[[nodiscard]] constexpr auto find(const char* s, size_type pos = 0) const {
+		return view().find(s, pos);
+	}
 
 	[[nodiscard]] constexpr zstring_view substr(size_type pos) const {
 		assert(pos <= siz);
@@ -80,6 +83,15 @@ public:
 	}
 	[[nodiscard]] constexpr bool ends_with(const char* s) const {
 		return view().ends_with(s);
+	}
+	[[nodiscard]] constexpr bool contains(std::string_view sv) const {
+		return view().contains(sv);
+	}
+	[[nodiscard]] constexpr bool contains(char c) const {
+		return view().contains(c);
+	}
+	[[nodiscard]] constexpr bool contains(const char* s) const {
+		return view().contains(s);
 	}
 
 	[[nodiscard]] explicit operator std::string() const {

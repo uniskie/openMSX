@@ -17,6 +17,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <ranges>
 #include <span>
 
 namespace openmsx {
@@ -183,10 +184,7 @@ void ImGuiSpriteViewer::paint(MSXMotherBoard* motherBoard)
 
 		auto vramSize = std::min(vdp->getVRAM().getSize(), 0x20000u); // max 128kB
 
-		std::array<uint32_t, 16> palette;
-		auto msxPalette = manager.palette->getPalette(vdp);
-		ranges::transform(msxPalette, palette.data(),
-			[](uint16_t msx) { return ImGuiPalette::toRGBA(msx); });
+		auto palette = manager.palette->getPalette(vdp);
 		// TODO? if (color0 < 16) palette[0] = palette[color0];
 
 		bool manMode   = overrideAll || overrideMode;
@@ -370,7 +368,7 @@ void ImGuiSpriteViewer::paint(MSXMotherBoard* motherBoard)
 		int zm = 2 * (1 + zoom);
 		auto gColor = ImGui::ColorConvertFloat4ToU32(gridColor);
 		if (grid) {
-			auto gridSize = size * zm;
+			size_t gridSize = size * zm;
 			for (auto y : xrange(gridSize)) {
 				auto* line = &pixels[y * gridSize];
 				for (auto x : xrange(gridSize)) {
@@ -381,8 +379,9 @@ void ImGuiSpriteViewer::paint(MSXMotherBoard* motherBoard)
 				gridTex = gl::Texture(false, true); // no interpolation, with wrapping
 			}
 			gridTex.bind();
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, gridSize, gridSize, 0,
-			             GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+			             narrow<int>(gridSize), narrow<int>(gridSize),
+			             0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 		}
 
 		// create checker board texture
@@ -613,7 +612,7 @@ void ImGuiSpriteViewer::paint(MSXMotherBoard* motherBoard)
 
 				if (mode == 1) {
 					auto visibleSprites = subspan(spriteBuffer[line], 0, count);
-					for (const auto& spr : view::reverse(visibleSprites)) {
+					for (const auto& spr : std::views::reverse(visibleSprites)) {
 						uint8_t colIdx = spr.colorAttrib & 0x0f;
 						if (colIdx == 0 && transparent) continue;
 						auto color = palette[colIdx];

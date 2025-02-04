@@ -138,6 +138,12 @@
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\DummyCassetteDevice.cc">
       <Filter>cassette</Filter>
     </ClCompile>
+    <ClCompile Include="$(OpenMSXSrcDir)\cassette\TsxImage.cc">
+      <Filter>cassette</Filter>
+    </ClCompile>
+    <ClCompile Include="$(OpenMSXSrcDir)\cassette\TsxParser.cc">
+      <Filter>cassette</Filter>
+    </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\cassette\WavImage.cc">
       <Filter>cassette</Filter>
     </ClCompile>
@@ -207,9 +213,6 @@
     <ClCompile Include="$(OpenMSXSrcDir)\console\TTFFont.cc">
       <Filter>console</Filter>
     </ClCompile>
-    <ClCompile Include="$(OpenMSXSrcDir)\cpu\BreakPointBase.cc">
-      <Filter>cpu</Filter>
-    </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\cpu\CPURegs.cc">
       <Filter>cpu</Filter>
     </ClCompile>
@@ -240,10 +243,10 @@
     <ClCompile Include="$(OpenMSXSrcDir)\cpu\MSXMultiMemDevice.cc">
       <Filter>cpu</Filter>
     </ClCompile>
-    <ClCompile Include="$(OpenMSXSrcDir)\cpu\MSXWatchIODevice.cc">
+    <ClCompile Include="$(OpenMSXSrcDir)\cpu\VDPIODelay.cc">
       <Filter>cpu</Filter>
     </ClCompile>
-    <ClCompile Include="$(OpenMSXSrcDir)\cpu\VDPIODelay.cc">
+    <ClCompile Include="$(OpenMSXSrcDir)\cpu\WatchPoint.cc">
       <Filter>cpu</Filter>
     </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\debugger\DasmTables.cc">
@@ -553,6 +556,9 @@
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\imgui\ImGuiDebugger.cc">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="$(OpenMSXSrcDir)\imgui\ImGuiDisassembly.cc">
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\imgui\ImGuiDiskManipulator.cc">
@@ -972,6 +978,9 @@
     <ClCompile Include="$(OpenMSXSrcDir)\sound\DACSound8U.cc">
       <Filter>sound</Filter>
     </ClCompile>
+    <ClCompile Include="$(OpenMSXSrcDir)\sound\DalSoRiR2.cc">
+      <Filter>sound</Filter>
+    </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\sound\DummyAudioInputDevice.cc">
       <Filter>sound</Filter>
     </ClCompile>
@@ -1096,6 +1105,9 @@
       <Filter>sound</Filter>
     </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\sound\YMF278.cc">
+      <Filter>sound</Filter>
+    </ClCompile>
+    <ClCompile Include="$(OpenMSXSrcDir)\sound\YMF278B.cc">
       <Filter>sound</Filter>
     </ClCompile>
     <ClCompile Include="$(OpenMSXSrcDir)\thread\Thread.cc">
@@ -1498,6 +1510,7 @@
     <ClCompile Include="$(OpenMSXSrcDir)\memory\MegaFlashRomSCCPlusSD.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\memory\ROMHunterMk2.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\memory\SdCard.cc" />
+    <ClCompile Include="$(OpenMSXSrcDir)\memory\Yamanooto.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\video\scalers\GLDefaultScaler.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\video\GLContext.cc" />
     <ClCompile Include="$(OpenMSXSrcDir)\sound\SVIPSG.cc" />
@@ -1587,6 +1600,12 @@
       <Filter>cassette</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\cassette\DummyCassetteDevice.hh">
+      <Filter>cassette</Filter>
+    </None>
+    <None Include="$(OpenMSXSrcDir)\cassette\TsxImage.hh">
+      <Filter>cassette</Filter>
+    </None>
+    <None Include="$(OpenMSXSrcDir)\cassette\TsxParser.hh">
       <Filter>cassette</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\cassette\WavImage.hh">
@@ -1707,9 +1726,6 @@
       <Filter>cpu</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\cpu\MSXMultiMemDevice.hh">
-      <Filter>cpu</Filter>
-    </None>
-    <None Include="$(OpenMSXSrcDir)\cpu\MSXWatchIODevice.hh">
       <Filter>cpu</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\cpu\R800.hh">
@@ -2055,6 +2071,9 @@
       <Filter>imgui</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\imgui\ImGuiDebugger.hh">
+      <Filter>imgui</Filter>
+    </None>
+    <None Include="$(OpenMSXSrcDir)\imgui\ImGuiDisassembly.hh">
       <Filter>imgui</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\imgui\ImGuiDiskManipulator.hh">
@@ -2495,6 +2514,9 @@
     <None Include="$(OpenMSXSrcDir)\sound\DACSound8U.hh">
       <Filter>sound</Filter>
     </None>
+    <None Include="$(OpenMSXSrcDir)\sound\DalSoRiR2.hh">
+      <Filter>sound</Filter>
+    </None>
     <None Include="$(OpenMSXSrcDir)\sound\DummyAudioInputDevice.hh">
       <Filter>sound</Filter>
     </None>
@@ -2640,6 +2662,9 @@
       <Filter>sound</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\sound\YMF278.hh">
+      <Filter>sound</Filter>
+    </None>
+    <None Include="$(OpenMSXSrcDir)\sound\YMF278B.hh">
       <Filter>sound</Filter>
     </None>
     <None Include="$(OpenMSXSrcDir)\thread\Thread.hh">
@@ -3172,6 +3197,7 @@
     <None Include="$(OpenMSXSrcDir)\memory\MegaFlashRomSCCPlusSD.hh" />
     <None Include="$(OpenMSXSrcDir)\memory\ROMHunterMk2.hh" />
     <None Include="$(OpenMSXSrcDir)\memory\SdCard.cc.hh" />
+    <None Include="$(OpenMSXSrcDir)\memory\Yamanooto.hh" />
     <None Include="$(OpenMSXSrcDir)\video\GLContext.hh" />
     <None Include="$(OpenMSXSrcDir)\video\scalers\GLDefaultScaler.hh" />
     <None Include="$(OpenMSXSrcDir)\video\SuperImposedFrame.hh" />

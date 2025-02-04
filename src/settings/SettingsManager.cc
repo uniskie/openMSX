@@ -7,9 +7,9 @@
 #include "TclObject.hh"
 
 #include "outer.hh"
-#include "view.hh"
 
 #include <cassert>
+#include <ranges>
 
 namespace openmsx {
 
@@ -78,7 +78,7 @@ BaseSetting& SettingsManager::getByName(std::string_view cmd, std::string_view n
 std::vector<std::string> SettingsManager::getTabSettingNames() const
 {
 	std::vector<std::string> result;
-	result.reserve(settings.size() * 2);
+	result.reserve(size_t(settings.size()) * 2);
 	for (const auto* s : settings) {
 		std::string_view name = s->getFullName();
 		result.emplace_back(name);
@@ -124,7 +124,7 @@ void SettingsManager::SettingInfo::execute(
 	auto& manager = OUTER(SettingsManager, settingInfo);
 	switch (tokens.size()) {
 	case 2:
-		result.addListElements(view::transform(
+		result.addListElements(std::views::transform(
 			manager.settings,
 			[](auto* p) { return p->getFullNameObj(); }));
 		break;

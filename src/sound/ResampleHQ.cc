@@ -22,6 +22,7 @@
 #include "stl.hh"
 #include "xrange.hh"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
@@ -99,9 +100,9 @@ ResampleCoeffs& ResampleCoeffs::instance()
 void ResampleCoeffs::getCoeffs(
 	double ratio, std::span<const int16_t, HALF_TAB_LEN>& permute, float*& table, unsigned& filterLen)
 {
-	if (auto it = ranges::find(cache, ratio, &Element::ratio);
+	if (auto it = std::ranges::find(cache, ratio, &Element::ratio);
 	    it != end(cache)) {
-		permute   = std::span<int16_t, HALF_TAB_LEN>{it->permute.data(), HALF_TAB_LEN};
+		permute   = std::span<int16_t, HALF_TAB_LEN>{it->permute};
 		table     = it->table.data();
 		filterLen = it->filterLen;
 		it->count++;
@@ -111,7 +112,7 @@ void ResampleCoeffs::getCoeffs(
 	elem.ratio = ratio;
 	elem.count = 1;
 	elem.permute = PermuteTable(HALF_TAB_LEN);
-	auto perm = std::span<int16_t, HALF_TAB_LEN>{elem.permute.data(), HALF_TAB_LEN};
+	auto perm = std::span<int16_t, HALF_TAB_LEN>{elem.permute};
 	elem.table = calcTable(ratio, perm, elem.filterLen);
 	permute   = perm;
 	table     = elem.table.data();
@@ -267,7 +268,7 @@ static void calcPermute(double ratio, std::span<int16_t, HALF_TAB_LEN> permute)
 	}();
 
 	// initially set all as unassigned
-	ranges::fill(permute, -1);
+	std::ranges::fill(permute, -1);
 
 	unsigned restart = incr ? 0 : N2 - 1;
 	unsigned curr = restart;
@@ -347,7 +348,7 @@ ResampleCoeffs::Table ResampleCoeffs::calcTable(
 	filterLen = (idx_cnt + 3) & ~3; // round up to multiple of 4
 	min_idx -= (narrow<int>(filterLen) - idx_cnt) / 2;
 	Table table(HALF_TAB_LEN * filterLen);
-	ranges::fill(std::span{table.data(), HALF_TAB_LEN * filterLen}, 0);
+	std::ranges::fill(std::span{table}, 0.0f);
 
 	for (auto t : xrange(HALF_TAB_LEN)) {
 		float* tab = &table[permute[t] * filterLen];
@@ -572,7 +573,7 @@ void ResampleHQ<CHANNELS>::calcOutput(
 			float r1 = 0.0f;
 			float r2 = 0.0f;
 			float r3 = 0.0f;
-			for (unsigned i = 0; i < filterLen; i += 4) {
+			for (size_t i = 0; i < filterLen; i += 4) {
 				r0 += tab[i + 0] * buf[CHANNELS * (i + 0)];
 				r1 += tab[i + 1] * buf[CHANNELS * (i + 1)];
 				r2 += tab[i + 2] * buf[CHANNELS * (i + 2)];
@@ -601,7 +602,7 @@ void ResampleHQ<CHANNELS>::calcOutput(
 			float r1 = 0.0f;
 			float r2 = 0.0f;
 			float r3 = 0.0f;
-			for (int i = 0; i < int(filterLen); i += 4) {
+			for (ptrdiff_t i = 0; i < ptrdiff_t(filterLen); i += 4) {
 				r0 += tab[-i - 1] * buf[CHANNELS * (i + 0)];
 				r1 += tab[-i - 2] * buf[CHANNELS * (i + 1)];
 				r2 += tab[-i - 3] * buf[CHANNELS * (i + 2)];
@@ -643,12 +644,12 @@ void ResampleHQ<CHANNELS>::prepareData(unsigned emuNum)
 	small_buffer<float, 8192> tmpBufExtra(uninitialized_tag{}, emuNum * CHANNELS + 3); // typical ~5194 (PSG, samples=1024) but could be larger
 	auto tmpBuf = subspan(tmpBufExtra, 0, emuNum * CHANNELS);
 	if (input.generateInput(tmpBufExtra.data(), emuNum)) {
-		ranges::copy(tmpBuf,
-		             subspan(buffer, bufEnd * CHANNELS));
+		copy_to_range(tmpBuf,
+		              subspan(buffer, bufEnd * CHANNELS));
 		bufEnd += emuNum;
 		nonzeroSamples = bufEnd - bufStart;
 	} else {
-		ranges::fill(subspan(buffer, bufEnd * CHANNELS, emuNum * CHANNELS), 0);
+		std::ranges::fill(subspan(buffer, bufEnd * CHANNELS, emuNum * CHANNELS), 0);
 		bufEnd += emuNum;
 	}
 
@@ -671,7 +672,7 @@ bool ResampleHQ<CHANNELS>::generateOutputImpl(
 		// main processing loop
 		EmuTime host1 = hostClock.getFastAdd(1);
 		assert(host1 > emuClk.getTime());
-		float pos = narrow_cast<float>(emuClk.getTicksTillDouble(host1));
+		auto pos = narrow_cast<float>(emuClk.getTicksTillDouble(host1));
 		assert(pos <= (ratio + 2));
 		for (auto i : xrange(hostNum)) {
 			calcOutput(pos, &dataOut[i * CHANNELS]);

@@ -26,6 +26,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <expected>
 #include <span>
 
 namespace openmsx {
@@ -141,29 +142,22 @@ void DebuggableEditor::paint(MSXMotherBoard* motherBoard)
 	return std::nullopt;
 }
 
-struct ParseAddrResult { // TODO c++23 std::expected might be a good fit here
-	std::string error;
-	unsigned addr = 0;
-};
-[[nodiscard]] static ParseAddrResult parseAddressExpr(
+[[nodiscard]] static std::expected<unsigned, std::string> parseAddressExpr(
 	std::string_view str, const SymbolManager& symbolManager, Interpreter& interp)
 {
-	ParseAddrResult r;
-	if (str.empty()) return r;
+	if (str.empty()) return 0;
 
 	// TODO linear search, probably OK for now, but can be improved if it turns out to be a problem
 	// Note: limited to 16-bit, but larger values trigger an errors and are then handled below, so that's fine
 	if (auto addr = symbolManager.parseSymbolOrValue(str)) {
-		r.addr = *addr;
-		return r;
+		return *addr;
 	}
 
 	try {
-		r.addr = TclObject(str).eval(interp).getInt(interp);
+		return TclObject(str).eval(interp).getInt(interp);
 	} catch (CommandException& e) {
-		r.error = e.getMessage();
+		return std::unexpected(e.getMessage());
 	}
-	return r;
 }
 
 [[nodiscard]] static std::string formatData(uint8_t val)
@@ -242,26 +236,6 @@ void DebuggableEditor::drawContents(const Sizes& s, Debuggable& debuggable, unsi
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
 
 	std::optional<unsigned> nextAddr;
-	// Move cursor but only apply on next frame so scrolling with be synchronized (because currently we can't change the scrolling while the window is being rendered)
-	if (addrMode == CURSOR) {
-		const auto& shortcuts = manager.getShortcuts();
-		if ((int(currentAddr) >= columns) &&
-		    shortcuts.checkShortcut({.keyChord = ImGuiKey_UpArrow, .repeat = true})) {
-			nextAddr = currentAddr - columns;
-		}
-		if ((int(currentAddr) < int(memSize - columns)) &&
-		    shortcuts.checkShortcut({.keyChord = ImGuiKey_DownArrow, .repeat = true})) {
-			nextAddr = currentAddr + columns;
-		}
-		if ((int(currentAddr) > 0) &&
-		    shortcuts.checkShortcut({.keyChord = ImGuiKey_LeftArrow, .repeat = true})) {
-			nextAddr = currentAddr - 1;
-		}
-		if ((int(currentAddr) < int(memSize - 1)) &&
-		    shortcuts.checkShortcut({.keyChord = ImGuiKey_RightArrow, .repeat = true})) {
-			nextAddr = currentAddr + 1;
-		}
-	}
 
 	// Draw vertical separator
 	auto* drawList = ImGui::GetWindowDrawList();
@@ -282,6 +256,9 @@ void DebuggableEditor::drawContents(const Sizes& s, Debuggable& debuggable, unsi
 			// TODO: We should have a way to retrieve the text edit cursor position more easily in the API, this is rather tedious. This is such a ugly mess we may be better off not using InputText() at all here.
 			static int Callback(ImGuiInputTextCallbackData* data) {
 				auto* userData = static_cast<UserData*>(data->UserData);
+				if (userData->cursorPos != -1) { // reset cursor
+					data->CursorPos = userData->cursorPos;
+				}
 				if (!data->HasSelection()) {
 					userData->cursorPos = data->CursorPos;
 				}
@@ -302,6 +279,10 @@ void DebuggableEditor::drawContents(const Sizes& s, Debuggable& debuggable, unsi
 		};
 		UserData userData;
 		userData.format = formatData;
+		if (resetCursor) {
+			resetCursor = false;
+			userData.cursorPos = 0;
+		}
 		ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue
 					  | ImGuiInputTextFlags_AutoSelectAll
 					  | ImGuiInputTextFlags_NoHorizontalScroll
@@ -317,9 +298,57 @@ void DebuggableEditor::drawContents(const Sizes& s, Debuggable& debuggable, unsi
 				setStrings(s, debuggable);
 			}
 		});
+		// Move cursor but only apply on next frame so scrolling will be synchronized (because currently we can't change the scrolling while the window is being rendered)
+		if (addrMode == CURSOR && ImGui::IsItemActive()) {
+			if (ImGui::IsKeyChordPressed(ImGuiKey_Home | ImGuiMod_Ctrl)) {
+				nextAddr = 0;
+				updateAddr = true; // force scroll
+			} else if (ImGui::IsKeyPressed(ImGuiKey_Home)) {
+				nextAddr = currentAddr - (currentAddr % unsigned(columns));
+			}
+			if (ImGui::IsKeyChordPressed(ImGuiKey_End | ImGuiMod_Ctrl)) {
+				nextAddr = memSize - 1;
+				updateAddr = true; // force scroll
+				// ImGui::InputText() already reacted to 'End' by placing the edit cursor at the end.
+				// And normally that's a signal to write the value to memory. We don't want that.
+				resetCursor = true;
+			} else if (ImGui::IsKeyPressed(ImGuiKey_End)) {
+				auto tmp = currentAddr - (currentAddr % unsigned(columns)) + columns - 1;
+				nextAddr = std::min(tmp, memSize - 1);
+				resetCursor = true;
+			}
+			if ((int(currentAddr) >= columns) &&
+			    ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+				nextAddr = currentAddr - columns;
+			}
+			if ((int(currentAddr) < int(memSize - columns)) &&
+			    ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+				nextAddr = currentAddr + columns;
+			}
+			if ((int(currentAddr) > 0) &&
+			    ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+				nextAddr = currentAddr - 1;
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+				// always set nextAddr, also when already on the very last address
+				// this prevents doing a 'dataWrite'
+				nextAddr = std::min(currentAddr + 1, memSize - 1);
+				resetCursor = true; // see comment on 'End'
+			}
+			if (!switchedTab && ImGui::IsKeyPressed(ImGuiKey_Tab)) {
+				dataEditingActive = (dataEditingActive == HEX) ? ASCII : HEX;
+				nextAddr = currentAddr;
+				switchedTab = true; // to prevent switching back already in the next frame
+			} else {
+				switchedTab = false;
+			}
+		}
 		dataEditingTakeFocus = false;
 		dataWrite |= userData.cursorPos >= width;
-		if (nextAddr) dataWrite = false;
+		if (nextAddr) {
+			dataWrite = false;
+			dataEditingTakeFocus = true;
+		}
 		if (dataWrite) {
 			if (auto value = parseData(dataInput)) {
 				debuggable.write(addr, *value);
@@ -493,25 +522,24 @@ void DebuggableEditor::drawContents(const Sizes& s, Debuggable& debuggable, unsi
 		ImGui::SameLine();
 
 		std::string* as = addrMode == CURSOR ? &addrStr : &addrExpr;
-		auto r = parseAddressExpr(*as, symbolManager, manager.getInterpreter());
-		im::StyleColor(!r.error.empty(), ImGuiCol_Text, getColor(imColor::ERROR), [&] {
-			if (addrMode == EXPRESSION && r.error.empty()) {
-				scrollAddr(s, debuggable, memSize, r.addr, forceScroll);
+		auto addr = parseAddressExpr(*as, symbolManager, manager.getInterpreter());
+		im::StyleColor(!addr, ImGuiCol_Text, getColor(imColor::ERROR), [&] {
+			if (addrMode == EXPRESSION && addr) {
+				scrollAddr(s, debuggable, memSize, *addr, forceScroll);
 			}
 			if (manager.getShortcuts().checkShortcut(Shortcuts::ID::HEX_GOTO_ADDR)) {
 				ImGui::SetKeyboardFocusHere();
 			}
 			ImGui::SetNextItemWidth(15.0f * ImGui::GetFontSize());
 			if (ImGui::InputText("##addr", as, ImGuiInputTextFlags_EnterReturnsTrue)) {
-				auto r2 = parseAddressExpr(addrStr, symbolManager, manager.getInterpreter());
-				if (r2.error.empty()) {
-					scrollAddr(s, debuggable, memSize, r2.addr, forceScroll);
+				if (auto addr2 = parseAddressExpr(addrStr, symbolManager, manager.getInterpreter())) {
+					scrollAddr(s, debuggable, memSize, *addr2, forceScroll);
 					dataEditingTakeFocus = true;
 				}
 			}
 			simpleToolTip([&]{
-				return r.error.empty() ? strCat("0x", formatAddr(s, r.addr))
-						: r.error;
+				return addr ? strCat("0x", formatAddr(s, *addr))
+				            : addr.error();
 			});
 		});
 		im::Font(manager.fontProp, [&]{

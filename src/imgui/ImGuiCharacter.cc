@@ -16,6 +16,8 @@
 
 #include <imgui.h>
 
+#include <ranges>
+
 namespace openmsx {
 
 using namespace std::literals;
@@ -61,7 +63,7 @@ void ImGuiCharacter::initHexDigits()
 
 	// transform to 32-bit RGBA
 	std::array<uint32_t, totalSize> pixels;
-	for (auto [c, p] : view::zip_equal(glyphs, pixels)) {
+	for (auto [c, p] : view::zip(glyphs, pixels)) {
 		p = (c == ' ') ? ImColor(0.0f, 0.0f, 0.0f, 0.0f)  // transparent
 		  : (c == '.') ? ImColor(0.0f, 0.0f, 0.0f, 0.7f)  // black semi-transparent outline
 		               : ImColor(1.0f, 1.0f, 1.0f, 0.7f); // white semi-transparent
@@ -298,10 +300,7 @@ void ImGuiCharacter::paint(MSXMotherBoard* motherBoard)
 		namTable.setRegister(namReg, 10);
 		namTable.setIndexSize((mode == TEXT80) ? 12 : 10);
 
-		std::array<uint32_t, 16> palette;
-		auto msxPalette = manager.palette->getPalette(vdp);
-		ranges::transform(msxPalette, palette.data(),
-			[](uint16_t msx) { return ImGuiPalette::toRGBA(msx); });
+		auto palette = manager.palette->getPalette(vdp);
 		if (color0 < 16) palette[0] = palette[color0];
 
 		auto fgCol = manFgCol ? manualFgCol : vdpFgCol;

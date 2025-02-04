@@ -13,7 +13,6 @@
 #include "openmsx.hh"
 
 #include "narrow.hh"
-#include "ranges.hh"
 
 #include <array>
 #include <bitset>
@@ -78,6 +77,18 @@ public:
 	 */
 	void register_IO_Out(byte port, MSXDevice* device);
 	void unregister_IO_Out(byte port, MSXDevice* device);
+
+	/** Convenience methods for {un}register_IO_{In,Out}.
+	 * At the same time (un)register both In and Out, and/or a range of ports.
+	 */
+	void register_IO_InOut(byte port, MSXDevice* device);
+	void register_IO_In_range(byte port, unsigned num, MSXDevice* device);
+	void register_IO_Out_range(byte port, unsigned num, MSXDevice* device);
+	void register_IO_InOut_range(byte port, unsigned num, MSXDevice* device);
+	void unregister_IO_InOut(byte port, MSXDevice* device);
+	void unregister_IO_In_range(byte port, unsigned num, MSXDevice* device);
+	void unregister_IO_Out_range(byte port, unsigned num, MSXDevice* device);
+	void unregister_IO_InOut_range(byte port, unsigned num, MSXDevice* device);
 
 	/**
 	 * These methods replace a previously registered device with a new one.
@@ -252,7 +263,7 @@ public:
 	void removeBreakPoint(const BreakPoint& bp);
 	void removeBreakPoint(unsigned id);
 	using BreakPoints = std::vector<BreakPoint>;
-	[[nodiscard]] static const BreakPoints& getBreakPoints() { return breakPoints; }
+	[[nodiscard]] static BreakPoints& getBreakPoints() { return breakPoints; }
 
 	void setWatchPoint(const std::shared_ptr<WatchPoint>& watchPoint);
 	void removeWatchPoint(std::shared_ptr<WatchPoint> watchPoint);
@@ -260,12 +271,32 @@ public:
 	// note: must be shared_ptr (not unique_ptr), see WatchIO::doReadCallback()
 	using WatchPoints = std::vector<std::shared_ptr<WatchPoint>>;
 	[[nodiscard]] const WatchPoints& getWatchPoints() const { return watchPoints; }
+	[[nodiscard]] WatchPoints& getWatchPoints() { return watchPoints; }
+
+	// Temporarily unregister and then re-register a watchpoint. E.g.
+	// because you want to change the type or address, and then it needs to
+	// be registered in a different way.
+	struct ScopedChangeWatchpoint {
+		ScopedChangeWatchpoint(MSXCPUInterface& interface_, std::shared_ptr<WatchPoint> wp_)
+			: interface(interface_), wp(std::move(wp_)) {
+			interface.unregisterWatchPoint(*wp);
+		}
+		~ScopedChangeWatchpoint() {
+			interface.registerWatchPoint(*wp);
+		}
+	private:
+		MSXCPUInterface& interface;
+		std::shared_ptr<WatchPoint> wp;
+	};
+	[[nodiscard]] auto getScopedChangeWatchpoint(std::shared_ptr<WatchPoint> wp) {
+		return ScopedChangeWatchpoint(*this, std::move(wp));
+	}
 
 	void setCondition(DebugCondition cond);
 	void removeCondition(const DebugCondition& cond);
 	void removeCondition(unsigned id);
 	using Conditions = std::vector<DebugCondition>;
-	[[nodiscard]] static const Conditions& getConditions() { return conditions; }
+	[[nodiscard]] static Conditions& getConditions() { return conditions; }
 
 	[[nodiscard]] static bool isBreaked() { return breaked; }
 	void doBreak();
@@ -277,17 +308,7 @@ public:
 	{
 		return !breakPoints.empty() || !conditions.empty();
 	}
-	[[nodiscard]] bool checkBreakPoints(unsigned pc)
-	{
-		auto range = ranges::equal_range(breakPoints, pc, {}, &BreakPoint::getAddress);
-		if (conditions.empty() && (range.first == range.second)) {
-			return false;
-		}
-
-		// slow path non-inlined
-		checkBreakPoints(range);
-		return isBreaked();
-	}
+	[[nodiscard]] bool checkBreakPoints(unsigned pc);
 
 	// cleanup global variables
 	static void cleanup();
@@ -319,9 +340,8 @@ private:
 	void unregisterSlot(MSXDevice& device,
 	                    int ps, int ss, unsigned base, unsigned size);
 
-
-	void checkBreakPoints(std::pair<BreakPoints::const_iterator,
-	                                BreakPoints::const_iterator> range);
+	void registerWatchPoint(WatchPoint& wp);
+	void unregisterWatchPoint(WatchPoint& wp);
 
 	void removeAllWatchPoints();
 	void updateMemWatch(WatchPoint::Type type);
@@ -432,7 +452,7 @@ private:
 	bool fastForward = false; // no need to serialize
 
 	//  All CPUs (Z80 and R800) of all MSX machines share this state.
-	static inline BreakPoints breakPoints; // sorted on address
+	static inline BreakPoints breakPoints; // unsorted
 	WatchPoints watchPoints; // ordered in creation order,  TODO must also be static
 	static inline Conditions conditions; // ordered in creation order
 	static inline bool breaked = false;

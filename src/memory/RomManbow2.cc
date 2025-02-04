@@ -1,14 +1,16 @@
 #include "RomManbow2.hh"
+
 #include "AY8910.hh"
 #include "DummyAY8910Periphery.hh"
 #include "SCC.hh"
 #include "MSXCPUInterface.hh"
+
 #include "narrow.hh"
 #include "one_of.hh"
-#include "ranges.hh"
 #include "serialize.hh"
 #include "unreachable.hh"
 #include "xrange.hh"
+
 #include <array>
 #include <cassert>
 #include <memory>
@@ -76,9 +78,7 @@ RomManbow2::RomManbow2(const DeviceConfig& config, Rom&& rom_,
 
 	if (psg) {
 		auto& cpuInterface = getCPUInterface();
-		for (auto port : {0x10, 0x11}) {
-			cpuInterface.register_IO_Out(narrow_cast<byte>(port), this);
-		}
+		cpuInterface.register_IO_Out_range(0x10, 2, this);
 		cpuInterface.register_IO_In(0x12, this);
 	}
 }
@@ -87,9 +87,7 @@ RomManbow2::~RomManbow2()
 {
 	if (psg) {
 		auto& cpuInterface = getCPUInterface();
-		for (auto port : {0x10, 0x11}) {
-			cpuInterface.unregister_IO_Out(narrow_cast<byte>(port), this);
-		}
+		cpuInterface.unregister_IO_Out_range(0x10, 2, this);
 		cpuInterface.unregister_IO_In(0x12, this);
 	}
 }

@@ -24,6 +24,7 @@
 #include <imgui_stdlib.h>
 #include <imgui.h>
 
+#include <algorithm>
 #include <memory>
 
 using namespace std::literals;
@@ -152,7 +153,13 @@ void ImGuiMachine::paintSelectMachine(const MSXMotherBoard* motherBoard)
 					defaultMachine.setValue(TclObject(configName));
 				}
 				simpleToolTip("Use this as the default MSX machine when openMSX starts.");
+			} else {
+				im::Indent([] {
+					ImGui::TextUnformatted("(This is the default machine)"sv);
+					HelpMarker("If you select another machine than the default machine, a button will appear here to make that machine the default, i.e. the machine that is used when openMSX starts.");
+				});
 			}
+
 			ImGui::Separator();
 		}
 
@@ -220,7 +227,7 @@ void ImGuiMachine::paintSelectMachine(const MSXMotherBoard* motherBoard)
 		applyComboFilter("Region", filterRegion, allMachines, filteredMachines);
 		applyDisplayNameFilter(filterString, allMachines, filteredMachines);
 
-		auto it = ranges::find(filteredMachines, newMachineConfig,
+		auto it = std::ranges::find(filteredMachines, newMachineConfig,
 			[&](auto idx) { return allMachines[idx].configName; });
 		bool inFilteredList = it != filteredMachines.end();
 		int selectedIdx = inFilteredList ? narrow<int>(*it) : -1;
@@ -479,7 +486,7 @@ bool ImGuiMachine::printConfigInfo(MachineInfo& info)
 ImGuiMachine::MachineInfo* ImGuiMachine::findMachineInfo(std::string_view config)
 {
 	auto& allMachines = getAllMachines();
-	auto it = ranges::find(allMachines, config, &MachineInfo::configName);
+	auto it = std::ranges::find(allMachines, config, &MachineInfo::configName);
 	return (it != allMachines.end()) ? std::to_address(it) : nullptr;
 }
 

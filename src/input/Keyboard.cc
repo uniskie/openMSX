@@ -27,16 +27,17 @@
 #include "stl.hh"
 #include "unreachable.hh"
 #include "utf8_checked.hh"
-#include "view.hh"
 #include "xrange.hh"
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cassert>
 #include <cstdarg>
 #include <functional>
+#include <ranges>
 #include <type_traits>
 
 namespace openmsx {
@@ -167,7 +168,7 @@ static constexpr auto extractKeyCodeMapping(GetMapping getMapping)
 		}
 	}
 	assert(i == N);
-	ranges::sort(result, {}, &KeyCodeMsxMapping::hostKeyCode);
+	std::ranges::sort(result, {}, &KeyCodeMsxMapping::hostKeyCode);
 	return result;
 }
 template<typename GetMapping>
@@ -185,7 +186,7 @@ static constexpr auto extractScanCodeMapping(GetMapping getMapping)
 		}
 	}
 	assert(i == N);
-	ranges::sort(result, {}, &ScanCodeMsxMapping::hostScanCode);
+	std::ranges::sort(result, {}, &ScanCodeMsxMapping::hostScanCode);
 	return result;
 }
 
@@ -722,11 +723,11 @@ Keyboard::Keyboard(MSXMotherBoard& motherBoard,
 		| (config.getChildDataAsBool("code_kana_locks", false) ? KeyInfo::CODE_MASK : 0)
 		| (config.getChildDataAsBool("graph_locks", false) ? KeyInfo::GRAPH_MASK : 0))
 {
-	ranges::fill(keyMatrix,     255);
-	ranges::fill(cmdKeyMatrix,  255);
-	ranges::fill(typeKeyMatrix, 255);
-	ranges::fill(userKeyMatrix, 255);
-	ranges::fill(hostKeyMatrix, 255);
+	std::ranges::fill(keyMatrix,     255);
+	std::ranges::fill(cmdKeyMatrix,  255);
+	std::ranges::fill(typeKeyMatrix, 255);
+	std::ranges::fill(userKeyMatrix, 255);
+	std::ranges::fill(hostKeyMatrix, 255);
 
 	msxEventDistributor.registerEventListener(*this);
 	stateChangeDistributor.registerListener(*this);
@@ -1237,7 +1238,7 @@ bool Keyboard::processKeyEvent(EmuTime::param time, bool down, const KeyEvent& k
 		// value (it always returns the value 0). But we must know
 		// the unicode value in order to be able to perform the correct
 		// key-combination-release in the MSX
-		auto it = ranges::lower_bound(lastUnicodeForKeycode, keyCode, {}, &std::pair<SDL_Keycode, uint32_t>::first);
+		auto it = std::ranges::lower_bound(lastUnicodeForKeycode, keyCode, {}, &std::pair<SDL_Keycode, uint32_t>::first);
 		if ((it != lastUnicodeForKeycode.end()) && (it->first == keyCode)) {
 			// after a while we can overwrite existing elements, and
 			// then we stop growing/reallocating this vector
@@ -1266,7 +1267,7 @@ bool Keyboard::processKeyEvent(EmuTime::param time, bool down, const KeyEvent& k
 		}
 	} else {
 		// key was released
-		auto it = ranges::lower_bound(lastUnicodeForKeycode, keyCode, {}, &std::pair<SDL_Keycode, uint32_t>::first);
+		auto it = std::ranges::lower_bound(lastUnicodeForKeycode, keyCode, {}, &std::pair<SDL_Keycode, uint32_t>::first);
 		unsigned unicode = ((it != lastUnicodeForKeycode.end()) && (it->first == keyCode))
 		                 ? it->second // get the unicode that was derived from this key
 		                 : 0;
@@ -2112,7 +2113,7 @@ void Keyboard::MsxKeyEventQueue::serialize(Archive& ar, unsigned /*version*/)
 	//ar.serialize("eventQueue", eventQueue);
 	std::vector<std::string> eventStrs;
 	if constexpr (!Archive::IS_LOADER) {
-		eventStrs = to_vector(view::transform(
+		eventStrs = to_vector(std::views::transform(
 			eventQueue, [](const auto& e) { return toString(e); }));
 	}
 	ar.serialize("eventQueue", eventStrs);

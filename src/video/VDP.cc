@@ -38,9 +38,9 @@ TODO:
 
 #include "narrow.hh"
 #include "one_of.hh"
-#include "ranges.hh"
 #include "unreachable.hh"
 
+#include <algorithm>
 #include <cassert>
 #include <memory>
 
@@ -149,7 +149,8 @@ VDP::VDP(const DeviceConfig& config)
 	else throw MSXException("Unknown VDP version \"", versionString, '"');
 
 	// saturation parameters only make sense when using TMS VDPs
-	if ((versionString.find("TMS") != 0) && ((config.findChild("saturationPr") != nullptr) || (config.findChild("saturationPb") != nullptr) || (config.findChild("saturation") != nullptr))) {
+	if (!versionString.starts_with("TMS") &&
+	    (config.findChild("saturationPr") || config.findChild("saturationPb") || config.findChild("saturation"))) {
 		throw MSXException("Specifying saturation parameters only makes sense for TMS VDPs");
 	}
 
@@ -252,7 +253,7 @@ void VDP::resetInit()
 {
 	// note: vram, spriteChecker, cmdEngine, renderer may not yet be
 	//       created at this point
-	ranges::fill(controlRegs, 0);
+	std::ranges::fill(controlRegs, 0);
 	if (isVDPwithPALonly()) {
 		// Boots (and remains) in PAL mode, all other VDPs boot in NTSC.
 		controlRegs[9] |= 0x02;
@@ -981,8 +982,14 @@ byte VDP::readStatusReg(byte reg, EmuTime::param time)
 	return ret;
 }
 
-byte VDP::readIO(word port, EmuTime::param time)
+byte VDP::readIO(word port, EmuTime::param time_)
 {
+	// See comment in writeIO().
+	EmuTime time = time_;
+	if (fixedVDPIOdelayCycles > 0) {
+		time = cpu.waitCyclesZ80(time, fixedVDPIOdelayCycles);
+	}
+
 	assert(isInsideFrame(time));
 
 	registerDataStored = false; // Abort any port #1 writes in progress.
@@ -1543,7 +1550,7 @@ static constexpr std::array<std::array<float, 3>, 16> TMS9XXXA_ANALOG_OUTPUT = {
 std::array<std::array<uint8_t, 3>, 16> VDP::getMSX1Palette() const
 {
 	assert(isMSX1VDP());
-	if (MSXDevice::getDeviceConfig().findChild("3bitrgboutput") != nullptr) {
+	if (MSXDevice::getDeviceConfig().findChild("rgboutput3bit") != nullptr) {
 		return THREE_BIT_RGB_PALETTE;
 	}
 	if ((version & VM_TOSHIBA_PALETTE) != 0) {

@@ -6,14 +6,15 @@
 #include "cstd.hh"
 #include "narrow.hh"
 #include "power_of_two.hh"
-#include "ranges.hh"
 #include "static_vector.hh"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace openmsx {
@@ -30,6 +31,7 @@ public:
 	enum class ManufacturerID : uint8_t {
 		AMD = 0x01,
 		STM = 0x20,
+		SST = 0xBF,
 	};
 
 	struct AutoSelect {
@@ -42,7 +44,7 @@ public:
 
 		constexpr void validate() const {
 			// check parity
-			assert(std::popcount(to_underlying(manufacturer)) & 1);
+			assert(std::popcount(std::to_underlying(manufacturer)) & 1);
 			// extended marker is not part of ID
 			assert(device.size() > 0 && device[0] != 0x7E);
 		}
@@ -76,7 +78,7 @@ public:
 		size_t sectorCount;
 
 		constexpr void validate() const {
-			assert(ranges::all_of(regions, [](const auto& region) { return region.count > 0; }));
+			assert(std::ranges::all_of(regions, [](const auto& region) { return region.count > 0; }));
 			assert(narrow_cast<unsigned>(cstd::abs(writeProtectPinRange)) <= sectorCount);
 		}
 	};
@@ -200,7 +202,7 @@ public:
 	         const DeviceConfig& config);
 	AmdFlash(const std::string& name, const ValidatedChip& chip,
 	         std::span<const bool> writeProtectSectors,
-	         const DeviceConfig& config);
+	         const DeviceConfig& config, std::string_view id = {});
 	~AmdFlash();
 
 	void reset();
@@ -248,7 +250,7 @@ public:
 private:
 	AmdFlash(const std::string& name, const ValidatedChip& chip,
 	         const Rom* rom, std::span<const bool> writeProtectSectors,
-	         const DeviceConfig& config);
+	         const DeviceConfig& config, std::string_view id);
 
 	[[nodiscard]] size_t getSectorIndex(size_t address) const;
 	[[nodiscard]] Sector& getSector(size_t address) { return sectors[getSectorIndex(address)]; };
@@ -311,6 +313,12 @@ namespace AmdFlashChip
 		.geometry{DeviceInterface::x8, {{32, 0x10000}}},
 	}};
 
+	// Microchip SST39SF010  (128kB, 32 x 4kB sectors)
+	static constexpr ValidatedChip SST39SF010 = {{
+		.autoSelect{.manufacturer = SST, .device{0xB5}},
+		.geometry{DeviceInterface::x8, {{32, 0x1000}}},
+	}};
+
 	// Numonyx M29W800DB
 	static constexpr ValidatedChip M29W800DB = {{
 		.autoSelect{.manufacturer = STM, .device{0x5B}},
@@ -332,6 +340,18 @@ namespace AmdFlashChip
 			.systemInterface{{0x27, 0x36, 0xB5, 0xC5}, {16, 1, 1024, 1}, {16, 1, 8, 1}},
 			.primaryAlgorithm{{1, 3}, 0, 0, 2, 4, 1, 4, 0, 0, 1, {0xB5, 0xC5}, 0x02, 1},
 		},
+	}};
+
+	// Infineon / Cypress / Spansion S29GL064N90TFI04
+	static constexpr ValidatedChip S29GL064N90TFI04 = {{
+		.autoSelect{.manufacturer = AMD, .device{0x10, 0x00}, .extraCode = 0xFF0A, .readMask = 0x0F},
+		.geometry{DeviceInterface::x8x16, {{8, 0x2000}, {127, 0x10000}}, 1},
+		.program{.bufferCommand = true, .pageSize = 32},
+		.cfi{
+			.command = true,
+			.systemInterface{{0x27, 0x36, 0x00, 0x00}, {128, 128, 1024, 1}, {8, 32, 16, 1}},
+			.primaryAlgorithm{{1, 3}, 0, 8, 2, 1, 0, 8, 0, 0, 2, {0xB5, 0xC5}, 0x02, 1},
+		}
 	}};
 
 	// Infineon / Cypress / Spansion S29GL064S70TFI040

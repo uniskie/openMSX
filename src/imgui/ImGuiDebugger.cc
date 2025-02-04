@@ -1,9 +1,11 @@
 #include "ImGuiDebugger.hh"
 
+#include "DebuggableEditor.hh"
 #include "ImGuiBitmapViewer.hh"
 #include "ImGuiBreakPoints.hh"
 #include "ImGuiCharacter.hh"
 #include "ImGuiCpp.hh"
+#include "ImGuiDisassembly.hh"
 #include "ImGuiManager.hh"
 #include "ImGuiPalette.hh"
 #include "ImGuiSpriteViewer.hh"
@@ -13,30 +15,24 @@
 #include "ImGuiWatchExpr.hh"
 
 #include "CPURegs.hh"
-#include "Dasm.hh"
 #include "Debuggable.hh"
 #include "Debugger.hh"
 #include "MSXCPU.hh"
 #include "MSXCPUInterface.hh"
 #include "MSXMemoryMapperBase.hh"
 #include "MSXMotherBoard.hh"
-#include "RomPlain.hh"
+#include "MSXRom.hh"
+#include "RomBlockDebuggable.hh"
 #include "RomInfo.hh"
-#include "SymbolManager.hh"
 
 #include "narrow.hh"
-#include "join.hh"
-#include "ranges.hh"
 #include "stl.hh"
 #include "strCat.hh"
 #include "StringOp.hh"
-#include "view.hh"
 
 #include <imgui.h>
-#include <imgui_stdlib.h>
 
-#include <cstdint>
-#include <vector>
+#include <algorithm>
 
 using namespace std::literals;
 
@@ -44,7 +40,6 @@ namespace openmsx {
 
 ImGuiDebugger::ImGuiDebugger(ImGuiManager& manager_)
 	: ImGuiPart(manager_)
-	, symbolManager(manager.getReactor().getSymbolManager())
 {
 }
 
@@ -88,14 +83,16 @@ void ImGuiDebugger::loadIcons()
 
 void ImGuiDebugger::signalBreak()
 {
-	syncDisassemblyWithPC = true;
+	for (auto& d : disassemblyViewers) {
+		d->signalBreak();
+	}
 }
 
 template<typename T>
 static void openOrCreate(ImGuiManager& manager, std::vector<std::unique_ptr<T>>& viewers)
 {
 	// prefer to reuse a previously closed viewer
-	if (auto it = ranges::find(viewers, false, &T::show); it != viewers.end()) {
+	if (auto it = std::ranges::find(viewers, false, &T::show); it != viewers.end()) {
 		(*it)->show = true;
 		return;
 	}
@@ -107,6 +104,7 @@ void ImGuiDebugger::save(ImGuiTextBuffer& buf)
 {
 	savePersistent(buf, *this, persistentElements);
 
+	buf.appendf("disassemblyViewers=%d\n", narrow<int>(disassemblyViewers.size()));
 	buf.appendf("bitmapViewers=%d\n", narrow<int>(bitmapViewers.size()));
 	buf.appendf("tileViewers=%d\n", narrow<int>(tileViewers.size()));
 	buf.appendf("spriteViewers=%d\n", narrow<int>(spriteViewers.size()));
@@ -127,6 +125,7 @@ void ImGuiDebugger::save(ImGuiTextBuffer& buf)
 
 void ImGuiDebugger::loadStart()
 {
+	disassemblyViewers.clear();
 	bitmapViewers.clear();
 	tileViewers.clear();
 	spriteViewers.clear();
@@ -139,6 +138,10 @@ void ImGuiDebugger::loadLine(std::string_view name, zstring_view value)
 
 	if (loadOnePersistent(name, value, *this, persistentElements)) {
 		// already handled
+	} else if (name == "disassemblyViewers") {
+		if (auto r = StringOp::stringTo<unsigned>(value)) {
+			repeat(*r, [&] { openOrCreate(manager, disassemblyViewers); });
+		}
 	} else if (name == "bitmapViewers") {
 		if (auto r = StringOp::stringTo<unsigned>(value)) {
 			repeat(*r, [&] { openOrCreate(manager, bitmapViewers); });
@@ -154,7 +157,7 @@ void ImGuiDebugger::loadLine(std::string_view name, zstring_view value)
 	} else if (name.starts_with(hexEditorPrefix)) {
 		if (auto r = StringOp::stringTo<unsigned>(value)) {
 			auto debuggableName = std::string(name.substr(hexEditorPrefix.size()));
-			auto [b, e] = ranges::equal_range(hexEditors, debuggableName, {}, &DebuggableEditor::getDebuggableName);
+			auto [b, e] = std::ranges::equal_range(hexEditors, debuggableName, {}, &DebuggableEditor::getDebuggableName);
 			auto index = std::distance(b, e); // expected to be 0, but be robust against imgui.ini changes
 			for (auto i : xrange(*r)) {
 				e = hexEditors.insert(e, std::make_unique<DebuggableEditor>(manager, debuggableName, index + i));
@@ -164,16 +167,11 @@ void ImGuiDebugger::loadLine(std::string_view name, zstring_view value)
 	}
 }
 
-void ImGuiDebugger::loadEnd()
-{
-	setDisassemblyScrollY = disassemblyScrollY;
-}
-
 void ImGuiDebugger::showMenu(MSXMotherBoard* motherBoard)
 {
 	auto createHexEditor = [&](const std::string& name) {
 		// prefer to reuse a previously closed editor
-		auto [b, e] = ranges::equal_range(hexEditors, name, {}, &DebuggableEditor::getDebuggableName);
+		auto [b, e] = std::ranges::equal_range(hexEditors, name, {}, &DebuggableEditor::getDebuggableName);
 		for (auto it = b; it != e; ++it) {
 			if (!(*it)->open) {
 				(*it)->open = true;
@@ -188,12 +186,14 @@ void ImGuiDebugger::showMenu(MSXMotherBoard* motherBoard)
 
 	im::Menu("Debugger", motherBoard != nullptr, [&]{
 		ImGui::MenuItem("Tool bar", nullptr, &showControl);
-		ImGui::MenuItem("Disassembly", nullptr, &showDisassembly);
+		if (ImGui::MenuItem("Disassembly ...")) {
+			openOrCreate(manager, disassemblyViewers);
+		}
 		ImGui::MenuItem("CPU registers", nullptr, &showRegisters);
 		ImGui::MenuItem("CPU flags", nullptr, &showFlags);
 		ImGui::MenuItem("Slots", nullptr, &showSlots);
 		ImGui::MenuItem("Stack", nullptr, &showStack);
-		auto it = ranges::lower_bound(hexEditors, "memory", {}, &DebuggableEditor::getDebuggableName);
+		auto it = std::ranges::lower_bound(hexEditors, "memory", {}, &DebuggableEditor::getDebuggableName);
 		bool memoryOpen = (it != hexEditors.end()) && (*it)->open;
 		if (ImGui::MenuItem("Memory", nullptr, &memoryOpen)) {
 			if (memoryOpen) {
@@ -223,7 +223,7 @@ void ImGuiDebugger::showMenu(MSXMotherBoard* motherBoard)
 		im::Menu("Add hex editor", [&]{
 			const auto& debugger = motherBoard->getDebugger();
 			auto debuggables = to_vector<std::pair<std::string, Debuggable*>>(debugger.getDebuggables());
-			ranges::sort(debuggables, StringOp::caseless{}, [](const auto& p) { return p.first; }); // sort on name
+			std::ranges::sort(debuggables, StringOp::caseless{}, [](const auto& p) { return p.first; }); // sort on name
 			for (const auto& [name, debuggable] : debuggables) {
 				if (ImGui::Selectable(strCat(name, " ...").c_str())) {
 					createHexEditor(name);
@@ -235,9 +235,10 @@ void ImGuiDebugger::showMenu(MSXMotherBoard* motherBoard)
 
 void ImGuiDebugger::setGotoTarget(uint16_t target)
 {
-	gotoTarget = target;
-	showDisassembly = true;
-	setDisassemblyScrollY.reset(); // don't restore initial scroll position
+	if (disassemblyViewers.empty()) {
+		openOrCreate(manager, disassemblyViewers);
+	}
+	disassemblyViewers.front()->setGotoTarget(target);
 }
 
 void ImGuiDebugger::paint(MSXMotherBoard* motherBoard)
@@ -249,7 +250,6 @@ void ImGuiDebugger::paint(MSXMotherBoard* motherBoard)
 	auto& debugger = motherBoard->getDebugger();
 	auto time = motherBoard->getCurrentTime();
 	drawControl(cpuInterface, *motherBoard);
-	drawDisassembly(regs, cpuInterface, debugger, *motherBoard, time);
 	drawSlots(cpuInterface, debugger);
 	drawStack(regs, cpuInterface, time);
 	drawRegisters(regs);
@@ -278,8 +278,9 @@ void ImGuiDebugger::actionStepOut()
 }
 void ImGuiDebugger::actionStepBack()
 {
-	manager.executeDelayed(TclObject("step_back"),
-	                       [&](const TclObject&) { syncDisassemblyWithPC = true; });
+	manager.executeDelayed(TclObject("step_back"), [&](const TclObject&) {
+		for (auto& d : disassemblyViewers) d->syncWithPC();
+	});
 }
 
 void ImGuiDebugger::checkShortcuts(MSXCPUInterface& cpuInterface, MSXMotherBoard& motherBoard)
@@ -298,7 +299,7 @@ void ImGuiDebugger::checkShortcuts(MSXCPUInterface& cpuInterface, MSXMotherBoard
 	} else if (shortcuts.checkShortcut(DEBUGGER_STEP_BACK)) {
 		actionStepBack();
 	} else if (shortcuts.checkShortcut(DISASM_TOGGLE_BREAKPOINT)) {
-		actionToggleBp(motherBoard);
+		ImGuiDisassembly::actionToggleBp(motherBoard);
 	}
 }
 
@@ -309,7 +310,7 @@ void ImGuiDebugger::drawControl(MSXCPUInterface& cpuInterface, MSXMotherBoard& m
 		checkShortcuts(cpuInterface, motherBoard);
 
 		gl::vec2 maxIconSize;
-		const auto* font = ImGui::GetFont();
+		auto* font = ImGui::GetFont();
 		for (auto c : {
 			DEBUGGER_ICON_RUN, DEBUGGER_ICON_BREAK,
 			DEBUGGER_ICON_STEP_IN, DEBUGGER_ICON_STEP_OVER,
@@ -362,471 +363,6 @@ void ImGuiDebugger::drawControl(MSXCPUInterface& cpuInterface, MSXMotherBoard& m
 	});
 }
 
-[[nodiscard]] static std::pair<const MSXRom*, Debuggable*> getRomBlocks(Debugger& debugger, const MSXDevice* device)
-{
-	Debuggable* debuggable = nullptr;
-	const auto* rom = dynamic_cast<const MSXRom*>(device);
-	if (rom && !dynamic_cast<const RomPlain*>(rom)) {
-		debuggable = debugger.findDebuggable(rom->getName() + " romblocks");
-	}
-	return {rom, debuggable};
-}
-
-struct CurrentSlot {
-	int ps;
-	std::optional<int> ss;
-	std::optional<int> seg;
-};
-[[nodiscard]] static CurrentSlot getCurrentSlot(
-	MSXCPUInterface& cpuInterface, Debugger& debugger,
-	uint16_t addr, bool wantSs = true, bool wantSeg = true)
-{
-	CurrentSlot result;
-	int page = addr / 0x4000;
-	result.ps = cpuInterface.getPrimarySlot(page);
-
-	if (wantSs && cpuInterface.isExpanded(result.ps)) {
-		result.ss = cpuInterface.getSecondarySlot(page);
-	}
-	if (wantSeg) {
-		const auto* device = cpuInterface.getVisibleMSXDevice(page);
-		if (const auto* mapper = dynamic_cast<const MSXMemoryMapperBase*>(device)) {
-			result.seg = mapper->getSelectedSegment(narrow<uint8_t>(page));
-		} else if (auto [_, romBlocks] = getRomBlocks(debugger, device); romBlocks) {
-			result.seg = romBlocks->read(addr);
-		}
-	}
-	return result;
-}
-
-[[nodiscard]] static TclObject toTclExpression(const CurrentSlot& slot)
-{
-	std::string result = strCat("[pc_in_slot ", slot.ps);
-	if (slot.ss) {
-		strAppend(result, ' ', *slot.ss);
-	} else {
-		if (slot.seg) strAppend(result, " X");
-	}
-	if (slot.seg) strAppend(result, ' ', *slot.seg);
-	strAppend(result, ']');
-	return TclObject(result);
-}
-
-[[nodiscard]] static bool addrInSlot(
-	const ParsedSlotCond& slot, MSXCPUInterface& cpuInterface, Debugger& debugger, uint16_t addr)
-{
-	if (!slot.hasPs) return true; // no ps specified -> always ok
-
-	auto current = getCurrentSlot(cpuInterface, debugger, addr, slot.hasSs, slot.hasSeg);
-	if (slot.ps != current.ps) return false;
-	if (slot.hasSs && current.ss && (slot.ss != current.ss)) return false;
-	if (slot.hasSeg && current.seg && (slot.seg != current.seg)) return false;
-	return true;
-}
-
-struct BpLine {
-	int count = 0;
-	int idx = -1; // only valid when count=1
-	bool anyEnabled = false;
-	bool anyDisabled = false;
-	bool anyInSlot = false;
-	bool anyComplex = false;
-};
-static BpLine examineBpLine(uint16_t addr, std::span<const ImGuiBreakPoints::GuiItem> bps, MSXCPUInterface& cpuInterface, Debugger& debugger)
-{
-	BpLine result;
-	for (auto [i, bp] : enumerate(bps)) {
-		if (!bp.addr || *bp.addr != addr) continue;
-		++result.count;
-		result.idx = int(i);
-
-		bool enabled = (bp.id > 0) && bp.wantEnable;
-		result.anyEnabled |= enabled;
-		result.anyDisabled |= !enabled;
-
-		ParsedSlotCond bpSlot("pc_in_slot", bp.cond.getString());
-		result.anyInSlot |= addrInSlot(bpSlot, cpuInterface, debugger, addr);
-
-		result.anyComplex |= !bpSlot.rest.empty() || (bp.cmd.getString() != "debug break");
-	}
-	return result;
-}
-
-static void toggleBp(uint16_t addr, const BpLine& bpLine, std::vector<ImGuiBreakPoints::GuiItem>& guiBps,
-                     MSXCPUInterface& cpuInterface, Debugger& debugger,
-                     std::optional<BreakPoint>& addBp, std::optional<unsigned>& removeBpId)
-{
-	if (bpLine.count != 0) {
-		// only allow to remove single breakpoints,
-		// others can be edited via the breakpoint viewer
-		if (bpLine.count == 1) {
-			auto& bp = guiBps[bpLine.idx];
-			if (bp.id > 0) {
-				removeBpId = bp.id; // schedule removal
-			} else {
-				guiBps.erase(guiBps.begin() + bpLine.idx);
-			}
-		}
-	} else {
-		// schedule creation of new bp
-		auto slot = getCurrentSlot(cpuInterface, debugger, addr);
-		addBp.emplace(addr, TclObject("debug break"), toTclExpression(slot), false);
-	}
-}
-void ImGuiDebugger::actionToggleBp(MSXMotherBoard& motherBoard)
-{
-	auto pc = motherBoard.getCPU().getRegisters().getPC();
-	auto& cpuInterface = motherBoard.getCPUInterface();
-	auto& debugger = motherBoard.getDebugger();
-	auto& guiBps = manager.breakPoints->getBps();
-
-	auto bpLine = examineBpLine(pc, guiBps, cpuInterface, debugger);
-
-	std::optional<BreakPoint> addBp;
-	std::optional<unsigned> removeBpId;
-	toggleBp(pc, bpLine, guiBps, cpuInterface, debugger, addBp, removeBpId);
-	if (addBp) {
-		cpuInterface.insertBreakPoint(std::move(*addBp));
-	}
-	if (removeBpId) {
-		cpuInterface.removeBreakPoint(*removeBpId);
-	}
-}
-
-void ImGuiDebugger::drawDisassembly(CPURegs& regs, MSXCPUInterface& cpuInterface, Debugger& debugger,
-                                    MSXMotherBoard& motherBoard, EmuTime::param time)
-{
-	if (!showDisassembly) return;
-	ImGui::SetNextWindowSize({340, 540}, ImGuiCond_FirstUseEver);
-	im::Window("Disassembly", &showDisassembly, [&]{
-		checkShortcuts(cpuInterface, motherBoard);
-
-		std::optional<BreakPoint> addBp;
-		std::optional<unsigned> removeBpId;
-
-		auto pc = regs.getPC();
-		if (followPC && !MSXCPUInterface::isBreaked()) {
-			gotoTarget = pc;
-		}
-
-		auto widthOpcode = ImGui::CalcTextSize("12 34 56 78"sv).x;
-		int flags = ImGuiTableFlags_RowBg |
-			ImGuiTableFlags_BordersV |
-			ImGuiTableFlags_BordersOuterV |
-			ImGuiTableFlags_Resizable |
-			ImGuiTableFlags_Hideable |
-			ImGuiTableFlags_Reorderable |
-			ImGuiTableFlags_ScrollY |
-			ImGuiTableFlags_ScrollX;
-		im::Table("table", 4, flags, [&]{
-			ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
-			ImGui::TableSetupColumn("bp", ImGuiTableColumnFlags_WidthFixed);
-			ImGui::TableSetupColumn("address", ImGuiTableColumnFlags_NoHide);
-			ImGui::TableSetupColumn("opcode", ImGuiTableColumnFlags_WidthFixed, widthOpcode);
-			ImGui::TableSetupColumn("mnemonic", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHide);
-			ImGui::TableHeadersRow();
-
-			auto& guiBps = manager.breakPoints->getBps();
-			auto textSize = ImGui::GetTextLineHeight();
-
-			std::string mnemonic;
-			std::string opcodesStr;
-			std::vector<std::string_view> candidates;
-			std::array<uint8_t, 4> opcodes;
-			ImGuiListClipper clipper; // only draw the actually visible rows
-			clipper.Begin(0x10000);
-			if (gotoTarget) {
-				clipper.IncludeItemsByIndex(*gotoTarget, *gotoTarget + 4);
-			}
-			std::optional<unsigned> nextGotoTarget;
-			while (clipper.Step()) {
-				auto addr16 = instructionBoundary(cpuInterface, narrow<uint16_t>(clipper.DisplayStart), time);
-				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
-					unsigned addr = addr16;
-					ImGui::TableNextRow();
-					if (addr >= 0x10000) continue;
-					im::ID(narrow<int>(addr), [&]{
-						if (gotoTarget && addr >= *gotoTarget) {
-							gotoTarget = {};
-							ImGui::SetScrollHereY(0.25f);
-						}
-
-						if (bool rowAtPc = !syncDisassemblyWithPC && (addr == pc);
-						    rowAtPc) {
-							ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, getColor(imColor::YELLOW_BG));
-						}
-						bool bpRightClick = false;
-						if (ImGui::TableNextColumn()) { // bp
-							auto bpLine = examineBpLine(addr16, guiBps, cpuInterface, debugger);
-							bool hasBp = bpLine.count != 0;
-							bool multi = bpLine.count > 1;
-							if (hasBp) {
-								auto calcColor = [](bool enabled, bool inSlot) {
-									auto [r,g,b] = enabled ? std::tuple{0xE0, 0x00, 0x00}
-									                       : std::tuple{0x70, 0x70, 0x70};
-									auto a = inSlot ? 0xFF : 0x60;
-									return IM_COL32(r, g, b, a);
-								};
-								auto colIn = calcColor(bpLine.anyEnabled, bpLine.anyInSlot);
-								auto colOut = ImGui::GetColorU32(ImGuiCol_WindowBg);
-
-								auto* drawList = ImGui::GetWindowDrawList();
-								gl::vec2 scrn = ImGui::GetCursorScreenPos();
-								auto center = scrn + textSize * gl::vec2(multi ? 0.3f : 0.5f, 0.5f);
-								auto radiusIn = 0.4f * textSize;
-								auto radiusOut = 0.5f * textSize;
-
-								if (multi) {
-									auto center2 = center + textSize * gl::vec2(0.4f, 0.0f);
-									drawList->AddCircleFilled(center2, radiusOut, colOut);
-									auto colIn2 = calcColor(!bpLine.anyDisabled, bpLine.anyInSlot);
-									drawList->AddCircleFilled(center2, radiusIn, colIn2);
-								}
-								drawList->AddCircleFilled(center, radiusOut, colOut);
-								drawList->AddCircleFilled(center, radiusIn, colIn);
-								if (bpLine.anyComplex) {
-									auto d = 0.3f * textSize;
-									auto c = IM_COL32(0, 0, 0, 192);
-									auto t = 0.2f * textSize;
-									drawList->AddLine(center - gl::vec2(d, 0.0f), center + gl::vec2(d, 0.0f), c, t);
-									drawList->AddLine(center - gl::vec2(0.0f, d), center + gl::vec2(0.0f, d), c, t);
-								}
-							}
-							if (ImGui::InvisibleButton("##bp-button", {-FLT_MIN, textSize})) {
-								toggleBp(addr16, bpLine, guiBps, cpuInterface, debugger, addBp, removeBpId);
-							} else {
-								bpRightClick = hasBp && ImGui::IsItemClicked(ImGuiMouseButton_Right);
-								if (bpRightClick) ImGui::OpenPopup("bp-context");
-								im::Popup("bp-context", [&]{
-									manager.breakPoints->paintBpTab(cpuInterface, debugger, addr16);
-								});
-							}
-						}
-
-						mnemonic.clear();
-						std::optional<uint16_t> mnemonicAddr;
-						std::span<const Symbol* const> mnemonicLabels;
-						auto len = dasm(cpuInterface, addr16, opcodes, mnemonic, time,
-							[&](std::string& output, uint16_t a) {
-								mnemonicAddr = a;
-								mnemonicLabels = symbolManager.lookupValue(a);
-								if (!mnemonicLabels.empty()) {
-									strAppend(output, mnemonicLabels[cycleLabelsCounter % mnemonicLabels.size()]->name);
-								} else {
-									appendAddrAsHex(output, a);
-								}
-							});
-						assert(len >= 1);
-						if ((addr < pc) && (pc < (addr + len))) {
-							// pc is strictly inside current instruction,
-							// replace the just disassembled instruction with "db #..."
-							mnemonicAddr.reset();
-							mnemonicLabels = {};
-							len = pc - addr;
-							assert((1 <= len) && (len <= 3));
-							mnemonic = strCat("db     ", join(
-								view::transform(xrange(len),
-									[&](unsigned i) { return strCat('#', hex_string<2>(opcodes[i])); }),
-								','));
-						}
-
-						if (ImGui::TableNextColumn()) { // addr
-							bool focusScrollToAddress = false;
-							bool focusRunToAddress = false;
-
-							// do the full-row-selectable stuff in a column that cannot be hidden
-							auto pos = ImGui::GetCursorPos();
-							ImGui::Selectable("##row", false,
-									ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
-							using enum Shortcuts::ID;
-							auto& shortcuts = manager.getShortcuts();
-							if (shortcuts.checkShortcut(DISASM_GOTO_ADDR)) {
-								ImGui::OpenPopup("disassembly-context");
-								focusScrollToAddress = true;
-							}
-							if (shortcuts.checkShortcut(DISASM_RUN_TO_ADDR)) {
-								ImGui::OpenPopup("disassembly-context");
-								focusRunToAddress = true;
-							}
-							if (!bpRightClick && ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-								ImGui::OpenPopup("disassembly-context");
-							}
-
-							auto addrStr = tmpStrCat(hex_string<4>(addr));
-							im::Popup("disassembly-context", [&]{
-								auto addrToolTip = [&](const std::string& str) {
-									simpleToolTip([&]{
-										if (auto a = symbolManager.parseSymbolOrValue(str)) {
-											return strCat("0x", hex_string<4>(*a));
-										}
-										return std::string{};
-									});
-								};
-
-								if (ImGui::MenuItem("Scroll to PC")) {
-									nextGotoTarget = pc;
-								}
-
-								im::Indent([&]{
-									ImGui::Checkbox("Follow PC while running", &followPC);
-								});
-
-								ImGui::AlignTextToFramePadding();
-								ImGui::TextUnformatted("Scroll to address:"sv);
-								ImGui::SameLine();
-								if (focusScrollToAddress) ImGui::SetKeyboardFocusHere();
-								if (ImGui::InputText("##goto", &gotoAddr, ImGuiInputTextFlags_EnterReturnsTrue)) {
-									if (auto a = symbolManager.parseSymbolOrValue(gotoAddr)) {
-										nextGotoTarget = *a;
-									}
-								}
-								addrToolTip(gotoAddr);
-
-								ImGui::Separator();
-
-								auto runTo = strCat("Run to here (address 0x", addrStr, ')');
-								if (ImGui::MenuItem(runTo.c_str())) {
-									manager.executeDelayed(makeTclList("run_to", addr));
-								}
-
-								ImGui::AlignTextToFramePadding();
-								ImGui::TextUnformatted("Run to address:"sv);
-								ImGui::SameLine();
-								if (focusRunToAddress) ImGui::SetKeyboardFocusHere();
-								if (ImGui::InputText("##run", &runToAddr, ImGuiInputTextFlags_EnterReturnsTrue)) {
-									if (auto a = symbolManager.parseSymbolOrValue(runToAddr)) {
-										manager.executeDelayed(makeTclList("run_to", *a));
-									}
-								}
-								addrToolTip(runToAddr);
-
-								ImGui::Separator();
-
-								auto setPc = strCat("Set PC to 0x", addrStr);
-								if (ImGui::MenuItem(setPc.c_str())) {
-									regs.setPC(addr16);
-								}
-							});
-
-							enum class Priority {
-								MISSING_BOTH = 0, // from lowest to highest
-								MISSING_ONE,
-								SLOT_AND_SEGMENT
-							};
-							using enum Priority;
-							Priority currentPriority = MISSING_BOTH;
-							candidates.clear();
-							auto add = [&](const Symbol* sym, Priority newPriority) {
-								if (newPriority < currentPriority) return; // we already have a better candidate
-								if (newPriority > currentPriority) candidates.clear(); // drop previous candidates, we found a better one
-								currentPriority = newPriority;
-								candidates.push_back(sym->name); // cycle symbols in the same priority level
-							};
-
-							auto slot = getCurrentSlot(cpuInterface, debugger, addr16);
-							auto psss = (slot.ss.value_or(0) << 2) + slot.ps;
-							auto addrLabels = symbolManager.lookupValue(addr16);
-							for (const Symbol* symbol: addrLabels) {
-								// skip symbols with any mismatch
-								if (symbol->slot && *symbol->slot != psss) continue;
-								if (symbol->segment && *symbol->segment != slot.seg) continue;
-								// the info that's present does match
-								if (symbol->slot && symbol->segment == slot.seg) {
-									add(symbol, SLOT_AND_SEGMENT);
-								} else if (!symbol->slot && !symbol->segment) {
-									add(symbol, MISSING_BOTH);
-								} else {
-									add(symbol, MISSING_ONE);
-								}
-							}
-							ImGui::SetCursorPos(pos);
-							im::Font(manager.fontMono, [&]{
-								ImGui::TextUnformatted(candidates.empty() ? addrStr : candidates[cycleLabelsCounter % candidates.size()]);
-							});
-							if (!addrLabels.empty()) {
-								simpleToolTip([&]{
-									std::string tip(addrStr);
-									if (addrLabels.size() > 1) {
-										strAppend(tip, "\nmultiple possibilities (click to cycle):\n",
-											join(view::transform(addrLabels, &Symbol::name), ' '));
-									}
-									return tip;
-								});
-								ImGui::SetCursorPos(pos);
-								if (ImGui::InvisibleButton("##addrButton", {-FLT_MIN, textSize})) {
-									++cycleLabelsCounter;
-								}
-							}
-						}
-
-						if (ImGui::TableNextColumn()) { // opcode
-							opcodesStr.clear();
-							for (auto i : xrange(len)) {
-								strAppend(opcodesStr, hex_string<2>(opcodes[i]), ' ');
-							}
-							im::Font(manager.fontMono, [&]{
-								ImGui::TextUnformatted(opcodesStr.data(), opcodesStr.data() + 3 * len - 1);
-							});
-						}
-
-						if (ImGui::TableNextColumn()) { // mnemonic
-							auto pos = ImGui::GetCursorPos();
-							im::Font(manager.fontMono, [&]{
-								ImGui::TextUnformatted(mnemonic);
-							});
-							if (mnemonicAddr) {
-								ImGui::SetCursorPos(pos);
-								if (ImGui::InvisibleButton("##mnemonicButton", {-FLT_MIN, textSize})) {
-									if (!mnemonicLabels.empty()) {
-										++cycleLabelsCounter;
-									}
-								}
-								if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-									nextGotoTarget = *mnemonicAddr;
-								}
-								if (!mnemonicLabels.empty()) {
-									simpleToolTip([&]{
-										auto tip = strCat('#', hex_string<4>(*mnemonicAddr));
-										if (mnemonicLabels.size() > 1) {
-											strAppend(tip, "\nmultiple possibilities (click to cycle):\n",
-												join(view::transform(mnemonicLabels, &Symbol::name), ' '));
-										}
-										return tip;
-									});
-								}
-							}
-						}
-						addr16 += len;
-					});
-				}
-			}
-			gotoTarget = nextGotoTarget;
-			if (syncDisassemblyWithPC) {
-				syncDisassemblyWithPC = false; // only once
-
-				auto itemHeight = ImGui::GetTextLineHeightWithSpacing();
-				auto winHeight = ImGui::GetWindowHeight();
-				auto lines = std::max(1, int(winHeight / itemHeight) - 1); // approx
-
-				auto topAddr = nInstructionsBefore(cpuInterface, pc, time, narrow<int>(lines / 4) + 1);
-
-				ImGui::SetScrollY(topAddr * itemHeight);
-			} else if (setDisassemblyScrollY) {
-				ImGui::SetScrollY(*setDisassemblyScrollY);
-				setDisassemblyScrollY.reset();
-			}
-			disassemblyScrollY = ImGui::GetScrollY();
-		});
-		// only add/remove bp's after drawing (can't change list of bp's while iterating over it)
-		if (addBp) {
-			cpuInterface.insertBreakPoint(std::move(*addBp));
-		}
-		if (removeBpId) {
-			cpuInterface.removeBreakPoint(*removeBpId);
-		}
-	});
-}
-
 void ImGuiDebugger::drawSlots(MSXCPUInterface& cpuInterface, Debugger& debugger)
 {
 	if (!showSlots) return;
@@ -864,12 +400,17 @@ void ImGuiDebugger::drawSlots(MSXCPUInterface& cpuInterface, Debugger& debugger)
 					const auto* device = cpuInterface.getVisibleMSXDevice(page);
 					if (const auto* mapper = dynamic_cast<const MSXMemoryMapperBase*>(device)) {
 						ImGui::StrCat(mapper->getSelectedSegment(page));
-					} else if (auto [rom, romBlocks] = getRomBlocks(debugger, device); romBlocks) {
+					} else if (auto [rom, romBlocks] = ImGuiDisassembly::getRomBlocks(debugger, device); romBlocks) {
 						if (unsigned blockSize = RomInfo::getBlockSize(rom->getRomType())) {
 							std::string text;
 							char separator = 'R';
 							for (int offset = 0; offset < 0x4000; offset += blockSize) {
-								strAppend(text, separator, romBlocks->read(addr + offset));
+								text += separator;
+								if (auto seg = romBlocks->readExt(addr + offset); seg != unsigned(-1)) {
+									strAppend(text, seg);
+								} else {
+									text += '-';
+								}
 								separator = '/';
 							}
 							ImGui::TextUnformatted(text);

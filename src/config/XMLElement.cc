@@ -12,6 +12,7 @@
 #include "serialize_meta.hh"
 #include "serialize_stl.hh"
 
+#include <algorithm>
 #include <cassert>
 #include <vector>
 
@@ -89,7 +90,7 @@ int XMLElement::getChildDataAsInt(std::string_view childName, int defaultValue) 
 
 size_t XMLElement::numChildren() const
 {
-	return std::distance(getChildren().begin(), getChildren().end());
+	return std::ranges::distance(getChildren());
 }
 
 // Return nullptr when not found.
@@ -162,7 +163,7 @@ void XMLElement::removeAttribute(XMLAttribute** attrPtr)
 
 size_t XMLElement::numAttributes() const
 {
-	return std::distance(getAttributes().begin(), getAttributes().end());
+	return std::ranges::distance(getAttributes());
 }
 
 
@@ -235,10 +236,10 @@ public:
 
 	[[nodiscard]] std::string_view getSystemID() const { return systemID; }
 
-	void start(std::string_view name) {
+	void start(zstring_view name) {
 		stack.push_back(currentElement);
 
-		auto* n = doc.allocateElement(name.data());
+		auto* n = doc.allocateElement(name.c_str());
 		currentElement = n;
 
 		assert(*nextElement == nullptr);
@@ -255,12 +256,12 @@ public:
 		stack.pop_back();
 	}
 
-	void text(std::string_view text) {
-		currentElement->data = text.data();
+	void text(zstring_view text) {
+		currentElement->data = text.c_str();
 	}
 
-	void attribute(std::string_view name, std::string_view value) {
-		auto* a = doc.allocateAttribute(name.data(), value.data());
+	void attribute(zstring_view name, zstring_view value) {
+		auto* a = doc.allocateAttribute(name.c_str(), value.c_str());
 
 		assert(nextAttribute);
 		assert(*nextAttribute == nullptr);
@@ -268,7 +269,7 @@ public:
 		nextAttribute = &a->nextAttribute;
 	}
 
-	void doctype(std::string_view txt) {
+	void doctype(zstring_view txt) {
 		auto pos1 = txt.find(" SYSTEM ");
 		if (pos1 == std::string_view::npos) return;
 		if ((pos1 + 8) >= txt.size()) return;
@@ -312,7 +313,7 @@ XMLAttribute* XMLDocument::allocateAttribute(const char* name, const char* value
 const char* XMLDocument::allocateString(std::string_view str)
 {
 	auto* p = static_cast<char*>(allocator.allocate(str.size() + 1, alignof(char)));
-	auto e = ranges::copy(str, p);
+	auto e = std::ranges::copy(str, p).out;
 	*e = '\0';
 	return p;
 }
@@ -325,7 +326,7 @@ void XMLDocument::load(const std::string& filename, std::string_view systemID)
 		File file(filename);
 		auto size = file.getSize();
 		buf.resize(size + rapidsax::EXTRA_BUFFER_SPACE);
-		file.read(std::span{buf.data(), size});
+		file.read(buf.first(size));
 		buf[size] = 0;
 	} catch (FileException& e) {
 		throw XMLException(filename, ": failed to read: ", e.getMessage());

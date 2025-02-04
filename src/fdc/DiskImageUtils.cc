@@ -1,19 +1,21 @@
 #include "DiskImageUtils.hh"
+
 #include "DiskPartition.hh"
 #include "CommandException.hh"
 #include "BootBlocks.hh"
+
 #include "endian.hh"
 #include "enumerate.hh"
 #include "one_of.hh"
 #include "random.hh"
-#include "ranges.hh"
 #include "strCat.hh"
-#include "view.hh"
 #include "xrange.hh"
+
 #include <algorithm>
 #include <bit>
 #include <cassert>
 #include <ctime>
+#include <ranges>
 
 namespace openmsx::DiskImageUtils {
 
@@ -204,15 +206,15 @@ static SetBootSectorResult setBootSector(
 
 		// Calculate fat size based on cluster count estimate
 		unsigned fatStart = nbReservedSectors + nbDirEntry / DIR_ENTRIES_PER_SECTOR;
-		unsigned estSectorCount = narrow<unsigned>(nbSectors - fatStart);
-		unsigned estClusterCount = std::min(estSectorCount / nbSectorsPerCluster, FAT16_MAX_CLUSTER_COUNT);
-		unsigned fatSize = 2 * (estClusterCount + 2);
+		auto estSectorCount = narrow<unsigned>(nbSectors - fatStart);
+		auto estClusterCount = std::min(estSectorCount / nbSectorsPerCluster, FAT16_MAX_CLUSTER_COUNT);
+		auto fatSize = 2 * (estClusterCount + 2);
 		nbSectorsPerFat = narrow<uint16_t>((fatSize + SECTOR_SIZE - 1) / SECTOR_SIZE);  // round up
 
 		// Adjust sectors count down to match cluster count
-		unsigned dataStart = fatStart + nbFats * nbSectorsPerFat;
-		unsigned dataSectorCount = narrow<unsigned>(nbSectors - dataStart);
-		unsigned clusterCount = std::min(dataSectorCount / nbSectorsPerCluster, FAT16_MAX_CLUSTER_COUNT);
+		auto dataStart = fatStart + nbFats * nbSectorsPerFat;
+		auto dataSectorCount = narrow<unsigned>(nbSectors - dataStart);
+		auto clusterCount = std::min(dataSectorCount / nbSectorsPerCluster, FAT16_MAX_CLUSTER_COUNT);
 		nbSectors = dataStart + clusterCount * nbSectorsPerCluster;
 	} else if (bootType == MSXBootSectorType::NEXTOR) {
 		// using the same layout as Nextor 2.1.1’s FDISK
@@ -236,15 +238,15 @@ static SetBootSectorResult setBootSector(
 
 		// Calculate fat size based on cluster count estimate
 		unsigned fatStart = nbReservedSectors + nbDirEntry / DIR_ENTRIES_PER_SECTOR;
-		unsigned estSectorCount = narrow<unsigned>(nbSectors - fatStart);
-		unsigned estClusterCount = std::min(estSectorCount / nbSectorsPerCluster, maxClusterCount);
-		unsigned fatSize = (3 * (estClusterCount + 2) + 1) / 2;  // round up
+		auto estSectorCount = narrow<unsigned>(nbSectors - fatStart);
+		auto estClusterCount = std::min(estSectorCount / nbSectorsPerCluster, maxClusterCount);
+		auto fatSize = (3 * (estClusterCount + 2) + 1) / 2;  // round up
 		nbSectorsPerFat = narrow<uint16_t>((fatSize + SECTOR_SIZE - 1) / SECTOR_SIZE);  // round up
 
 		// Adjust sectors count down to match cluster count
-		unsigned dataStart = fatStart + nbFats * nbSectorsPerFat;
-		unsigned dataSectorCount = narrow<unsigned>(nbSectors - dataStart);
-		unsigned clusterCount = std::min(dataSectorCount / nbSectorsPerCluster, maxClusterCount);
+		auto dataStart = fatStart + nbFats * nbSectorsPerFat;
+		auto dataSectorCount = narrow<unsigned>(nbSectors - dataStart);
+		auto clusterCount = std::min(dataSectorCount / nbSectorsPerCluster, maxClusterCount);
 		nbSectors = dataStart + clusterCount * nbSectorsPerCluster;
 	} else if (bootType == MSXBootSectorType::DOS1 && nbSectors > 1440) {
 		// DOS1 supports up to 3 sectors per FAT, limiting the cluster count to 1022.
@@ -259,15 +261,15 @@ static SetBootSectorResult setBootSector(
 
 		// Calculate fat size based on cluster count estimate
 		unsigned fatStart = nbReservedSectors + nbDirEntry / DIR_ENTRIES_PER_SECTOR;
-		unsigned estSectorCount = narrow<unsigned>(nbSectors - fatStart);
-		unsigned estClusterCount = std::min(estSectorCount / nbSectorsPerCluster, DOS1_MAX_CLUSTER_COUNT);
-		unsigned fatSize = (3 * (estClusterCount + 2) + 1) / 2;  // round up
+		auto estSectorCount = narrow<unsigned>(nbSectors - fatStart);
+		auto estClusterCount = std::min(estSectorCount / nbSectorsPerCluster, DOS1_MAX_CLUSTER_COUNT);
+		auto fatSize = (3 * (estClusterCount + 2) + 1) / 2;  // round up
 		nbSectorsPerFat = narrow<uint16_t>((fatSize + SECTOR_SIZE - 1) / SECTOR_SIZE);  // round up
 
 		// Adjust sectors count down to match cluster count
-		unsigned dataStart = fatStart + nbFats * nbSectorsPerFat;
-		unsigned dataSectorCount = narrow<unsigned>(nbSectors - dataStart);
-		unsigned clusterCount = std::min(dataSectorCount / nbSectorsPerCluster, DOS1_MAX_CLUSTER_COUNT);
+		auto dataStart = fatStart + nbFats * nbSectorsPerFat;
+		auto dataSectorCount = narrow<unsigned>(nbSectors - dataStart);
+		auto clusterCount = std::min(dataSectorCount / nbSectorsPerCluster, DOS1_MAX_CLUSTER_COUNT);
 		nbSectors = dataStart + clusterCount * nbSectorsPerCluster;
 	} else if (nbSectors > 32732) {
 		// using the same layout as used by Jon in IDEFDISK v 3.1
@@ -414,7 +416,7 @@ void format(SectorAccessibleDisk& disk, MSXBootSectorType bootType, size_t nbSec
 	disk.writeSector(0, buf);
 
 	// write empty FAT sectors (except for first sector, see below)
-	ranges::fill(buf.raw, 0);
+	std::ranges::fill(buf.raw, 0);
 	for (auto fat : xrange(result.fatCount)) {
 		for (auto i : xrange(1u, result.sectorsPerFat)) {
 			disk.writeSector(i + result.fatStart + fat * result.sectorsPerFat, buf);
@@ -440,7 +442,7 @@ void format(SectorAccessibleDisk& disk, MSXBootSectorType bootType, size_t nbSec
 	}
 
 	// write 'empty' data sectors
-	ranges::fill(buf.raw, 0xE5);
+	std::ranges::fill(buf.raw, 0xE5);
 	for (auto i : xrange(result.dataStart, nbSectors)) {
 		disk.writeSector(i, buf);
 	}
@@ -505,7 +507,7 @@ static std::vector<unsigned> partitionNextor(SectorAccessibleDisk& disk, std::sp
 	std::vector<unsigned> clampedSizes = clampPartitionSizes(sizes, disk.getNbSectors(), 0, 1);
 
 	if (clampedSizes.empty()) {
-		ranges::fill(buf.raw, 0);
+		std::ranges::fill(buf.raw, 0);
 		pt.header = NEXTOR_PARTITION_TABLE_HEADER;
 		pt.end = 0xAA55;
 		disk.writeSector(0, buf);
@@ -514,7 +516,7 @@ static std::vector<unsigned> partitionNextor(SectorAccessibleDisk& disk, std::sp
 
 	unsigned ptSector = 0;
 	for (auto [i, size] : enumerate(clampedSizes)) {
-		ranges::fill(buf.raw, 0);
+		std::ranges::fill(buf.raw, 0);
 		if (i == 0) {
 			pt.header = NEXTOR_PARTITION_TABLE_HEADER;
 		}
@@ -533,7 +535,7 @@ static std::vector<unsigned> partitionNextor(SectorAccessibleDisk& disk, std::sp
 			link.sys_ind = 0x05; // EBR
 			if (i == 0) {
 				link.start = ptSector + 1 + size;
-				link.size = sum(view::drop(sizes, 1), [](unsigned s) { return 1 + s; });
+				link.size = sum(std::views::drop(sizes, 1), [](unsigned s) { return 1 + s; });
 			} else {
 				link.start = ptSector + 1 + size - (1 + clampedSizes[0]);
 				link.size = 1 + clampedSizes[i + 1];
@@ -558,7 +560,7 @@ static std::vector<unsigned> partitionSunrise(SectorAccessibleDisk& disk, std::s
 		clampedSizes.resize(pt.part.size());
 	}
 
-	ranges::fill(buf.raw, 0);
+	std::ranges::fill(buf.raw, 0);
 	pt.header = SUNRISE_PARTITION_TABLE_HEADER;
 	pt.end = 0xAA55;
 
@@ -597,7 +599,7 @@ static std::vector<unsigned> partitionBeer(SectorAccessibleDisk& disk, std::span
 		clampedSizes.resize(pt.part.size());
 	}
 
-	ranges::fill(buf.raw, 0);
+	std::ranges::fill(buf.raw, 0);
 	pt.header = NEXTOR_PARTITION_TABLE_HEADER; // TODO: Find out BEER IDE signature
 	pt.end = 0xAA55;
 
