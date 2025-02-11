@@ -310,17 +310,17 @@ void SCC::writeMem(uint8_t address, uint8_t value, EmuTime::param time)
 {
 #if defined(FOR_MAMI)
 	//HACK: MAmi
-	if (m_rpcClient != nullptr) {
-	try {
+	if (m_rpcClient && (m_rpcClient->get_connection_state() == rpc::client::connection_state::connected)) {
+		try {
 			//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
 			// if(currentChipMode != SCC_plusmode)
 			if (currentMode != Mode::Plus)
 				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)address, (unsigned int)value);
 			else
 				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)7, (unsigned char)0, (unsigned int)(0x100 + address), (unsigned int)value);
-	} catch (...) {
-		// pass through
-	}
+		} catch (...) {
+			// pass through
+		}
 	}
 #endif
 

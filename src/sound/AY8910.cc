@@ -615,7 +615,7 @@ void AY8910::wrtReg(unsigned reg, uint8_t value, EmuTime::param time)
 {
 #if defined(FOR_MAMI)
 	//HACK: MAmi
-	if (m_rpcClient != nullptr) {
+	if (m_rpcClient && (m_rpcClient->get_connection_state() == rpc::client::connection_state::connected)) {
 	try  {
 			//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
 			m_rpcClient->async_call("DirectAccessToChip", (unsigned char)11, (unsigned char)0, (unsigned int)reg, (unsigned int)value);

@@ -107,19 +107,17 @@ void YM2413::writePort(bool port, byte value, EmuTime::param time)
 {
 #if defined(FOR_MAMI)
 	//HACK: MAmi
-	if (m_rpcClient != nullptr) {
-	if (port == 0)
-	{
+	if (m_rpcClient && (m_rpcClient->get_connection_state() == rpc::client::connection_state::connected)) {
+		if (port == 0)	{
 			reg_address = value;
-		}else if( 0 <= reg_address )
-	{
-		try {
+		}else if( 0 <= reg_address ) {
+			try {
 				//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
 				m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg_address, (unsigned int)value);
-		} catch (...) {
-			// pass through
+			} catch (...) {
+				// pass through
+			}
 		}
-	}
 	}
 #endif
 
@@ -138,9 +136,9 @@ void YM2413::pokeReg(byte reg, byte value, EmuTime::param time)
 {
 #if defined(FOR_MAMI)
 	//HACK: MAmi
-	if (m_rpcClient != nullptr) {
-	//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
-	m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg, (unsigned int)value);
+	if (m_rpcClient && (m_rpcClient->get_connection_state() == rpc::client::connection_state::connected)) {
+		//DirectAccessToChip(unsigned char device_id, unsigned char unit, unsigned int address, unsigned int data)
+		m_rpcClient->async_call("DirectAccessToChip", (unsigned char)9, (unsigned char)0, (unsigned int)reg, (unsigned int)value);
 	}
 #endif
 
