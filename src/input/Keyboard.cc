@@ -737,6 +737,10 @@ Keyboard::Keyboard(MSXMotherBoard& motherBoard,
 		| (config.getChildDataAsBool("code_kana_locks", false) ? KeyInfo::CODE_MASK : 0)
 		| (config.getChildDataAsBool("graph_locks", false) ? KeyInfo::GRAPH_MASK : 0))
 {
+#if USE_KEYPRESSCNT
+	std::ranges::fill(cntKeyMatrix,  0);
+#endif //USE_KEYPRESSCNT
+
 	std::ranges::fill(keyMatrix,     255);
 	std::ranges::fill(cmdKeyMatrix,  255);
 	std::ranges::fill(typeKeyMatrix, 255);
@@ -1173,9 +1177,17 @@ void Keyboard::updateKeyMatrix(EmuTime::param time, bool down, KeyMatrixPosition
 		return;
 	}
 	if (down) {
+	#if USE_KEYPRESSCNT
+		auto pos_i = pos.getRow() * pos.getColumn();
+		cntKeyMatrix[pos_i] = cntKeyMatrix[pos_i] < 255 ? cntKeyMatrix[pos_i] + 1 : cntKeyMatrix[pos_i];
 	#if KEYTEST //-->
-		debug("KEY MATRIX DOWN ROW: %02d, COL: %d \n", pos.getRow(), pos.getColumn());
+		debug("KEY MATRIX DOWN: ROW = %02d, COL = %d, cnt = %d\n", pos.getRow(), pos.getColumn(), cntKeyMatrix[pos_i]);
 	#endif // <-- KEYTEST
+	#else //USE_KEYPRESSCNT
+	#if KEYTEST //-->
+		debug("KEY MATRIX DOWN: ROW = %02d, COL = %d\n", pos.getRow(), pos.getColumn());
+	#endif // <-- KEYTEST
+	#endif //USE_KEYPRESSCNT
 		pressKeyMatrixEvent(time, pos);
 		// Keep track of the MSX modifiers.
 		// The MSX modifiers sometimes get overruled by the unicode character
@@ -1187,6 +1199,18 @@ void Keyboard::updateKeyMatrix(EmuTime::param time, bool down, KeyMatrixPosition
 			}
 		}
 	} else {
+	#if USE_KEYPRESSCNT
+		auto pos_i = pos.getRow() * pos.getColumn();
+		cntKeyMatrix[pos_i] = cntKeyMatrix[pos_i] > 0 ? cntKeyMatrix[pos_i] - 1 : cntKeyMatrix[pos_i];
+	#if KEYTEST //-->
+		debug("KEY MATRIX UP: ROW = %02d, COL = %d, cnt = %d\n", pos.getRow(), pos.getColumn(), cntKeyMatrix[pos_i]);
+	#endif // <-- KEYTEST
+		if (cntKeyMatrix[pos_i] > 0) return;
+    #else //USE_KEYPRESSCNT
+	#if KEYTEST //-->
+		debug("KEY MATRIX UP: ROW = %02d, COL = %d\n", pos.getRow(), pos.getColumn());
+	#endif // <-- KEYTEST
+	#endif //USE_KEYPRESSCNT
 		releaseKeyMatrixEvent(time, pos);
 		for (auto [i, mp] : enumerate(modifierPos)) {
 			if (pos == mp) {
@@ -1210,7 +1234,7 @@ bool Keyboard::processKeyEvent(EmuTime::param time, bool down, const KeyEvent& k
 	auto mode = keyboardSettings.getMappingMode();
 
 	auto keyCode = keyEvent.getKeyCode();
-	auto ScanCode  = keyEvent.getScanCode();
+	uint32_t ScanCode  = keyEvent.getScanCode();
 	auto key = keyEvent.getKey();
 
 	bool isOnKeypad =
@@ -1278,14 +1302,14 @@ bool Keyboard::processKeyEvent(EmuTime::param time, bool down, const KeyEvent& k
 		// value (it always returns the value 0). But we must know
 		// the unicode value in order to be able to perform the correct
 		// key-combination-release in the MSX
-		auto it = std::ranges::lower_bound(lastUnicodeForScancode, uint32_t(ScanCode), {}, &std::pair<uint32_t, uint32_t>::first);
+		auto it = std::ranges::lower_bound(lastUnicodeForScancode, ScanCode, {}, &std::pair<uint32_t, uint32_t>::first);
 		if ((it != lastUnicodeForScancode.end()) && (it->first == ScanCode)) {
 			// after a while we can overwrite existing elements, and
 			// then we stop growing/reallocating this vector
 			it->second = unicode;
 		} else {
 			// insert new element (in the right location)
-			lastUnicodeForScancode.emplace(it, uint32_t(ScanCode), unicode);
+			lastUnicodeForScancode.emplace(it, ScanCode, unicode);
 		}
 
 		if (unicode == 0) {
@@ -1307,7 +1331,7 @@ bool Keyboard::processKeyEvent(EmuTime::param time, bool down, const KeyEvent& k
 		}
 	} else {
 		// key was released
-		auto it = std::ranges::lower_bound(lastUnicodeForScancode, uint32_t(ScanCode), {}, &std::pair<uint32_t, uint32_t>::first);
+		auto it = std::ranges::lower_bound(lastUnicodeForScancode, ScanCode, {}, &std::pair<uint32_t, uint32_t>::first);
 		unsigned unicode = ((it != lastUnicodeForScancode.end()) && (it->first == ScanCode))
 		                 ? it->second // get the unicode that was derived from this key
 		                 : 0;
@@ -1583,15 +1607,30 @@ void Keyboard::debug(const char* format, ...) const
 {
 #if KEYTEST //-->
 	if (keyboardSettings.getTraceKeyPresses()) {
+		std::string buffer(1024, '\0');
+
 		va_list args;
 		va_start(args, format);
-		char buffer[1024];
-		buffer[_countof(buffer)-1];
-		vsnprintf(buffer, _countof(buffer)-1, format, args);
+		vsnprintf(buffer.data(), buffer.size(), format, args);
 		va_end(args);
 
+		// trim size;
+		auto lastpos = buffer.find('\0');
+		if (lastpos == std::string::npos) {
+			lastpos = buffer.length();
+		}
+
+		// suppress last lf
+		const std::string lf("\n");
+		auto lastlf = buffer.rfind(lf);
+		if (lastlf != std::string::npos) {
+			if ((lastlf + lf.length()) >= lastpos) {
+				lastpos = lastlf;
+			}
+		}
+
 		auto& motherBoard = keybDebuggable.getMotherBoard();
-		motherBoard.getMSXCliComm().printInfo(buffer);
+		motherBoard.getMSXCliComm().printInfo(buffer.substr(0, lastpos));
 	}
 #else
 	if (keyboardSettings.getTraceKeyPresses()) {
@@ -2141,7 +2180,7 @@ void Keyboard::serialize(Archive& ar, unsigned version)
 		std::vector<std::pair<SDL_Keycode, uint32_t>> lastUnicodeForKeycode;
 		ar.serialize("lastUnicodeForKeycode", lastUnicodeForKeycode);
 		lastUnicodeForScancode.clear();
-		for (auto it = lastUnicodeForKeycode.begin(); it != lastUnicodeForKeycode.end(); it++) {
+		for (auto it : xrange(lastUnicodeForKeycode.begin(), lastUnicodeForKeycode.end())) {
 			auto ScanCode = SDL_GetScancodeFromKey(it->first);
 			lastUnicodeForScancode.push_back(std::pair<uint32_t, uint32_t>(ScanCode, it->second));
 		}
