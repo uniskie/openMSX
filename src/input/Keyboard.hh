@@ -265,6 +265,13 @@ private:
 	/** Combination of 'cmdKeyMatrix', 'typeKeyMatrix' and 'userKeyMatrix'. */
 	mutable std::array<uint8_t, KeyMatrixPosition::NUM_ROWS> keyMatrix;
 
+#define USE_KEYPRESSCNT 1
+#if USE_KEYPRESSCNT
+	/** keyboard matrix press counter for multi key bind. */
+	std::array<int8_t, KeyMatrixPosition::NUM_ROWS* KeyMatrixPosition::NUM_COLS> cntKeyMatrix;
+#endif //USE_KEYPRESSCNT
+
+
 	uint8_t msxModifiers = 0xff;
 
 	/** True iff keyboard includes a numeric keypad. */
