@@ -20,6 +20,12 @@
 #include "serialize_meta.hh"
 #include "serialize_stl.hh"
 
+#define KEYTEST 1
+#if KEYTEST //-->
+#include "MSXCliComm.hh"
+#include "KeyNames.hh"
+#endif // <-- KEYTEST
+
 #include "enumerate.hh"
 #include "one_of.hh"
 #include "outer.hh"
@@ -993,6 +999,22 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 	bool down = getType(event) == EventType::KEY_DOWN;
 	auto key = keyEvent.getKey();
 
+#if KEYTEST //-->
+	if (keyboardSettings.getTraceKeyPresses()) {
+		if (down) {
+			debug("Key pressed, unicode: 0x%04x, keyCode: 0x%05x (%s), ScanCode: 0x%05x (%s), keyName: %s\n",
+			  keyEvent.getUnicode(),
+			  keyEvent.getKeyCode(), getKeyCodeLabelString(keyEvent.getKeyCode()),
+			  keyEvent.getScanCode(), getScanCodeLabelString(keyEvent.getScanCode()),
+			  key.toString().c_str());
+		}else{
+			debug("Key released, keyCode: 0x%05x (%s), ScanCode: 0x%05x (%s) , keyName: %s\n",
+			  keyEvent.getKeyCode(), getKeyCodeLabelString(keyEvent.getKeyCode()),
+			  keyEvent.getScanCode(), getScanCodeLabelString(keyEvent.getScanCode()),
+			  key.toString().c_str());
+		}
+	}
+#else // KEYTEST
 	if (down) {
 		auto codepointToUtf8 = [](uint32_t cp) {
 			std::array<char, 4> buffer;
@@ -1037,6 +1059,7 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 		      SDL_GetScancodeName(keyEvent.getScanCode()),
 		      key.toString().c_str());
 	}
+#endif // KEYTEST
 
 	// To work around a Japanese keyboard Kanji mode bug. (Multi-character
 	// input makes a keydown event without keyrelease message.)
@@ -1638,6 +1661,7 @@ void Keyboard::debug(const char* format, ...) const
 		vfprintf(stderr, format, args);
 		va_end(args);
 	}
+#endif
 }
 
 
