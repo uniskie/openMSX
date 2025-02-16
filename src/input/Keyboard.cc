@@ -19,6 +19,12 @@
 #include "serialize_meta.hh"
 #include "serialize_stl.hh"
 
+#define KEYTEST 1
+#if KEYTEST //-->
+#include "MSXCliComm.hh"
+#include "KeyNames.hh"
+#endif // <-- KEYTEST
+
 #include "enumerate.hh"
 #include "one_of.hh"
 #include "outer.hh"
@@ -993,6 +999,22 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 	bool down = getType(event) == EventType::KEY_DOWN;
 	auto key = keyEvent.getKey();
 
+#if KEYTEST //-->
+	if (keyboardSettings.getTraceKeyPresses()) {
+		if (down) {
+			debug("Key pressed, unicode: 0x%04x, keyCode: 0x%05x (%s), ScanCode: 0x%05x (%s), keyName: %s\n",
+			  keyEvent.getUnicode(),
+			  keyEvent.getKeyCode(), getKeyCodeLabelString(keyEvent.getKeyCode()),
+			  keyEvent.getScanCode(), getScanCodeLabelString(keyEvent.getScanCode()),
+			  key.toString().c_str());
+		}else{
+			debug("Key released, keyCode: 0x%05x (%s), ScanCode: 0x%05x (%s) , keyName: %s\n",
+			  keyEvent.getKeyCode(), getKeyCodeLabelString(keyEvent.getKeyCode()),
+			  keyEvent.getScanCode(), getScanCodeLabelString(keyEvent.getScanCode()),
+			  key.toString().c_str());
+		}
+	}
+#else // KEYTEST
 	if (down) {
 		auto codepointToUtf8 = [](uint32_t cp) {
 			std::array<char, 4> buffer;
@@ -1023,6 +1045,7 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime::param time)
 		      SDL_GetScancodeName(keyEvent.getScanCode()),
 		      key.toString().c_str());
 	}
+#endif // KEYTEST
 
 	// To work around a Japanese keyboard Kanji mode bug. (Multi-character
 	// input makes a keydown event without keyrelease message.)
@@ -1590,12 +1613,41 @@ bool Keyboard::commonKeys(unsigned unicode1, unsigned unicode2) const
 
 void Keyboard::debug(const char* format, ...) const
 {
+#if KEYTEST //-->
+	if (keyboardSettings.getTraceKeyPresses()) {
+		std::string buffer(1024, '\0');
+
+		va_list args;
+		va_start(args, format);
+		vsnprintf(buffer.data(), buffer.size(), format, args);
+		va_end(args);
+
+		// trim size;
+		auto lastpos = buffer.find('\0');
+		if (lastpos == std::string::npos) {
+			lastpos = buffer.length();
+		}
+
+		// suppress last lf
+		const std::string lf("\n");
+		auto lastlf = buffer.rfind(lf);
+		if (lastlf != std::string::npos) {
+			if ((lastlf + lf.length()) >= lastpos) {
+				lastpos = lastlf;
+			}
+		}
+
+		auto& motherBoard = keybDebuggable.getMotherBoard();
+		motherBoard.getMSXCliComm().printInfo(buffer.substr(0, lastpos));
+	}
+#else
 	if (keyboardSettings.getTraceKeyPresses()) {
 		va_list args;
 		va_start(args, format);
 		vfprintf(stderr, format, args);
 		va_end(args);
 	}
+#endif
 }
 
 
