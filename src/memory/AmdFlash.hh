@@ -22,6 +22,12 @@
 #include <utility>
 #include <vector>
 
+#if defined(ERROR) && defined(_WINGDI_)
+// AmdFlash.hh: avoid conflict with State::ERROR / by Windows SDK wingdi.h
+#undef ERROR
+enum {ERROR = 0};
+#endif
+
 namespace openmsx {
 
 class MSXMotherBoard;
