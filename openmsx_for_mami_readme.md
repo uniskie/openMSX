@@ -1,4 +1,4 @@
-openMSX 20.0-521b for MAmidiMEmo
+openMSX 20.0-545b for MAmidiMEmo
 
 - openmsx.exe 
   追加機能なし（MAMI非対応）
@@ -12,15 +12,25 @@ openMSX 20.0-521b for MAmidiMEmo
 
 ## ベース
 
-- 2025年6月9日 公式master 942eefc1dd6a7816e8bc67eabcb0301138dc15ecを元にRebase
+- Commits on Jun 14, 2025 cdf09aa57db5c7e1ac3f6571762df94ad5e09ab8 を元にRebase
 
 ## 更新
+
+- openMSX 20.0-545b for MAmidiMEmo
+
+	- 公式最新リポジトリに反映されたGUIフォントの修正取り込み
+	- それに伴い、暫定的な日本語フォント対応を取り消し
 
 - openMSX 20.0-521b for MAmidiMEmo
 
 	- 公式最新リポジトリの取り込み
 	- バージョン表記をmasterリポジトリから自動生成された物に変更
 	- GUIで日本語漢字が表示できるように変更（thanks for @pman4416）
+
+- openMSX 20.0-9b for MAmidiMEmo
+
+	公式最新リポジトリの取り込み
+
 
 - openMSX 20.0-8b for MAmidiMEmo
 
