@@ -25,6 +25,10 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+#ifndef NOGDI
+#define NOGDI
+#endif
+
 #include <windows.h>
 #include <imm.h>
 #endif // _WIN32
@@ -291,9 +295,8 @@ private:
 
 #define USE_KEYPRESSCNT 1 // Test introduction. Refactoring required
 #if USE_KEYPRESSCNT
-	/** keyboard matrix press counter for multi-binded key. */
+	/** keyboard matrix press counter for multi key bind. */
 	std::array<std::array<int8_t, KeyMatrixPosition::NUM_COLS>, KeyMatrixPosition::NUM_ROWS> cntKeyMatrix;
-	// e.g.) LSHIFT and RSHIFT are assigned to the same SHIFT in the MSX key matrix.
 #endif //USE_KEYPRESSCNT
 
 
