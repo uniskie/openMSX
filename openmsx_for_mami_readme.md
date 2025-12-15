@@ -1,4 +1,4 @@
-openMSX 20.0-545b for MAmidiMEmo
+openMSX 20.0-98 for MAmidiMEmo
 
 - openmsx.exe 
   追加機能なし（MAMI非対応）
@@ -12,9 +12,32 @@ openMSX 20.0-545b for MAmidiMEmo
 
 ## ベース
 
-- Commits on Jun 14, 2025 cdf09aa57db5c7e1ac3f6571762df94ad5e09ab8 を元にRebase
+リビジョン: 9aab65445144dacf7488afa080bba8eeed2a9233
+作者: m9710797 <vermaelen.wouter@gmail.com>
+日時: 2025/12/07 日曜日 17:50:26
+
+をベースにリベース
+
+## 日本語キーボード問題について
+
+公式版OpenMSXでもキー配列（POSITION限定）とUIの日本語化けは対策済みです。
+漢字モード対策は入っていませんが、対策がありますので、
+基本的には公式版OpenMSXをお勧めします。
+
+### 公式OpenMSXを使用する際の漢字モード対策
+
+Windowsの言語設定にUSを追加、USのキーボード配列を日本語キーボードに変更。
+OpenMSX使用時にWIN+SPACEでUS/日本を切り替えで対応
+というのを推奨しています。
+（公式OS依存かつ日本語限定の機能を入れるにはテスター不足なので）
 
 ## 更新
+
+- openMSX 20.0-98 for MAmidiMEmo
+
+	- ※注） for MAMI ではない方はopenMSX 20.0-95
+
+	- 公式最新リポジトリに反映されたGUIフォントのマルチバイト文字修正取り込み
 
 - openMSX 20.0-545b for MAmidiMEmo
 
