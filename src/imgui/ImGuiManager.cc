@@ -737,8 +737,15 @@ void ImGuiManager::paintImGui(bool msxDisplayAreaFocused)
 
 void ImGuiManager::drawStatusBar(MSXMotherBoard* motherBoard)
 {
-	if (ImGui::BeginViewportSideBar("##MainStatusBar", nullptr, ImGuiDir_Down, ImGui::GetFrameHeight(),
-			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar)) {
+	// -> 2026/05/26 focus fix by uniskie
+	// Prevent the status bar from stealing focus when it appears
+	constexpr ImGuiWindowFlags statusBarFlags = ImGuiWindowFlags_NoScrollbar |
+											   ImGuiWindowFlags_NoSavedSettings |
+											   ImGuiWindowFlags_MenuBar |
+											   ImGuiWindowFlags_NoFocusOnAppearing |   // focus fix
+											   ImGuiWindowFlags_NoBringToFrontOnFocus; // focus fix
+	if (ImGui::BeginViewportSideBar("##MainStatusBar", nullptr, ImGuiDir_Down, ImGui::GetFrameHeight(), statusBarFlags)) {
+	// <- 2026/05/26 ficus fix by uniskie
 		im::MenuBar([&]{
 			auto pos = ImGui::GetCursorPos();
 
