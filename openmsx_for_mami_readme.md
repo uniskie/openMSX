@@ -1,10 +1,10 @@
-openMSX 21.0-390 for MAmidiMEmo
+openMSX 21.0-392 for MAmidiMEmo
 
-- openmsx.exe ... ver 21.0-386
+- openmsx.exe ... ver 21.0-386-g8fe47d4f4-dirty
   MAMI非対応
   私的な日本向け修正のみ
 
-- openmsx_for_mami.exe ... ver 21.0-390
+- openmsx_for_mami.exe ... ver 21.0-392
   MAMI対応版（MAmidiMEmoに演奏情報を送信できます）
   私的な日本向け修正
 
@@ -13,9 +13,9 @@ openMSX 21.0-390 for MAmidiMEmo
     参照
 
 - 私的パッチ:  
-  - テンキーのカンマ入力不能問題の修正
+  - 左右SHIFT同時押し対策を改善（安全版）← **NEW**
+  - テンキーのカンマ入力不能問題の修正 ← **NEW**
   - IME自動抑制
-  - 左右SHIFT同時押し対策 → 潜在的な問題があるので修正予定
   - 起動時とメニュー操作後に起きる入力フォーカス喪失の修正
 
 ## リベース元：公式版
@@ -39,14 +39,41 @@ OpenMSX使用時にWIN+SPACEでUS/日本を切り替えで対応
 
 ### CAPSキー問題
 
-WindowsではCAPS LOCKキーが押しっぱなしになる問題があります。
-対策としては
-1. 別のキーにbindする
+Windowsの日本語環境では**CAPS LOCKキーが押しっぱなし**になる問題があります。
+
+openMSXが使用している基本ライブラリであるSDL2には問題があり、
+日本語キーボード環境だと最初の押下イベント以後何も通知されないという状況です。
+どの環境よりも酷い動作で、まともな回避策は今のところ見つかっていません。
+
+#### 対策：予防
+
+1. 別のキーにbindする  
+   - 例) メニューキーにCAPSキーを割り当てる  
+     `F10`キーで出せるコンソールから  
+     `bind MENU "keymatrixdown 6 0x08"`  
+     `bind MENU,RELEASE "keymatrixup 6 0x08"`  
+     
+     補足：
+     - CAPSキーはMSXキーマトリクス 6行のビットマスク0x08（bit 3）
+     - キーダウンとキーリリースの2つの処理を登録
+   - sdl_keycode名を使用するため、残念ながら無変換、変換キーは未対応
+
 2. 秀CAPS等で英数とCAPS LOCKを入れ替える  
-   （CAPS単体では反応しなくなり、SHIFT+CAPSで切り替えになる）
-などがあります。
+   - CAPS単体では反応しなくなる
+   - **SHIFT+CAPS**でCAPS LOCKの状態を切り替える
+
+#### 対策：**CAPSキーを間違って押してMSXのCAPSランプが点滅して困った場合**
+
+落ち着いて**SHIFT+CAPS**を押して離してください。
+
+SHIFT+CAPSであれば正常認識するので状態回復できます。
 
 ## 更新
+
+- openMSX 21.0-392 for MAmidiMEmo
+
+  - 左右シフトキーの扱い修正（安全版）
+  - 公式最新リポジトリ取り込み
 
 - openMSX 21.0-386 and "for MAmidiMEmo" ver
 
