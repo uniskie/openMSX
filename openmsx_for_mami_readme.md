@@ -1,18 +1,25 @@
-openMSX 21.0-392 for MAmidiMEmo
+openMSX 21.0-393 for MAmidiMEmo
 
-- openmsx.exe ... ver 21.0-386-g8fe47d4f4-dirty
-  MAMI非対応
-  私的な日本向け修正のみ
+- openmsx.exe  
+  ver 21.0-384-g396a7b0fa-dirty
+  - MAMI非対応
+  - 私的な日本向け修正のみ
 
-- openmsx_for_mami.exe ... ver 21.0-392
-  MAMI対応版（MAmidiMEmoに演奏情報を送信できます）
-  私的な日本向け修正
+- openmsx_for_mami.exe  
+  ver 21.0-393-g854119eb-dirty
+  - MAMI対応版  
+    - MAmidiMEmoへ演奏情報を送信できます。  
+      (MAmidiMEmoは起動時に-chip_serverオプションを付けて起動しておくこと)
+  - 私的な日本向け修正
 
   - 使い方は 
     https://github.com/uniskie/MSX_DOCUMENTS/blob/main/MAmidiMEmoNEMO/readMe.md
     参照
 
-- 私的パッチ:  
+## 私的な日本向け修正:  
+
+  - MSX側のマウスの見た目の速度をホスト側と一致するように修正 ← **NEW**  
+    表示倍率が3倍以上だとMSX側のマウスが速すぎる問題への対処
   - 左右SHIFT同時押し対策を改善（安全版）← **NEW**
   - テンキーのカンマ入力不能問題の修正 ← **NEW**
   - IME自動抑制
@@ -69,6 +76,10 @@ openMSXが使用している基本ライブラリであるSDL2には問題があ
 SHIFT+CAPSであれば正常認識するので状態回復できます。
 
 ## 更新
+
+- openMSX 21.0-393 for MAmidiMEmo
+
+  - マウス速度異常の修正
 
 - openMSX 21.0-392 for MAmidiMEmo
 
