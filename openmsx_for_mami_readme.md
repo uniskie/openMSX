@@ -1,12 +1,12 @@
-openMSX 21.0-393 for MAmidiMEmo
+openMSX 21.0-398 for MAmidiMEmo
 
 - openmsx.exe  
-  ver 21.0-384-g396a7b0fa-dirty
+  ver 21.0-390-g1069ef146-dirty
   - MAMI非対応
   - 私的な日本向け修正のみ
 
 - openmsx_for_mami.exe  
-  ver 21.0-393-g854119eb-dirty
+  ver 21.0-398-g298664f12-dirty
   - MAMI対応版  
     - MAmidiMEmoへ演奏情報を送信できます。  
       (MAmidiMEmoは起動時に-chip_serverオプションを付けて起動しておくこと)
@@ -18,18 +18,21 @@ openMSX 21.0-393 for MAmidiMEmo
 
 ## 私的な日本向け修正:  
 
-  - MSX側のマウスの見た目の速度をホスト側と一致するように修正 ← **NEW**  
+- 公式取り込み済み
+  - MSX側のマウスの見た目の速度をホスト側と一致するように修正
     表示倍率が3倍以上だとMSX側のマウスが速すぎる問題への対処
-  - 左右SHIFT同時押し対策を改善（安全版）← **NEW**
   - テンキーのカンマ入力不能問題の修正 ← **NEW**
-  - IME自動抑制
   - 起動時とメニュー操作後に起きる入力フォーカス喪失の修正
+
+- この私家版ビルドのみ
+  - 左右SHIFT同時押し対策を改善（安全版）← **NEW**
+  - IME自動抑制
 
 ## リベース元：公式版
 
-リビジョン: 5dd287317985929fe630aa4973f44455917385bc
-作者: f-fix <bsittler@iname.com>
-日時: 2026/07/09 木曜日 12:51:54
+リビジョン: d1b8f2c81b3fcafde528e91e6133a7278a732e04
+作者: m9710797 <vermaelen.wouter@gmail.com>
+日時: 2026/07/17 金曜日 1:45:51
 
 ## 日本語キーボード問題について
 
@@ -76,6 +79,10 @@ openMSXが使用している基本ライブラリであるSDL2には問題があ
 SHIFT+CAPSであれば正常認識するので状態回復できます。
 
 ## 更新
+
+- openMSX 21.0-398 for MAmidiMEmo
+
+  - 公式masterのステートロードに失敗するエンバグ修正を取り込み
 
 - openMSX 21.0-393 for MAmidiMEmo
 
