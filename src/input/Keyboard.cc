@@ -1090,6 +1090,11 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime time)
 		if (keyEvent.getScanCode() == SDL_SCANCODE_UNKNOWN) {
 			return false;
 		}
+		if (keyEvent.getScanCode() == SDL_SCANCODE_GRAVE) {
+			// To work around a Japanese keyboard Kanji mode bug. (Multi-character
+			// input makes a keydown event without keyrelease message.)
+			return false;
+		}
 		return processKeyEvent(time, down, keyEvent);
 	}
 }
