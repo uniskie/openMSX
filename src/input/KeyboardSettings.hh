@@ -46,6 +46,9 @@ public:
 	[[nodiscard]] bool getDisableIME() const {
 		return disableIME.getBoolean();
 	}
+	[[nodiscard]] bool getIgnoreGraveKey() const {
+		return ignoreGraveKey.getBoolean();
+	}
 
 private:
 	std::array<EnumSetting<SDL_Keycode>, 3> deadKeyHostKey;
@@ -56,6 +59,7 @@ private:
 	BooleanSetting traceKeyPresses;
 	BooleanSetting autoToggleCodeKanaLock;
 	BooleanSetting disableIME;
+	BooleanSetting ignoreGraveKey; // Countermeasure for missing Release events on Japanese keyboards
 };
 
 } // namespace openmsx
