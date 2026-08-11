@@ -76,10 +76,6 @@ KeyboardSettings::KeyboardSettings(CommandController& commandController)
 		"kbd_disable_IME",
 		"disable IME, avoid keyboard input problems in Kanji mode",
 		true)
-	, ignoreGraveKey(commandController,
-		"kbd_ignore_grave_key",
-		"Ignore the Grave (Hankaku/Zenkaku) key to handle missing Release events on Japanese keyboards.",
-		false)
 {
 }
 
