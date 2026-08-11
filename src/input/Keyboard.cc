@@ -720,6 +720,7 @@ Keyboard::Keyboard(MSXMotherBoard& motherBoard,
 	, commandController(commandController_)
 	, msxEventDistributor(msxEventDistributor_)
 	, stateChangeDistributor(stateChangeDistributor_)
+	, eventDistributor(eventDistributor)
 	, keyCodeTab (defaultKeyCodeMappings [matrix])
 	, scanCodeTab(defaultScanCodeMappings[matrix])
 	, combinedShiftFlag(defaultCombinedShiftFlags[matrix])
@@ -757,6 +758,8 @@ Keyboard::Keyboard(MSXMotherBoard& motherBoard,
 	// We do not listen for CONSOLE_OFF_EVENTS because rescanning the
 	// keyboard can have unwanted side effects
 
+	eventDistributor.registerEventListener(EventType::KEYMAP_CHANGED, *this);
+
 	motherBoard.registerKeyboard(*this);
 }
 
@@ -764,6 +767,8 @@ Keyboard::~Keyboard()
 {
 	auto& motherBoard = keybDebuggable.getMotherBoard();
 	motherBoard.unregisterKeyboard(*this);
+
+	eventDistributor.unregisterEventListener(EventType::KEYMAP_CHANGED, *this);
 
 	stateChangeDistributor.unregisterListener(*this);
 	msxEventDistributor.unregisterEventListener(*this);
@@ -1001,6 +1006,15 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime time)
 	bool down = getType(event) == EventType::KEY_DOWN;
 	auto key = keyEvent.getKey();
 
+	// Check if the host keyboard is a Japanese keyboard. If so, ignore the GRAVE key.
+	if (hostKeyMap == HostKeyMap::UNKNOWN) {
+		if (SDL_GetKeyFromScancode(SDL_SCANCODE_LEFTBRACKET) == SDLK_AT) {
+			hostKeyMap = HostKeyMap::JP;
+		} else {
+			hostKeyMap = HostKeyMap::EN;
+		}
+	}
+
 #if KEYTEST //-->
 	if (keyboardSettings.getTraceKeyPresses()) {
 		if (down) {
@@ -1090,7 +1104,7 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime time)
 		if (keyEvent.getScanCode() == SDL_SCANCODE_UNKNOWN) {
 			return false;
 		}
-		if (keyEvent.getScanCode() == SDL_SCANCODE_GRAVE) {
+		if ((keyEvent.getScanCode() == SDL_SCANCODE_GRAVE) && (hostKeyMap == HostKeyMap::JP)) {
 			// To work around a Japanese keyboard Kanji mode bug. (Multi-character
 			// input makes a keydown event without keyrelease message.)
 			return false;
@@ -1150,6 +1164,15 @@ void Keyboard::executeUntil(EmuTime time)
 {
 	debug("Releasing CAPS lock\n");
 	updateKeyMatrix(time, false, modifierPos[KeyInfo::Modifier::CAPS]);
+}
+
+bool Keyboard::signalEvent(const Event& event)
+{
+	if (getType(event) == EventType::KEYMAP_CHANGED) {
+		// check hostKeyMap at Next keyEvent
+		hostKeyMap = HostKeyMap::UNKNOWN;
+	}
+	return false;
 }
 
 void Keyboard::processKeypadEnterKey(EmuTime time, bool down)
