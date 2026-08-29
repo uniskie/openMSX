@@ -1,12 +1,12 @@
-openMSX 21.0-453 for MAmidiMEmo
+openMSX 21.0-506 for MAmidiMEmo
 
 - openmsx.exe  
-  ver. 21.0-443-g4fabfc33f-dirty
+  ver. 21.0-495
   - MAMI非対応
   - 私的な日本向け修正のみ
 
 - openmsx_for_mami.exe  
-  ver. 21.0-453-gb387f5df-dirty
+  ver. 21.0-506
   - MAMI対応版  
     - MAmidiMEmoへ演奏情報を送信できます。  
       (MAmidiMEmoは起動時に-chip_serverオプションを付けて起動しておくこと)
@@ -19,6 +19,13 @@ openMSX 21.0-453 for MAmidiMEmo
 ## 私的な日本向け修正:  
 
 - この私家版ビルドのみ
+  - sndpl氏によるマウス補正の修正
+    [fix(input): scale MSX mouse movement in host window coordinates- #2181
+#2181](https://github.com/openMSX/openMSX/pull/2181/changes/fcdc516df83a0d3f5cc461223b5229626065707a)
+    取り込み
+    - マウス移動量補正の修正がRatinaディスプレイで問題を起こしていたのでその修正
+    - 移動補完精度を高める修正
+    
   - ホストPCが日本語配列キーボードの場合、半角/全角キー（漢字キー）を自動的に無視する ← **NEW**  
   - 左右SHIFT同時押し対策を改善（安全版）← **NEW**
   - IME自動抑制
@@ -31,9 +38,9 @@ openMSX 21.0-453 for MAmidiMEmo
 
 ## リベース元：公式版
 
-リビジョン: 0d462ce723c0850940c348a348d96908c9ea7ad1
-作者: Wouter Vermaelen <vermaelen.wouter@gmail.com>
-日時: 2026/08/11 火曜日 0:55:27
+リビジョン: b999a31367f258feea57058072b3c0bea1970a4a
+作者: Manuel Bilderbeek <Manuel.Bilderbeek@gmail.com>
+日時: 2026/08/28 金曜日 5:50:04
 
 ## 日本語キーボード問題について
 
@@ -115,6 +122,13 @@ SHIFT+CAPSであれば正常認識するので状態回復できます。
 ## 更新
 
 - openMSX 21.0-443 / 21.0-453 for MAmidiMEmo
+
+  - sndpl氏によるマウス補正の修正
+    [fix(input): scale MSX mouse movement in host window coordinates- #2181
+#2181](https://github.com/openMSX/openMSX/pull/2181/changes/fcdc516df83a0d3f5cc461223b5229626065707a)
+    取り込み
+
+- openMSX 21.0-495 / 21.0-506 for MAmidiMEmo
 
   - 日本語キーボードレイアウトかを判定して、
     日本語キーボードレイアウトの場合は半角/全角キー無視。
