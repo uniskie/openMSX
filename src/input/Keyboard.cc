@@ -915,6 +915,13 @@ void Keyboard::stopReplay(EmuTime time) noexcept
 
 void Keyboard::syncHostKeyMatrix(EmuTime time)
 {
+	if (!focus) {
+		// On focus loss, all keys are released in the matrix. Clear host-side Shift
+		// tracking to match this state and prevent subsequent events from being dropped.
+		// Only clear when !focus so that stopReplay() can preserve held keys.
+		leftShiftPressed = false;
+		rightShiftPressed = false;
+	}
 	for (auto [row, hkm] : enumerate(hostKeyMatrix)) {
 		changeKeyMatrixEvent(time, uint8_t(row), hkm);
 	}
@@ -1077,7 +1084,7 @@ bool Keyboard::processQueuedEvent(const Event& event, EmuTime time)
 		if (key.sym.sym == SDLK_RSHIFT) rightShiftPressed = down;
 		if (down && (leftShiftPressed!= rightShiftPressed)) {
 			processSdlKey(time, SDLKey::create(SDLK_LSHIFT,SDL_SCANCODE_LSHIFT, down, key.sym.mod));
-		} else if (!down && (leftShiftPressed== rightShiftPressed)) {
+		} else if (!down && !leftShiftPressed && !rightShiftPressed) {
 			processSdlKey(time, SDLKey::create(SDLK_LSHIFT,SDL_SCANCODE_LSHIFT, down, key.sym.mod));
 		}
 		return false;
